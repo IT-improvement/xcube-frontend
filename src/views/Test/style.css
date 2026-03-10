@@ -1,0 +1,10 @@
+.test-box {
+  width: 80vw;
+  height: 20vh;          /* % 말고 vh로 확실하게 */
+  background-color: red;
+  color: white;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

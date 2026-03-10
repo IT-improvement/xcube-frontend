@@ -1,0 +1,2 @@
+npm install deck.gl --save
+yarn add @deck.gl/core @deck.gl/layers
