@@ -24,7 +24,7 @@ test('소개 홈의 주요 섹션을 모두 보여준다', () => {
     expect(screen.getByRole('heading', { level: 2, name })).toBeInTheDocument();
   }
   const nav = screen.getByRole('navigation', { name: '주요 메뉴' });
-  expect(within(nav).getAllByRole('link').map((link) => link.getAttribute('href')).filter((href) => href?.startsWith('#'))).toEqual(['#features', '#workflow', '#use-cases', '#tech', '#contact']);
+  expect(within(nav).getAllByRole('link').map((link) => link.getAttribute('href')).filter((href) => href?.startsWith('#'))).toEqual(['#workflow', '#features', '#use-cases', '#tech', '#contact']);
   for (const format of ['GeoTIFF', 'CAS500', 'Shapefile', 'Google Earth Engine', 'Zarr']) expect(screen.getByText(format)).toBeInTheDocument();
 });
 

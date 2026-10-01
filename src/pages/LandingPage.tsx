@@ -11,8 +11,8 @@ const VIEWER_PATH = '/app/viewer';
 const CONTACT_EMAIL = process.env.REACT_APP_CONTACT_EMAIL;
 
 const NAV = [
-  { href: '#features', label: '기능' },
   { href: '#workflow', label: '워크플로우' },
+  { href: '#features', label: '기능' },
   { href: '#use-cases', label: '활용 분야' },
   { href: '#tech', label: '기술' },
   { href: '#contact', label: '문의' },
