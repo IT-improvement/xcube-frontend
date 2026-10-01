@@ -82,17 +82,21 @@ export function Alert({ tone = 'info', children, role }: { tone?: keyof typeof a
   );
 }
 
-export function Logo({ to = '/' }: { to?: string }) {
-  return (
-    <Link to={to} className="xc-logo" aria-label="XCube 홈">
+/** Brand mark. `to` navigates in the app; `href` + `label` render a plain link (e.g. the Viewer in a new tab). */
+export function Logo({ to = '/', href, label = 'XCube 홈', newTab }: { to?: string; href?: string; label?: string; newTab?: boolean }) {
+  const content = (
+    <>
       <svg className="xc-logo__mark" viewBox="0 0 28 28" aria-hidden>
         <rect width="28" height="28" rx="7" fill="var(--color-primary)" />
         <path d="M14 6.5 21 10.5v7L14 21.5 7 17.5v-7L14 6.5Z" fill="none" stroke="#fff" strokeWidth="1.6" strokeLinejoin="round" />
         <path d="M7 10.5 14 14.5l7-4M14 14.5v7" fill="none" stroke="#fff" strokeWidth="1.6" strokeLinejoin="round" />
       </svg>
       <span className="xc-logo__text" aria-hidden>XCube</span>
-    </Link>
+    </>
   );
+  if (href)
+    return <a href={href} className="xc-logo" aria-label={label} {...(newTab ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{content}</a>;
+  return <Link to={to} className="xc-logo" aria-label={label}>{content}</Link>;
 }
 
 export function StatusScreen({ title, text, busy, role = 'status', action }: { title: string; text?: string; busy?: boolean; role?: 'status' | 'alert'; action?: ReactNode }) {

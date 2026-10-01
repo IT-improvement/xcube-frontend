@@ -24,7 +24,7 @@ export default function AppShell() {
       <a className="skip-link" href="#app-main">본문으로 건너뛰기</a>
       <aside className="app-nav" aria-label="주 메뉴">
         <div className="app-nav__head">
-          <Logo to="/app" />
+          <Logo href="/app/viewer" newTab label="XCube Viewer 열기 (새 탭)" />
           <button type="button" className="xc-icon-btn app-nav__close" aria-label="메뉴 닫기" onClick={() => setMenuOpen(false)}>
             <X size={18} aria-hidden />
           </button>
@@ -63,7 +63,7 @@ export default function AppShell() {
           <button type="button" className="xc-icon-btn" aria-label="메뉴 열기" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>
             <Menu size={20} aria-hidden />
           </button>
-          <Logo to="/app" />
+          <Logo href="/app/viewer" newTab label="XCube Viewer 열기 (새 탭)" />
         </header>
         <main id="app-main" className="app-main" tabIndex={-1}>
           <Outlet />
