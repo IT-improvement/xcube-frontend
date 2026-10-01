@@ -1,0 +1,152 @@
+/* SVG path/cursor geometry is part of the Viewer regression baseline. */
+/* eslint-disable testing-library/no-node-access */
+import { fireEvent, render, screen } from '@testing-library/react';
+import '@testing-library/jest-dom';
+import Viewer from '.';
+import { viewerAdapter } from '../../api/viewerAdapter';
+
+jest.mock('../../components/map', () => ({
+  __esModule: true,
+  default: ({ onPixelSelect }: { onPixelSelect?: (coordinate: [number, number]) => void }) => (
+    <button type="button" aria-label="테스트 지도" onClick={() => onPixelSelect?.([14300000, 4200000])}>OpenLayers 배경지도</button>
+  ),
+}));
+
+jest.mock('../../components/xcubeLayer', () => ({ __esModule: true, default: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('ol/proj', () => ({ toLonLat: (coordinate: [number, number]) => coordinate }));
+jest.mock('../../api', () => { const actual = jest.requireActual('../../api/viewerAdapter'); return { activeViewerAdapter: actual.viewerAdapter, useMockApi: true }; });
+
+beforeEach(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: jest.fn().mockImplementation((query) => ({ matches: false, media: query, onchange: null, addEventListener: jest.fn(), removeEventListener: jest.fn(), addListener: jest.fn(), removeListener: jest.fn(), dispatchEvent: jest.fn() })),
+  });
+});
+
+test('Zarr를 선택하기 전에는 배경지도만 유지하고 데이터 도구를 숨긴다', async () => {
+  render(<Viewer />);
+  await screen.findByRole('option', { name: '한강 수체 모니터링' });
+  expect(screen.getByRole('button', { name: '테스트 지도' })).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: '시계열 탐색기' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /AI 수체 추출/ })).not.toBeInTheDocument();
+  expect(screen.queryByText('원본 Zarr')).not.toBeInTheDocument();
+});
+
+test('원본 Zarr 선택 후 시간 도구와 원본 레이어만 표시한다', async () => {
+  render(<Viewer />);
+  const selector = await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' });
+  fireEvent.click(selector);
+  fireEvent.click(await screen.findByRole('option', { name: /Sentinel-2/ }));
+  expect(await screen.findByRole('region', { name: '시계열 탐색기' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /AI 수체 추출/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '결과' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  expect(screen.getByText('원본 Zarr')).toBeInTheDocument();
+  expect(screen.queryByText('AI 결과 Zarr')).not.toBeInTheDocument();
+});
+
+test('연결된 infer 결과가 있는 Zarr에서만 결과 UI를 표시하고 픽셀 클릭 시 그래프를 연다', async () => {
+  render(<Viewer />);
+  const selector = await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' });
+  fireEvent.click(selector);
+  fireEvent.click(await screen.findByRole('option', { name: /Landsat-8/ }));
+  expect(await screen.findByRole('button', { name: '결과' })).toBeInTheDocument();
+  expect(screen.queryByRole('img', { name: /시계열 그래프/ })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '테스트 지도' }));
+  expect(screen.queryByRole('img', { name: /시계열 그래프/ })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '픽셀 값 조회' }));
+  fireEvent.click(screen.getByRole('button', { name: '테스트 지도' }));
+  const graph = screen.getByRole('img', { name: /시계열 그래프/ });
+  expect(graph).toHaveAttribute('viewBox', '0 0 900 260');
+  expect(graph).toHaveAccessibleName(/Landsat-8.*EPSG:4326.*경도.*위도.*유효 7개/);
+  expect(screen.queryByText(/유효 7 \/ 전체 8/)).not.toBeInTheDocument();
+  expect(screen.queryByText('EPSG:3857')).not.toBeInTheDocument();
+  expect(screen.queryByText('EPSG:4326')).not.toBeInTheDocument();
+  expect(screen.queryByText('경도 14300000.00000°')).not.toBeInTheDocument();
+  expect(screen.queryByText('위도 4200000.00000°')).not.toBeInTheDocument();
+  expect(screen.queryByText('전체 시계열')).not.toBeInTheDocument();
+  expect(screen.queryByText('최소')).not.toBeInTheDocument();
+  expect(screen.queryByText('최대')).not.toBeInTheDocument();
+  expect(screen.queryByText('평균')).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: '시계열 탐색기' })?.querySelector('svg')).toBeNull();
+  expect(graph.querySelectorAll('path.line')).toHaveLength(2);
+  const initialX = graph.querySelector('.current-time .cursor')?.getAttribute('x1');
+  fireEvent.change(screen.getByRole('slider', { name: '관측 시점' }), { target: { value: '1' } });
+  expect(screen.getByRole('img', { name: /시계열 그래프/ }).querySelector('.current-time .cursor')?.getAttribute('x1')).not.toBe(initialX);
+  fireEvent.click(screen.getByRole('button', { name: /AI 수체 추출/ }));
+  expect(screen.getByRole('complementary', { name: 'AI 수체 추출 설정' })).toBeInTheDocument();
+  expect(screen.queryByRole('complementary', { name: '픽셀 시계열 분석' })).not.toBeInTheDocument();
+  expect(screen.getByRole('img', { name: /시계열 그래프/ })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '픽셀 그래프 아래로 숨기기' }));
+  expect(screen.queryByRole('img', { name: /시계열 그래프/ })).not.toBeInTheDocument();
+  const expand = screen.getByRole('button', { name: '픽셀 그래프 위로 펼치기' });
+  expect(expand).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.change(screen.getByRole('slider', { name: '관측 시점' }), { target: { value: '2' } });
+  fireEvent.click(expand);
+  expect(screen.getByRole('img', { name: /시계열 그래프/ })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '픽셀 선택 지우기' }));
+  expect(screen.queryByRole('img', { name: /시계열 그래프/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '픽셀 선택 지우기' })).not.toBeInTheDocument();
+});
+
+test('Zarr 목록을 검색하고 키보드로 선택할 수 있다', async () => {
+  render(<Viewer />);
+  const selector = await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' });
+  fireEvent.click(selector);
+  await screen.findByRole('option', { name: /Sentinel-2/ });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Zarr 검색' }), { target: { value: 'sentinel' } });
+  expect(screen.getByRole('option', { name: /Sentinel-2/ })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: /Landsat-8/ })).not.toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Zarr 검색' }), { key: 'Enter' });
+  expect(selector).toHaveTextContent('Sentinel-2');
+});
+
+test('45개 Zarr 목록에서 마지막 항목을 검색해 선택할 수 있다', async () => {
+  const datasets = Array.from({ length: 45 }, (_, index) => ({
+    id: `dataset-${index + 1}`,
+    projectId: index % 2 ? 'han-river' : '',
+    projectName: index % 2 ? '한강 수체 모니터링' : undefined,
+    accessType: index % 3 ? 'OWNED' as const : 'SHARED' as const,
+    name: `테스트 데이터셋 ${String(index + 1).padStart(2, '0')}`,
+    subtitle: 'AVAILABLE',
+    xcubeDatasetId: `xcube_dataset_${index + 1}`,
+    defaultVariable: 'red',
+    variables: ['red'],
+    times: [],
+  }));
+  const getDatasets = jest.spyOn(viewerAdapter, 'getDatasets').mockResolvedValueOnce(datasets);
+  render(<Viewer />);
+  const selector = await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' });
+  fireEvent.click(selector);
+  const search = await screen.findByRole('textbox', { name: 'Zarr 검색' });
+  fireEvent.change(search, { target: { value: 'xcube_dataset_45' } });
+  const last = await screen.findByRole('option', { name: /테스트 데이터셋 45/ });
+  fireEvent.click(last);
+  expect(selector).toHaveTextContent('테스트 데이터셋 45');
+  expect(selector).toHaveAttribute('aria-expanded', 'false');
+  getDatasets.mockRestore();
+});
+
+test('레이어 패널은 기본 접힘이며 열기와 닫기를 반복할 수 있다', async () => {
+  render(<Viewer />);
+  await screen.findByRole('option', { name: '한강 수체 모니터링' });
+  fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  expect(screen.getByRole('complementary', { name: '레이어 및 AI 작업 패널' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '패널 닫기' }));
+  expect(screen.queryByRole('complementary', { name: '레이어 및 AI 작업 패널' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' })).toBeInTheDocument();
+});
+
+test('프로젝트 관리에서 개요·접근 권한·Zarr를 탐색한다', async () => {
+  render(<Viewer />);
+  await screen.findByRole('option', { name: '한강 수체 모니터링' });
+  fireEvent.click(screen.getByRole('button', { name: '프로젝트 관리' }));
+  expect(screen.getByRole('dialog', { name: '프로젝트' })).toBeInTheDocument();
+  expect(screen.getAllByRole('option', { name: /한강 수체 모니터링/ }).find((item) => item.tagName === 'BUTTON')).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('button', { name: '편집' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab', { name: '접근 권한' }));
+  expect(screen.getByText('데모 모드에서는 공유 관리를 사용할 수 없습니다.')).toBeInTheDocument();
+  expect(screen.getByPlaceholderText('숫자 사용자 ID')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab', { name: 'Zarr' }));
+  expect(await screen.findByRole('button', { name: /Sentinel-2/ })).toBeInTheDocument();
+});
