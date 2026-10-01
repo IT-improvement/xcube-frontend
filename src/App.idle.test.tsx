@@ -14,7 +14,7 @@ const hour = 60 * 60 * 1000;
 let lastActivity: number;
 beforeEach(() => {
   jest.useFakeTimers(); jest.setSystemTime(new Date('2026-01-01T00:00:00Z'));
-  jest.clearAllMocks(); sessionStorage.clear(); window.history.replaceState({}, '', '/');
+  jest.clearAllMocks(); sessionStorage.clear(); window.history.replaceState({}, '', '/app/viewer');
   lastActivity = Date.now();
   (authSession.lastActivity as jest.Mock).mockImplementation(() => lastActivity);
   (authSession.touch as jest.Mock).mockImplementation((now) => { lastActivity = now; });

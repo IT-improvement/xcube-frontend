@@ -1,7 +1,0 @@
-html, body, #root {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-}
-.app-state,.auth-page{min-height:100%;display:grid;place-items:center;background:#eef2f6;color:#182230;font-family:Inter,Pretendard,system-ui,sans-serif}.auth-card{width:min(420px,calc(100% - 32px));padding:32px;border:1px solid #d5dde6;border-radius:10px;background:#fff;box-shadow:0 18px 45px #24364b1c}.auth-logo{width:42px;height:42px;display:grid;place-items:center;border-radius:7px;background:#0f61bd;color:#fff;font-size:24px}.auth-card h1{margin:18px 0 5px;font-size:24px}.auth-card>p{margin:0 0 24px;color:#5d6b7e}.auth-card form{display:grid;gap:14px}.auth-card label{display:grid;gap:6px;font-weight:600}.auth-card input{min-height:42px;padding:9px 11px;border:1px solid #cbd5df;border-radius:5px;font:inherit}.auth-submit{min-height:44px;border:0;border-radius:5px;background:#0f61bd;color:#fff;font:600 14px inherit}.auth-switch{width:100%;margin-top:14px;border:0;background:transparent;color:#0f61bd;padding:8px}.auth-message{padding:9px;background:#e4effc;border-radius:5px;color:#164f91}
-:root[data-theme=dark] .app-state,:root[data-theme=dark] .auth-page{background:#0d1118;color:#edf3f8}:root[data-theme=dark] .auth-card{background:#151b24;border-color:#394656}:root[data-theme=dark] .auth-card input{background:#1b2430;border-color:#394656;color:#edf3f8}
