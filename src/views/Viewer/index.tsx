@@ -78,6 +78,8 @@ export default function Viewer({
   // The layer panel starts open on wide screens (S7) and collapsed on narrow ones.
   const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 1280);
   const [flash, setFlash] = useState("");
+  const [notice, setNotice] = useState("");
+  const [noDataHidden, setNoDataHidden] = useState(false);
   const [tourOpen, setTourOpen] = useState(
     () => onboarding && !tourDismissed(),
   );
@@ -188,6 +190,21 @@ export default function Viewer({
       .catch(fail)
       .finally(() => setLoading(false));
   }, [fail]);
+  // The "no Zarr yet" card is a hint, not an error: show it briefly.
+  const noData = !loading && !apiError && datasets.length === 0;
+  useEffect(() => {
+    if (!noData) {
+      setNoDataHidden(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setNoDataHidden(true), 3500);
+    return () => window.clearTimeout(timer);
+  }, [noData]);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 6000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   useEffect(() => {
     if (!flash) return;
     const timer = window.setTimeout(() => setFlash(""), 3200);
@@ -547,7 +564,7 @@ export default function Viewer({
   const emptyMessage = loading
     ? "데이터를 불러오는 중입니다…"
     : apiError ||
-      (datasets.length
+      (datasets.length || noDataHidden
         ? ""
         : "등록된 Zarr가 없습니다. 데이터를 추가해 시작하세요.");
   return (
@@ -725,7 +742,17 @@ export default function Viewer({
                 key={item.id}
                 className={item.id === datasetId ? "active" : ""}
                 aria-pressed={item.id === datasetId}
-                onClick={() => setDatasetId(item.id)}
+                onClick={() => {
+                  // Datasets reached only through a shared project are not in
+                  // the catalog list until the server grants project access.
+                  if (!datasets.some((known) => known.id === item.id)) {
+                    setNotice(
+                      `“${item.name}”은 공유받은 프로젝트를 통해서만 연결된 데이터라 아직 열 수 없습니다. 서버 권한 규칙이 반영되면 표시됩니다.`,
+                    );
+                    return;
+                  }
+                  setDatasetId(item.id);
+                }}
               >
                 <Database size={14} aria-hidden="true" />
                 {item.name}
@@ -1048,6 +1075,12 @@ export default function Viewer({
                   </a>
                 </div>
               )}
+            </div>
+          )}
+          {notice && (
+            <div className="vx-toast vx-toast--notice" role="alert">
+              <CircleAlert size={16} aria-hidden="true" />
+              {notice}
             </div>
           )}
           {flash && (

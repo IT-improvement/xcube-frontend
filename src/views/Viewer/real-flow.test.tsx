@@ -176,3 +176,24 @@ test('Viewer의 API 401은 서버 로그아웃 callback을 호출하지 않는�
   expect(await screen.findByText('세션이 만료되었습니다. 다시 로그인해 주세요.')).toBeInTheDocument();
   expect(onLogout).not.toHaveBeenCalled();
 });
+
+test('등록된 Zarr가 없다는 안내는 3~4초 뒤 사라진다', async () => {
+  jest.useFakeTimers();
+  mockAdapter.getDatasets.mockResolvedValue([]);
+  render(<Viewer />);
+  expect(await screen.findByText(/등록된 Zarr가 없습니다/)).toBeInTheDocument();
+  await act(async () => { jest.advanceTimersByTime(3000); });
+  expect(screen.getByText(/등록된 Zarr가 없습니다/)).toBeInTheDocument();
+  await act(async () => { jest.advanceTimersByTime(600); });
+  expect(screen.queryByText(/등록된 Zarr가 없습니다/)).not.toBeInTheDocument();
+  jest.useRealTimers();
+});
+
+test('공유받은 프로젝트로만 연결된 Zarr는 아무 반응 없이 넘어가지 않고 이유를 알려 준다', async () => {
+  mockAdapter.getProjectDatasets.mockResolvedValue([{ id: '99', projectId: '4', name: '남의 Zarr', subtitle: 'READY', xcubeDatasetId: 'other', defaultVariable: 'red', variables: ['red'], times: [] }]);
+  render(<Viewer />);
+  fireEvent.change(await screen.findByRole('combobox', { name: '프로젝트 선택' }), { target: { value: '4' } });
+  fireEvent.click(await screen.findByRole('button', { name: /남의 Zarr/ }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('공유받은 프로젝트를 통해서만 연결된 데이터라 아직 열 수 없습니다');
+  expect(screen.queryByRole('region', { name: '시계열 탐색기' })).not.toBeInTheDocument();
+});
