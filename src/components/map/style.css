@@ -1,0 +1,3 @@
+.map-component { width: 100%; height: 100%; background: #dce8ef; }
+.map-component.pixel-mode { cursor: crosshair; }
+.ol-zoom { display: none; }

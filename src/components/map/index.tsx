@@ -9,21 +9,29 @@ import { fromLonLat } from "ol/proj";
 
 interface Props {
   onMapReady?: (map: Map) => void;
+  onPixelSelect?: (coordinate: [number, number]) => void;
+  baseVisible?: boolean;
+  interactionMode?: "pan" | "pixel";
 }
 
-const OlMap: React.FC<Props> = ({ onMapReady }) => {
+const OlMap: React.FC<Props> = ({ onMapReady, onPixelSelect, baseVisible = true, interactionMode = "pan" }) => {
   const mapRef = useRef<HTMLDivElement | null>(null);
+  const baseLayerRef = useRef<TileLayer<OSM> | null>(null);
+  const onMapReadyRef = useRef(onMapReady);
+  const onPixelSelectRef = useRef(onPixelSelect);
+  const interactionModeRef = useRef(interactionMode);
+
+  useEffect(() => { onMapReadyRef.current = onMapReady; }, [onMapReady]);
+  useEffect(() => { onPixelSelectRef.current = onPixelSelect; }, [onPixelSelect]);
+  useEffect(() => { interactionModeRef.current = interactionMode; }, [interactionMode]);
 
   useEffect(() => {
     if (!mapRef.current) return;
 
+    const baseLayer = new TileLayer({ source: new OSM(), visible: baseVisible });
     const map = new Map({
       target: mapRef.current,
-      layers: [
-        new TileLayer({
-          source: new OSM(),
-        }),
-      ],
+      layers: [baseLayer],
       view: new View({
       projection: "EPSG:3857",
       center: fromLonLat([128.92, 35.49]),
@@ -31,14 +39,18 @@ const OlMap: React.FC<Props> = ({ onMapReady }) => {
     }),
     });
 
-    console.log("[OlMap] map created. projection=EPSG:4326");
-
-    onMapReady?.(map);
+    baseLayerRef.current = baseLayer;
+    onMapReadyRef.current?.(map);
+    map.on('singleclick', (event) => { if (interactionModeRef.current === 'pixel') onPixelSelectRef.current?.(event.coordinate as [number, number]); });
 
     return () => map.setTarget(undefined);
-  }, [onMapReady]);
+    // OpenLayers map is created once; changing controls are handled separately.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  return <div ref={mapRef} className="map-component" />;
+  useEffect(() => { baseLayerRef.current?.setVisible(baseVisible); }, [baseVisible]);
+
+  return <div ref={mapRef} className={`map-component ${interactionMode === 'pixel' ? 'pixel-mode' : ''}`} />;
 };
 
 export default OlMap;
