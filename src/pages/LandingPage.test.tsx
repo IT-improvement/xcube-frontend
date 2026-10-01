@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import App from '../App';
 import { safeRedirect } from './AuthPage';
@@ -7,8 +7,9 @@ const mockMe = jest.fn(); const mockRefresh = jest.fn(); const mockLastActivity 
 jest.mock('../api/authApi', () => ({
   LAST_ACTIVITY_KEY: 'xcube-last-activity',
   authSession: { lastActivity: () => mockLastActivity(), touch: jest.fn(), clear: jest.fn() },
-  authApi: { me: () => mockMe(), refresh: () => mockRefresh(), login: jest.fn(), signup: jest.fn(), logout: jest.fn(() => Promise.resolve()) },
+  authApi: { me: () => mockMe(), refresh: () => mockRefresh(), login: jest.fn(), signup: jest.fn(), logout: () => mockLogout() },
 }));
+const mockLogout = jest.fn(() => Promise.resolve());
 jest.mock('../views/Viewer', () => ({ __esModule: true, default: () => <div>Viewer</div> }));
 
 beforeEach(() => {
@@ -55,8 +56,22 @@ test('로그인한 사용자는 이름을 보고 로그인 버튼은 숨긴다',
   mockRefresh.mockResolvedValue({ accessToken: 'token' });
   mockMe.mockResolvedValue({ id: 1, name: '홍길동' });
   render(<App />);
-  expect(await screen.findByText('홍길동님')).toBeInTheDocument();
+  expect((await screen.findAllByText('홍길동님')).length).toBeGreaterThan(0);
   expect(screen.queryByRole('link', { name: '로그인' })).not.toBeInTheDocument();
+});
+
+test('로그인한 사용자는 소개 홈에서 로그아웃할 수 있다', async () => {
+  mockLastActivity.mockReturnValue(Date.now());
+  mockRefresh.mockResolvedValue({ accessToken: 'token' });
+  mockMe.mockResolvedValue({ id: 1, name: '홍길동' });
+  mockLogout.mockResolvedValue(undefined);
+  render(<App />);
+  const [logout] = await screen.findAllByRole('button', { name: '로그아웃' });
+  fireEvent.click(logout);
+  await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
+  expect(screen.getAllByRole('link', { name: '로그인' }).length).toBeGreaterThan(0);
+  expect(screen.queryByRole('button', { name: '로그아웃' })).not.toBeInTheDocument();
+  expect(window.location.pathname).toBe('/');
 });
 
 test('인증 서버가 꺼져 있어도 소개 홈은 그대로 보인다', async () => {

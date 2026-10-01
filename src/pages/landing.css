@@ -20,6 +20,7 @@
 .landing__actions { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
 .landing__user { margin-right: var(--space-2); color: var(--color-text-secondary); font-size: 14px; }
 .landing__menu-account { display: none; }
+.landing__menu-user { padding: 0 var(--space-3); font-size: 14px; color: var(--color-text-secondary); }
 .landing__menu-toggle {
   display: none; width: 40px; height: 40px; place-items: center;
   border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);

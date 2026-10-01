@@ -145,7 +145,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     endReason,
     retry: () => { void restore(); },
     signIn: (next) => { setUser(next); setStatus('ready'); setEndReason(null); },
-    signOut: () => { void authApi.logout().catch(() => {}); setUser(null); },
+    signOut: () => {
+      // Sign out locally first; a failing logout request must not keep the user signed in.
+      setUser(null);
+      try { void Promise.resolve(authApi.logout()).catch(() => {}); } catch { /* already signed out locally */ }
+    },
   }), [user, status, endReason, restore]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

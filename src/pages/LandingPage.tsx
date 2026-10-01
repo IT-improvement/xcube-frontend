@@ -1,10 +1,10 @@
 import {
   ArrowUpRight, Boxes, Building2, ChartLine, Container, Database, FileStack, GitCompareArrows,
-  Landmark, Layers, Mail, Menu, ShieldCheck, Sigma, Waves, X,
+  Landmark, Layers, LogOut, Mail, Menu, ShieldCheck, Sigma, Waves, X,
 } from 'lucide-react';
 import { KeyboardEvent, useState } from 'react';
 import { useAuth } from '../auth/AuthProvider';
-import { ButtonAnchor, ButtonLink, Logo } from '../components/ui';
+import { Button, ButtonAnchor, ButtonLink, Logo } from '../components/ui';
 import './landing.css';
 
 const VIEWER_PATH = '/app/viewer';
@@ -90,7 +90,7 @@ const TECH = [
 ];
 
 export default function LandingPage() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -105,16 +105,30 @@ export default function LandingPage() {
                 <li key={item.href}><a href={item.href} onClick={() => setMenuOpen(false)}>{item.label}</a></li>
               ))}
             </ul>
-            {!user && (
-              <div className="landing__menu-account">
-                <ButtonLink to="/login?redirect=%2F" variant="secondary" block>로그인</ButtonLink>
-                <ButtonLink to="/signup" variant="ghost" block>시작하기</ButtonLink>
-              </div>
-            )}
+            <div className="landing__menu-account">
+              {user ? (
+                <>
+                  <p className="landing__menu-user">{user.name}님</p>
+                  <Button variant="secondary" block onClick={() => { setMenuOpen(false); signOut(); }}>
+                    <LogOut size={16} aria-hidden />로그아웃
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <ButtonLink to="/login?redirect=%2F" variant="secondary" block>로그인</ButtonLink>
+                  <ButtonLink to="/signup" variant="ghost" block>시작하기</ButtonLink>
+                </>
+              )}
+            </div>
           </nav>
           <div className="landing__actions">
             {user ? (
-              <span className="landing__user">{user.name}님</span>
+              <>
+                <span className="landing__user">{user.name}님</span>
+                <Button variant="ghost" className="landing__hide-sm" onClick={signOut}>
+                  <LogOut size={16} aria-hidden />로그아웃
+                </Button>
+              </>
             ) : (
               <>
                 <ButtonLink to="/login?redirect=%2F" variant="ghost" className="landing__hide-sm">로그인</ButtonLink>
