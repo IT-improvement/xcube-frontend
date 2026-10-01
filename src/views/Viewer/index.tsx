@@ -1472,7 +1472,7 @@ function TimeseriesChart({
   const { width, height } = size;
   const left = 56;
   const right = 16;
-  const top = 24;
+  const top = 12;
   const bottom = 36;
   const valid = points.filter(
     (point) => typeof point.value === "number" && Number.isFinite(point.value),
@@ -1527,7 +1527,7 @@ function TimeseriesChart({
       ),
     ),
   );
-  const unit = units || "단위 미제공";
+  const unit = units ?? "";
   const dateLabel = (time: string) => {
     const date = new Date(time);
     return Number.isNaN(date.getTime())
@@ -1552,7 +1552,7 @@ function TimeseriesChart({
           {dataset} · {variable} · {coordinateLabel}
         </title>
         <desc>
-          전체 {points.length}시점 중 유효 {valid.length}시점. 단위 {unit}.
+          전체 {points.length}시점 중 유효 {valid.length}시점.{unit && ` 단위 ${unit}.`}
         </desc>
         {yTicks.map((value) => (
           <g key={value}>
@@ -1582,9 +1582,6 @@ function TimeseriesChart({
             y2={y(0)}
           />
         )}
-        <text className="axis-title" x={4} y={16}>
-          픽셀값 ({unit})
-        </text>
         {segments.map((path, index) => (
           <path key={index} className="line" d={path} />
         ))}
