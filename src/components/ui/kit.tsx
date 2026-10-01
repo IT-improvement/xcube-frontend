@@ -2,6 +2,7 @@
 // and loading states, and a small toast. Styles live in ui.css under .xc.
 import { X } from 'lucide-react';
 import { KeyboardEvent, ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
+import './kit.css';
 
 export type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'water';
 
