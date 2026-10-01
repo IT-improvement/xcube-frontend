@@ -21,8 +21,13 @@ test('로그인 폼을 Auth API와 연결하고 성공하면 대시보드를 연
   await waitFor(() => expect(mockLogin).toHaveBeenCalledWith({ email: 'user', password: 'password123' }));
   expect(await screen.findByRole('heading', { name: '대시보드 화면' })).toBeInTheDocument();
   expect(screen.getByRole('navigation')).toBeInTheDocument();
-  expect(screen.getAllByRole('link', { name: 'XCube Viewer 열기 (새 탭)' })[0]).toHaveAttribute('href', '/app/viewer');
   expect(window.location.pathname).toBe('/app');
+  const logo = screen.getAllByRole('link', { name: 'XCube Viewer로 이동' })[0];
+  expect(logo).toHaveAttribute('href', '/app/viewer');
+  expect(logo).not.toHaveAttribute('target');
+  fireEvent.click(logo);
+  expect(await screen.findByText('Viewer user: 홍길동')).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/app/viewer');
 });
 
 test('Viewer 주소의 dataset 값을 Viewer에 넘긴다', async () => {
