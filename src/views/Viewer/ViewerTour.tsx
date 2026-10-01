@@ -19,7 +19,7 @@ export const VIEWER_TOUR_STEPS: TourStep[] = [
   {
     target: "project",
     title: "프로젝트",
-    body: "프로젝트를 고르면 그 프로젝트의 데이터만 모아 보여 줍니다. 프로젝트 관리 버튼에서 만들고 공유합니다.",
+    body: "프로젝트를 고르면 그 프로젝트의 데이터만 모아 보여 줍니다. 오른쪽 위 폴더 버튼으로 새 프로젝트를 만들거나 지금 보는 데이터를 프로젝트에 추가합니다.",
   },
   {
     target: "layers",
@@ -46,7 +46,7 @@ export const VIEWER_TOUR_STEPS: TourStep[] = [
   {
     target: "add",
     title: "데이터 추가",
-    body: "GeoTIFF·Shapefile·GEE로 새 Zarr를 만들거나 이미 있는 Zarr를 등록합니다.",
+    body: "GeoTIFF·Shapefile·GEE로 새 Zarr를 만들거나 이미 있는 Zarr를 등록합니다. 새 탭에서 열리고, 끝나고 Viewer로 돌아오면 목록이 자동으로 갱신됩니다.",
   },
 ];
 

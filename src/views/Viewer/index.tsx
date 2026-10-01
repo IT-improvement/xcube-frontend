@@ -49,6 +49,7 @@ import "./style.css";
 import "./v2.css";
 import "./viewer.css";
 import ViewerTour, { tourDismissed } from "./ViewerTour";
+import ProjectQuickMenu from "./ProjectQuickMenu";
 
 type Drawer = "ai" | "result" | null;
 type Period = "현재 시점" | "선택 기간" | "전체 기간";
@@ -76,6 +77,7 @@ export default function Viewer({
   const [datasetId, setDatasetId] = useState("");
   // The layer panel starts open on wide screens (S7) and collapsed on narrow ones.
   const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 1280);
+  const [flash, setFlash] = useState("");
   const [tourOpen, setTourOpen] = useState(
     () => onboarding && !tourDismissed(),
   );
@@ -121,6 +123,8 @@ export default function Viewer({
   const sourceOpacityRef = useRef(sourceOpacity);
   const detailLoadedRef = useRef("");
   const initialAppliedRef = useRef(false);
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
   const selected = datasets.find((item) => item.id === datasetId) ?? null;
   const selectedId = selected?.id;
   const selectedXcubeDatasetId = selected?.xcubeDatasetId;
@@ -184,6 +188,53 @@ export default function Viewer({
       .catch(fail)
       .finally(() => setLoading(false));
   }, [fail]);
+  useEffect(() => {
+    if (!flash) return;
+    const timer = window.setTimeout(() => setFlash(""), 3200);
+    return () => window.clearTimeout(timer);
+  }, [flash]);
+  // Data added or projects changed in another tab show up when the user comes
+  // back. Already loaded dataset details are kept so the map does not reload.
+  const lastRefreshRef = useRef(0);
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastRefreshRef.current < 5000) return;
+      lastRefreshRef.current = Date.now();
+      activeViewerAdapter
+        .getProjects()
+        .then((items) => {
+          setProjects(items);
+          setProjectId((current) =>
+            current && items.some((item) => item.id === current) ? current : "",
+          );
+        })
+        .catch(() => undefined);
+      activeViewerAdapter
+        .getDatasets()
+        .then((items) =>
+          setDatasets((current) =>
+            items.map(
+              (item) => current.find((known) => known.id === item.id) ?? item,
+            ),
+          ),
+        )
+        .catch(() => undefined);
+      const currentProject = projectIdRef.current;
+      if (currentProject && activeViewerAdapter.getProjectDatasets)
+        activeViewerAdapter
+          .getProjectDatasets(currentProject)
+          .then(setProjectDatasets)
+          .catch(() => undefined);
+    };
+    lastRefreshRef.current = Date.now();
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
   useEffect(() => {
     if (!projectId || !activeViewerAdapter.getProjectDatasets) {
       setProjectDatasets([]);
@@ -556,21 +607,33 @@ export default function Viewer({
             <span>XCube Server {connectionLabel}</span>
           </span>
           <span className="vx-divider" aria-hidden="true" />
-          {/* Project and data management live on the app pages (M4). */}
-          <a
-            className="vx-icon-btn"
-            href="/app/projects"
-            aria-label="프로젝트 관리"
-            title="프로젝트 관리"
-          >
-            <FolderKanban size={18} aria-hidden="true" />
-          </a>
+          {/* Quick project actions stay in the Viewer; long tasks open the app pages in a new tab. */}
+          <ProjectQuickMenu
+            project={projects.find((item) => item.id === projectId)}
+            dataset={selected}
+            inProject={projectDatasets.some((item) => item.id === selected?.id)}
+            onCreated={(created) => {
+              setProjects((items) => [created, ...items]);
+              setProjectId(created.id);
+              setFlash(`“${created.name}” 프로젝트를 만들었습니다.`);
+            }}
+            onLinked={(dataset, project) => {
+              setProjectDatasets((items) =>
+                items.some((item) => item.id === dataset.id)
+                  ? items
+                  : [...items, dataset],
+              );
+              setFlash(`“${dataset.name}”을 “${project.name}”에 추가했습니다.`);
+            }}
+          />
           <a
             className="vx-btn vx-btn--secondary"
             data-tour="add"
             href="/app/data/new"
+            target="_blank"
+            rel="noopener noreferrer"
             aria-label="Zarr 업로드 또는 생성"
-            title="Zarr 업로드 또는 생성"
+            title="데이터 추가 (새 탭)"
           >
             <Plus size={16} aria-hidden="true" />
             <span className="vx-hide-md">데이터 추가</span>
@@ -974,12 +1037,22 @@ export default function Viewer({
               <p>{emptyMessage}</p>
               {!loading && !apiError && (
                 <div className="vx-empty__actions">
-                  <a className="vx-btn vx-btn--secondary" href="/app/data/new">
+                  <a
+                    className="vx-btn vx-btn--secondary"
+                    href="/app/data/new"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     <Plus size={16} aria-hidden="true" />
                     데이터 추가
                   </a>
                 </div>
               )}
+            </div>
+          )}
+          {flash && (
+            <div className="vx-toast vx-toast--done" role="status">
+              {flash}
             </div>
           )}
           {selected && viewerNotice && (
