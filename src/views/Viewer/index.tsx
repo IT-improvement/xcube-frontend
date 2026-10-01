@@ -28,6 +28,7 @@ import {
   ChevronsRight,
   ChevronUp,
   CircleAlert,
+  CircleHelp,
   Crosshair,
   Database,
   FolderKanban,
@@ -57,6 +58,7 @@ import {
 import "./style.css";
 import "./v2.css";
 import "./viewer.css";
+import ViewerTour, { tourDismissed } from "./ViewerTour";
 
 type Drawer = "ai" | "result" | null;
 type Period = "현재 시점" | "선택 기간" | "전체 기간";
@@ -66,9 +68,12 @@ const noop = () => undefined;
 export default function Viewer({
   user,
   onLogout = noop,
+  onboarding = false,
 }: {
   user?: User;
   onLogout?: () => void;
+  /** Show the feature tour on entry unless the user chose "다시 보지 않기". */
+  onboarding?: boolean;
 }) {
   const { theme, toggle: toggleTheme } = useTheme();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -78,7 +83,9 @@ export default function Viewer({
   const [datasetId, setDatasetId] = useState("");
   // The layer panel starts open on wide screens (S7) and collapsed on narrow ones.
   const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 1280);
-  const [pickerRequest, setPickerRequest] = useState(0);
+  const [tourOpen, setTourOpen] = useState(
+    () => onboarding && !tourDismissed(),
+  );
   const [tab, setTab] = useState<"layers" | "jobs">("layers");
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [baseVisible, setBaseVisible] = useState(true);
@@ -486,11 +493,12 @@ export default function Viewer({
       : xcubeConnected
         ? "연결됨"
         : "연결 안 됨";
+  // Entry with datasets shows the bare map; the tour explains the screen instead.
   const emptyMessage = loading
     ? "데이터를 불러오는 중입니다…"
     : apiError ||
       (datasets.length
-        ? "데이터셋을 선택하면 레이어와 시계열 도구가 열립니다."
+        ? ""
         : "등록된 Zarr가 없습니다. 데이터를 추가해 시작하세요.");
   return (
     <main className="viewer vx" aria-label="XCube 시계열 GIS Viewer">
@@ -517,7 +525,7 @@ export default function Viewer({
           <span className="vx-brand__product">Viewer</span>
         </a>
         <div className="vx-pickers">
-          <label className="vx-select">
+          <label className="vx-select" data-tour="project">
             <span className="vx-select__label">프로젝트</span>
             <select
               value={projectId}
@@ -537,7 +545,7 @@ export default function Viewer({
             datasets={datasets}
             value={datasetId}
             onChange={setDatasetId}
-            openRequest={pickerRequest}
+            tourId="dataset"
           />
         </div>
         <div className="vx-top__actions">
@@ -561,6 +569,7 @@ export default function Viewer({
           <button
             type="button"
             className="vx-btn vx-btn--secondary"
+            data-tour="add"
             onClick={() => {
               setDrawer(null);
               setRightCollapsed(false);
@@ -578,6 +587,7 @@ export default function Viewer({
               className="vx-btn vx-btn--primary"
               aria-label="AI 수체 추출"
               title="AI 수체 추출"
+              data-tour="ai"
               aria-pressed={drawer === "ai"}
               onClick={() => openRightPanel("ai")}
             >
@@ -597,6 +607,15 @@ export default function Viewer({
             </button>
           )}
           <span className="vx-divider" aria-hidden="true" />
+          <button
+            type="button"
+            className="vx-icon-btn"
+            onClick={() => setTourOpen(true)}
+            aria-label="기능 둘러보기"
+            title="기능 둘러보기"
+          >
+            <CircleHelp size={18} aria-hidden="true" />
+          </button>
           <button
             type="button"
             className="vx-icon-btn"
@@ -669,7 +688,11 @@ export default function Viewer({
         className={`vx-body ${panelOpen ? "panel-open" : ""} ${drawer ? "drawer-open" : ""}`}
       >
         {panelOpen && (
-          <aside className="vx-panel" aria-label="레이어 및 AI 작업 패널">
+          <aside
+            className="vx-panel"
+            aria-label="레이어 및 AI 작업 패널"
+            data-tour="layers"
+          >
             <div className="vx-panel__head">
               <div className="vx-tabs" role="tablist">
                 <button
@@ -849,12 +872,18 @@ export default function Viewer({
         )}
 
         <section className="vx-map" aria-label="시계열 위성 데이터 지도">
-          <div className="vx-tools" role="toolbar" aria-label="지도 도구">
+          <div
+            className="vx-tools"
+            role="toolbar"
+            aria-label="지도 도구"
+            data-tour="tools"
+          >
             {!panelOpen && (
               <>
                 <button
                   type="button"
                   onClick={() => setPanelOpen(true)}
+                  data-tour="layers"
                   aria-label="레이어 및 AI 작업 패널 열기"
                   title="레이어 / AI 작업"
                 >
@@ -951,16 +980,6 @@ export default function Viewer({
               <p>{emptyMessage}</p>
               {!loading && !apiError && (
                 <div className="vx-empty__actions">
-                  {datasets.length > 0 && (
-                    <button
-                      type="button"
-                      className="vx-btn vx-btn--primary"
-                      onClick={() => setPickerRequest((value) => value + 1)}
-                    >
-                      <Database size={16} aria-hidden="true" />
-                      데이터 선택
-                    </button>
-                  )}
                   <button
                     type="button"
                     className="vx-btn vx-btn--secondary"
@@ -1192,7 +1211,11 @@ export default function Viewer({
       )}
 
       {selected && (
-        <section className="vx-timeline" aria-label="시계열 탐색기">
+        <section
+          className="vx-timeline"
+          aria-label="시계열 탐색기"
+          data-tour="timeline"
+        >
           <div className="vx-player">
             <button
               type="button"
@@ -1305,6 +1328,7 @@ export default function Viewer({
           </label>
         </section>
       )}
+      {tourOpen && <ViewerTour onClose={() => setTourOpen(false)} />}
       {dialog === "project" && (
         <ProjectManager
           projects={projects}
@@ -1668,17 +1692,14 @@ function DatasetPicker({
   datasets,
   value,
   onChange,
-  openRequest = 0,
+  tourId,
 }: {
   datasets: ZarrDataset[];
   value: string;
   onChange: (value: string) => void;
-  openRequest?: number;
+  tourId?: string;
 }) {
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (openRequest > 0) setOpen(true);
-  }, [openRequest]);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1743,7 +1764,12 @@ function DatasetPicker({
     }
   };
   return (
-    <div className="dataset-picker" ref={rootRef} onKeyDown={onKeyDown}>
+    <div
+      className="dataset-picker"
+      ref={rootRef}
+      onKeyDown={onKeyDown}
+      data-tour={tourId}
+    >
       <span className="picker-label">데이터</span>
       <button
         type="button"

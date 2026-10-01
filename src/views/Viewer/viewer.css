@@ -398,6 +398,32 @@
 .vx .zarr-studio { top: 57px; }
 @media (max-width: 767px) { .vx .zarr-studio { top: 0; } }
 
+/* Feature tour */
+.vx-tour { position: fixed; inset: 0; z-index: 200; }
+.vx-tour__shade { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.55); }
+.vx-tour__spot {
+  position: absolute; border-radius: var(--radius-md); pointer-events: none;
+  box-shadow: 0 0 0 2px var(--vx-primary), 0 0 0 9999px rgba(15, 23, 42, 0.55);
+  transition: top 200ms ease, left 200ms ease, width 200ms ease, height 200ms ease;
+}
+.vx-tour__card {
+  position: absolute; display: grid; gap: 10px; padding: 16px 16px 14px;
+  border: 1px solid var(--vx-border); border-radius: var(--radius-lg); background: var(--vx-surface);
+  color: var(--vx-text); box-shadow: 0 16px 40px rgba(15, 23, 42, 0.28);
+}
+.vx-tour__head { display: flex; align-items: center; justify-content: space-between; margin: -6px -8px -4px 0; }
+.vx-tour__step { color: var(--vx-primary); font: 600 12px/1 var(--font-sans); }
+.vx-tour__title { font: var(--text-h3); }
+.vx-tour__body { display: grid; gap: 6px; color: var(--vx-text-2); font: 400 14px/1.6 var(--font-sans); word-break: keep-all; }
+.vx-tour__fallback { color: var(--vx-text-3); font: var(--text-caption); font-weight: 400; }
+.vx-tour__dots { display: flex; gap: 5px; }
+.vx-tour__dots i { width: 6px; height: 6px; border-radius: 999px; background: var(--vx-border-strong); transition: width 160ms; }
+.vx-tour__dots i.on { width: 18px; background: var(--vx-primary); }
+.vx-tour__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; }
+.vx-tour__check { display: inline-flex; align-items: center; gap: 6px; color: var(--vx-text-2); font: 500 13px/1 var(--font-sans); cursor: pointer; white-space: nowrap; }
+.vx-tour__check input { width: 16px; height: 16px; margin: 0; accent-color: var(--vx-primary); }
+.vx-tour__nav { display: flex; gap: 6px; }
+
 /* Responsive */
 @media (max-width: 1279px) {
   .vx-hide-md { display: none; }
@@ -442,6 +468,7 @@
   .vx-empty { width: calc(100% - 80px); left: calc(50% + 24px); }
 }
 @media (prefers-reduced-motion: reduce) {
+  .vx-tour__spot, .vx-tour__dots i { transition: none; }
   .vx-spin, .vx-pulse { animation-duration: 3s; }
   .vx-btn { transition: none; }
 }
