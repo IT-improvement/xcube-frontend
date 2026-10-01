@@ -137,16 +137,16 @@ test('레이어 패널은 기본 접힘이며 열기와 닫기를 반복할 수 
   expect(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' })).toBeInTheDocument();
 });
 
-test('프로젝트 관리에서 개요·접근 권한·Zarr를 탐색한다', async () => {
+test('프로젝트 관리와 데이터 추가는 관리 화면으로 연결한다', async () => {
   render(<Viewer />);
   await screen.findByRole('option', { name: '한강 수체 모니터링' });
-  fireEvent.click(screen.getByRole('button', { name: '프로젝트 관리' }));
-  expect(screen.getByRole('dialog', { name: '프로젝트' })).toBeInTheDocument();
-  expect(screen.getAllByRole('option', { name: /한강 수체 모니터링/ }).find((item) => item.tagName === 'BUTTON')).toHaveAttribute('aria-selected', 'true');
-  expect(screen.getByRole('button', { name: '편집' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('tab', { name: '접근 권한' }));
-  expect(screen.getByText('데모 모드에서는 공유 관리를 사용할 수 없습니다.')).toBeInTheDocument();
-  expect(screen.getByPlaceholderText('숫자 사용자 ID')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('tab', { name: 'Zarr' }));
-  expect(await screen.findByRole('button', { name: /Sentinel-2/ })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: '프로젝트 관리' })).toHaveAttribute('href', '/app/projects');
+  expect(screen.getByRole('link', { name: 'Zarr 업로드 또는 생성' })).toHaveAttribute('href', '/app/data/new');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+test('주소로 받은 데이터셋을 목록을 불러온 뒤 한 번 선택한다', async () => {
+  render(<Viewer initialDatasetId="landsat" />);
+  expect(await screen.findByRole('region', { name: '시계열 탐색기' })).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: '데이터 또는 Zarr 선택' })).toHaveTextContent('Landsat-8');
 });

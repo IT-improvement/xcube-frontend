@@ -72,51 +72,6 @@ test('시간 프레임을 변경하면 같은 band의 새 time query layer를 �
   await waitFor(() => expect(mockBackoffice.tileUrl).toHaveBeenCalledWith('custom_cube_2026', 'red', '2026-02-01T00:00:00Z'));
 });
 
-test('OWNER는 멤버를 조회하고 숫자 사용자 ID로 공유할 수 있다', async () => {
-  mockBackoffice.addProjectMember.mockResolvedValue({ userId: '33', role: 'EDITOR' });
-  render(<Viewer />);
-  await screen.findByRole('option', { name: '임의 프로젝트' });
-  fireEvent.click(screen.getByRole('button', { name: '프로젝트 관리' }));
-  fireEvent.click(screen.getByRole('tab', { name: '접근 권한' }));
-  expect(await screen.findByText('사용자 22')).toBeInTheDocument();
-  expect(screen.getAllByText('소유자').length).toBeGreaterThan(0);
-  fireEvent.change(screen.getByPlaceholderText('숫자 사용자 ID'), { target: { value: '33' } });
-  fireEvent.change(screen.getByLabelText('권한'), { target: { value: 'EDITOR' } });
-  fireEvent.click(screen.getByRole('button', { name: '사용자 추가' }));
-  await waitFor(() => expect(mockBackoffice.addProjectMember).toHaveBeenCalledWith('4', { userId: '33', role: 'EDITOR' }));
-});
-
-test('EDITOR는 프로젝트 편집만 가능하고 삭제와 공유 관리는 노출하지 않는다', async () => {
-  mockAdapter.getProjects.mockResolvedValue([{ id: '4', name: '편집 프로젝트', accessRole: 'EDITOR' }]);
-  render(<Viewer />);
-  await screen.findByRole('option', { name: '편집 프로젝트' });
-  fireEvent.click(screen.getByRole('button', { name: '프로젝트 관리' }));
-  expect(screen.getByRole('button', { name: '편집' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: '프로젝트 삭제' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('tab', { name: '접근 권한' }));
-  expect(screen.getByText('소유자만 공유 권한을 관리할 수 있습니다.')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: '사용자 추가' })).not.toBeInTheDocument();
-});
-
-test('프로젝트 Zarr 탭에서 전역 Zarr를 연결하고 기존 연결을 해제한다', async () => {
-  const linked = { id: '77', projectId: '4', name: '연결된 Zarr', subtitle: '준비됨', xcubeDatasetId: 'linked', defaultVariable: 'red', variables: ['red'], times: [] };
-  const available = { ...linked, id: '88', projectId: '', name: '전역 후보 Zarr', xcubeDatasetId: 'global' };
-  mockAdapter.getProjectDatasets.mockResolvedValue([linked]);
-  mockBackoffice.getLinkableDatacubes.mockResolvedValue([linked, available]);
-  window.confirm = jest.fn(() => true);
-  render(<Viewer />);
-  await screen.findByRole('option', { name: '임의 프로젝트' });
-  fireEvent.click(screen.getByRole('button', { name: '프로젝트 관리' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Zarr' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Zarr 연결' }));
-  fireEvent.change(screen.getByRole('textbox', { name: '연결할 Zarr 검색' }), { target: { value: '전역 후보' } });
-  fireEvent.click(screen.getByRole('button', { name: /전역 후보 Zarr/ }));
-  await waitFor(() => expect(mockBackoffice.linkProjectDataset).toHaveBeenCalledWith('4', '88'));
-  fireEvent.click(screen.getAllByRole('button', { name: '연결 해제' })[0]);
-  await waitFor(() => expect(mockBackoffice.unlinkProjectDataset).toHaveBeenCalledWith('4', '77'));
-  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Zarr 원본은 삭제되지 않습니다'));
-});
-
 async function selectBaselineDataset() {
   fireEvent.click(await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' }));
   fireEvent.click(await screen.findByRole('option', { name: /임의 데이터셋/ }));

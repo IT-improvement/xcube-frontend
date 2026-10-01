@@ -7,7 +7,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { Alert, Button, Logo, TextField } from '../components/ui';
 import './auth.css';
 
-const DEFAULT_REDIRECT = '/app/viewer';
+const DEFAULT_REDIRECT = '/app';
 const USERNAME_PATTERN = '[A-Za-z0-9_.\\-]{3,50}';
 
 /** Only same-origin app paths are allowed as a post-login destination. */

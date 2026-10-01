@@ -2,14 +2,15 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import App from './App';
 
-const mockLogin = jest.fn(); const mockMe = jest.fn(); const mockSignup = jest.fn();
-jest.mock('./api/authApi', () => ({ authSession: { lastActivity: jest.fn(() => 0), touch: jest.fn(), clear: jest.fn() }, authApi: { login: (...args: any[]) => mockLogin(...args), me: (...args: any[]) => mockMe(...args), signup: (...args: any[]) => mockSignup(...args), refresh: jest.fn(), logout: jest.fn() } }));
-jest.mock('./views/Viewer', () => ({ __esModule: true, default: ({ user }: any) => <div>Viewer user: {user.name}</div> }));
+const mockLogin = jest.fn(); const mockMe = jest.fn(); const mockSignup = jest.fn(); const mockLastActivity = jest.fn();
+jest.mock('./api/authApi', () => ({ authSession: { lastActivity: () => mockLastActivity(), touch: jest.fn(), clear: jest.fn() }, authApi: { login: (...args: any[]) => mockLogin(...args), me: (...args: any[]) => mockMe(...args), signup: (...args: any[]) => mockSignup(...args), refresh: jest.fn(), logout: jest.fn() } }));
+jest.mock('./views/Viewer', () => ({ __esModule: true, default: ({ user, initialDatasetId }: any) => <div>Viewer user: {user.name}{initialDatasetId ? ` dataset: ${initialDatasetId}` : ''}</div> }));
+jest.mock('./app/pages/DashboardPage', () => ({ __esModule: true, default: () => <h1>대시보드 화면</h1> }));
 
 beforeEach(() => { sessionStorage.clear(); jest.clearAllMocks(); });
 afterEach(() => { window.history.replaceState({}, '', '/'); });
 
-test('로그인 폼을 Auth API와 연결하고 성공하면 Viewer를 연다', async () => {
+test('로그인 폼을 Auth API와 연결하고 성공하면 대시보드를 연다', async () => {
   window.history.replaceState({}, '', '/login');
   mockLogin.mockResolvedValue({ accessToken: 'token' });
   mockMe.mockResolvedValue({ id: 1, email: 'user@example.com', name: '홍길동', role: 'USER', status: 'ACTIVE' });
@@ -18,8 +19,17 @@ test('로그인 폼을 Auth API와 연결하고 성공하면 Viewer를 연다', 
   fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password123' } });
   fireEvent.click(screen.getByRole('button', { name: '로그인' }));
   await waitFor(() => expect(mockLogin).toHaveBeenCalledWith({ email: 'user', password: 'password123' }));
-  expect(await screen.findByText('Viewer user: 홍길동')).toBeInTheDocument();
-  expect(window.location.pathname).toBe('/app/viewer');
+  expect(await screen.findByRole('heading', { name: '대시보드 화면' })).toBeInTheDocument();
+  expect(screen.getByRole('navigation')).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/app');
+});
+
+test('Viewer 주소의 dataset 값을 Viewer에 넘긴다', async () => {
+  window.history.replaceState({}, '', '/app/viewer?dataset=77');
+  mockLastActivity.mockReturnValue(Date.now());
+  mockMe.mockResolvedValue({ id: 1, email: 'user@example.com', name: '홍길동', role: 'USER', status: 'ACTIVE' });
+  render(<App />);
+  expect(await screen.findByText('Viewer user: 홍길동 dataset: 77')).toBeInTheDocument();
 });
 
 test('회원가입 화면으로 전환해 이름까지 전송하고, 로그인 화면에 아이디를 채운다', async () => {
@@ -60,11 +70,11 @@ test('로그인하지 않고 Viewer 주소로 오면 redirect를 붙여 로그�
   expect(await screen.findByText('Viewer user: 홍길동')).toBeInTheDocument();
 });
 
-test('/app은 Viewer로 보낸다', async () => {
+test('/app은 로그인하지 않았으면 로그인 화면으로 보내고 돌아올 주소를 남긴다', async () => {
   window.history.replaceState({}, '', '/app');
   render(<App />);
   await screen.findByRole('button', { name: '로그인' });
-  expect(window.location.search).toBe('?redirect=%2Fapp%2Fviewer');
+  expect(window.location.search).toBe('?redirect=%2Fapp');
 });
 
 test('reason=idle이면 비활동 로그아웃 안내를 보여준다', () => {

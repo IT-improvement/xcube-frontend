@@ -113,7 +113,7 @@ test('좁은 화면 메뉴 버튼은 메뉴를 열고 닫는다', () => {
 test('로그인 후 이동 경로는 같은 사이트 경로만 허용한다', () => {
   expect(safeRedirect('/app/viewer')).toBe('/app/viewer');
   expect(safeRedirect('/')).toBe('/');
-  expect(safeRedirect('//evil.example')).toBe('/app/viewer');
-  expect(safeRedirect('https://evil.example')).toBe('/app/viewer');
-  expect(safeRedirect(null)).toBe('/app/viewer');
+  expect(safeRedirect('//evil.example')).toBe('/app');
+  expect(safeRedirect('https://evil.example')).toBe('/app');
+  expect(safeRedirect(null)).toBe('/app');
 });
