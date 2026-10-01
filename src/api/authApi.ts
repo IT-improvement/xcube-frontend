@@ -1,6 +1,6 @@
 import { refreshSession, request, session } from './httpClient';
 export const AUTH_API_BASE_URL = process.env.REACT_APP_AUTH_API_URL ?? 'http://localhost:8081';
-const LAST_ACTIVITY_KEY = 'xcube-last-activity';
+export const LAST_ACTIVITY_KEY = 'xcube-last-activity';
 export const authSession = {
   touch: (at = Date.now()) => { try { localStorage.setItem(LAST_ACTIVITY_KEY, String(at)); } catch { /* unavailable */ } },
   lastActivity: () => { try { return Number(localStorage.getItem(LAST_ACTIVITY_KEY) ?? 0); } catch { return 0; } },

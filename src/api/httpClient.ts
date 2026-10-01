@@ -3,6 +3,9 @@ export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public traceId?: string) { super(message); }
 }
 
+export const isAuthRejection = (error: unknown): error is ApiError =>
+  error instanceof ApiError && (error.status === 401 || error.status === 403);
+
 const TOKEN_KEY = 'xcube-access-token';
 const AUTH_API_BASE_URL = process.env.REACT_APP_AUTH_API_URL ?? 'http://localhost:8081';
 let refreshInFlight: Promise<string> | null = null;
@@ -23,15 +26,23 @@ export const session = {
 /** Refresh is shared by every 401 handler and the periodic activity timer. */
 export function refreshSession(): Promise<string> {
   if (!refreshInFlight) {
+    const token = session.getToken();
     refreshInFlight = (async () => {
-      const response = await fetch(`${AUTH_API_BASE_URL}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include' });
+      let response: Response;
+      try { response = await fetch(`${AUTH_API_BASE_URL}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include' }); }
+      catch { throw new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.'); }
       const body: any = response.headers.get('content-type')?.includes('json') ? await response.json().catch(() => ({})) : {};
       if (!response.ok || typeof body.accessToken !== 'string') {
-        throw new ApiError(response.status, body.code ?? `HTTP_${response.status}`, body.message ?? response.statusText);
+        throw new ApiError(response.status, body.code ?? `HTTP_${response.status}`, body.message ?? response.statusText, body.traceId);
       }
+      // A late refresh must not restore a logged-out session or replace a new login.
+      if (session.getToken() !== token) throw new ApiError(0, 'SESSION_CHANGED', '세션이 변경되었습니다.');
       session.setToken(body.accessToken);
       return body.accessToken as string;
-    })().finally(() => { refreshInFlight = null; });
+    })().catch((error) => {
+      if (isAuthRejection(error)) session.clearIfCurrent(token);
+      throw error;
+    }).finally(() => { refreshInFlight = null; });
   }
   return refreshInFlight;
 }
@@ -44,21 +55,20 @@ export async function request<T>(baseUrl: string, path: string, init: RequestIni
   let response: Response;
   try { response = await fetch(`${baseUrl}${path}`, { ...init, headers }); }
   catch { throw new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.'); }
-  if (authenticated && token && response.status === 401) {
+  if (authenticated && token && response.status === 401 && session.getToken() === token) {
     try {
       const refreshed = await refreshSession();
       headers.set('Authorization', `Bearer ${refreshed}`);
       response = await fetch(`${baseUrl}${path}`, { ...init, headers });
-    } catch { session.clearIfCurrent(token); }
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.');
+    }
   }
   if (response.status === 204) return undefined as T;
   const contentType = response.headers.get('content-type') ?? '';
   const body: any = contentType.includes('json') ? await response.json().catch(() => ({})) : {};
   if (!response.ok) {
-    // A response from an older request must never erase a token issued by a
-    // newer login. This can otherwise leave the UI looking logged in while
-    // every following API call is unauthenticated.
-    if (authenticated && response.status === 401) session.clearIfCurrent(token);
     throw new ApiError(response.status, body.code ?? `HTTP_${response.status}`, body.message ?? response.statusText, body.traceId);
   }
   return body as T;
@@ -69,13 +79,16 @@ export async function requestBlob(baseUrl: string, path: string): Promise<Blob> 
   let response: Response;
   try { response = await fetch(`${baseUrl}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} }); }
   catch { throw new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.'); }
-  if (!response.ok && response.status === 401 && token) {
+  if (!response.ok && response.status === 401 && token && session.getToken() === token) {
     try {
       const refreshed = await refreshSession();
       response = await fetch(`${baseUrl}${path}`, { headers: { Authorization: `Bearer ${refreshed}` } });
-    } catch { session.clearIfCurrent(token); }
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.');
+    }
   }
-  if (!response.ok) { if (response.status === 401) session.clearIfCurrent(token); let body: ApiErrorBody = {}; try { body = await response.json(); } catch { /* binary error */ } throw new ApiError(response.status, body.code ?? `HTTP_${response.status}`, body.message ?? response.statusText, body.traceId); }
+  if (!response.ok) { let body: ApiErrorBody = {}; try { body = await response.json(); } catch { /* binary error */ } throw new ApiError(response.status, body.code ?? `HTTP_${response.status}`, body.message ?? response.statusText, body.traceId); }
   return response.blob();
 }
 

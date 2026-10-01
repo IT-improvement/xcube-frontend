@@ -1,0 +1,13 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`M0 FR-VIEW-04/05: 같은 좌표 전체 시계열, 현재 시점 동기화와 패널 상태를 유지한다: M0 Viewer full-series and map state 1`] = `
+Object {
+  "center": Array [
+    126.5,
+    33.5,
+  ],
+  "graph": "서버 상세 이름 red 시계열 그래프, EPSG:4326 · 경도 126.50000° · 위도 33.50000°, 최소 1234, 최대 2345, 유효 2개",
+  "resolution": 100,
+  "timeIndex": "1",
+}
+`;
