@@ -10,7 +10,7 @@ import {
   ProjectMember,
   SeriesPoint,
 } from "../../api/backofficeApi";
-import { ApiError, userMessage } from "../../api/httpClient";
+import { userMessage } from "../../api/httpClient";
 import { User } from "../../api/authApi";
 import {
   ColorBarOption,
@@ -121,9 +121,8 @@ export default function Viewer({
   const fail = useCallback(
     (cause: unknown) => {
       setApiError(userMessage(cause));
-      if (cause instanceof ApiError && cause.status === 401) onLogout();
     },
-    [onLogout],
+    [],
   );
   const loadProjects = useCallback(() => {
     setLoading(true);

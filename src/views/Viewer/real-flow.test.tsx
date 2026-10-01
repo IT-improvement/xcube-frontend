@@ -212,3 +212,12 @@ test('M0 FR-VIEW-02: 데이터셋 전환은 기존 layer를 제거하고 새 dat
   await waitFor(() => expect(mockBackoffice.tileUrl).toHaveBeenLastCalledWith('cube-b', 'nir', undefined));
   expect(mockMap.removeLayer).toHaveBeenCalledWith(mockLayer);
 });
+
+test('Viewer의 API 401은 서버 로그아웃 callback을 호출하지 않는다', async () => {
+  const { ApiError } = require('../../api/httpClient');
+  const onLogout = jest.fn();
+  mockAdapter.getProjects.mockRejectedValueOnce(new ApiError(401, 'UNAUTHORIZED', 'expired'));
+  render(<Viewer onLogout={onLogout} />);
+  expect(await screen.findByText('세션이 만료되었습니다. 다시 로그인해 주세요.')).toBeInTheDocument();
+  expect(onLogout).not.toHaveBeenCalled();
+});
