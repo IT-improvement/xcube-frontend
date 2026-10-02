@@ -68,7 +68,7 @@ test('연결된 infer 결과가 있는 Zarr에서만 결과 UI를 표시하고 �
   expect(screen.queryByText('최소')).not.toBeInTheDocument();
   expect(screen.queryByText('최대')).not.toBeInTheDocument();
   expect(screen.queryByText('평균')).not.toBeInTheDocument();
-  expect(screen.queryByRole('region', { name: '시계열 탐색기' })?.querySelector('svg')).toBeNull();
+  expect(screen.queryByRole('region', { name: '시계열 탐색기' })?.querySelector('svg[role="img"]')).toBeNull();
   expect(graph.querySelectorAll('path.line')).toHaveLength(2);
   const initialX = graph.querySelector('.current-time .cursor')?.getAttribute('x1');
   fireEvent.change(screen.getByRole('slider', { name: '관측 시점' }), { target: { value: '1' } });

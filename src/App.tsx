@@ -11,7 +11,7 @@ const TestViewer = lazy(() => import('./views/TestViewer'));
 
 function ViewerPage() {
   const { user, signOut } = useAuth();
-  return user ? <Viewer user={user} onLogout={signOut} /> : null;
+  return user ? <Viewer user={user} onLogout={signOut} onboarding /> : null;
 }
 
 export function AppRoutes() {

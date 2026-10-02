@@ -20,25 +20,60 @@ import {
 } from "../../api/generationApi";
 import { toLonLat, transformExtent } from "ol/proj";
 import { useTheme } from "../../hooks/useTheme";
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsRight,
+  ChevronUp,
+  CircleAlert,
+  CircleHelp,
+  Crosshair,
+  Database,
+  FolderKanban,
+  Hand,
+  Layers,
+  Layers2,
+  LoaderCircle,
+  LogOut,
+  Moon,
+  PanelLeftClose,
+  MousePointerClick,
+  Pause,
+  Play,
+  Plus,
+  Repeat,
+  Satellite,
+  Scan,
+  Search,
+  SkipBack,
+  SkipForward,
+  Sparkles,
+  Sun,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import "./style.css";
 import "./v2.css";
+import "./viewer.css";
+import ViewerTour, { tourDismissed } from "./ViewerTour";
 
 type Drawer = "ai" | "result" | null;
 type Period = "현재 시점" | "선택 기간" | "전체 기간";
 type MapTool = "pan" | "pixel";
-const icon = (value: string) => (
-  <span aria-hidden="true" className="icon-glyph">
-    {value}
-  </span>
-);
 const noop = () => undefined;
 
 export default function Viewer({
   user,
   onLogout = noop,
+  onboarding = false,
 }: {
   user?: User;
   onLogout?: () => void;
+  /** Show the feature tour on entry unless the user chose "다시 보지 않기". */
+  onboarding?: boolean;
 }) {
   const { theme, toggle: toggleTheme } = useTheme();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -46,7 +81,11 @@ export default function Viewer({
   const [datasets, setDatasets] = useState<ZarrDataset[]>([]);
   const [projectDatasets, setProjectDatasets] = useState<ZarrDataset[]>([]);
   const [datasetId, setDatasetId] = useState("");
-  const [panelOpen, setPanelOpen] = useState(false);
+  // The layer panel starts open on wide screens (S7) and collapsed on narrow ones.
+  const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 1280);
+  const [tourOpen, setTourOpen] = useState(
+    () => onboarding && !tourDismissed(),
+  );
   const [tab, setTab] = useState<"layers" | "jobs">("layers");
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [baseVisible, setBaseVisible] = useState(true);
@@ -74,7 +113,6 @@ export default function Viewer({
   const [dialog, setDialog] = useState<"project" | null>(null);
   const [zarrStudioOpen, setZarrStudioOpen] = useState(false);
   const [viewerNotice, setViewerNotice] = useState("");
-  const [showDatasetHint, setShowDatasetHint] = useState(true);
   const [seriesPoints, setSeriesPoints] = useState<SeriesPoint[]>([]);
   const [pixelLonLat, setPixelLonLat] = useState<{
     lon: number;
@@ -113,11 +151,6 @@ export default function Viewer({
       ),
     [selected],
   );
-  useEffect(() => {
-    const timer = window.setTimeout(() => setShowDatasetHint(false), 5000);
-    return () => window.clearTimeout(timer);
-  }, []);
-
   const fail = useCallback(
     (cause: unknown) => {
       setApiError(userMessage(cause));
@@ -453,213 +486,292 @@ export default function Viewer({
     setResultVisible(true);
     setJobState("completed");
   };
+  const projectName = projects.find((item) => item.id === projectId)?.name;
+  const connectionLabel =
+    xcubeConnected === null
+      ? "확인 중"
+      : xcubeConnected
+        ? "연결됨"
+        : "연결 안 됨";
+  // Entry with datasets shows the bare map; the tour explains the screen instead.
+  const emptyMessage = loading
+    ? "데이터를 불러오는 중입니다…"
+    : apiError ||
+      (datasets.length
+        ? ""
+        : "등록된 Zarr가 없습니다. 데이터를 추가해 시작하세요.");
   return (
-    <main className="viewer" aria-label="XCube 시계열 GIS Viewer">
-      <header className="topbar">
-        <div className="brand">
-          <span className="logo">◇</span>
-          <span>XCUBE VIEWER</span>
-        </div>
-        <div className="pickers">
-          <label>
-            프로젝트
+    <main className="viewer vx" aria-label="XCube 시계열 GIS Viewer">
+      <header className="vx-top">
+        <a className="vx-brand" href="/" aria-label="XCube 소개 홈">
+          <svg viewBox="0 0 28 28" aria-hidden="true">
+            <rect width="28" height="28" rx="7" fill="currentColor" />
+            <path
+              d="M14 6.5 21 10.5v7L14 21.5 7 17.5v-7L14 6.5Z"
+              fill="none"
+              stroke="#fff"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M7 10.5 14 14.5l7-4M14 14.5v7"
+              fill="none"
+              stroke="#fff"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span className="vx-brand__name">XCube</span>
+          <span className="vx-brand__product">Viewer</span>
+        </a>
+        <div className="vx-pickers">
+          <label className="vx-select" data-tour="project">
+            <span className="vx-select__label">프로젝트</span>
             <select
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
               aria-label="프로젝트 선택"
             >
-              <option value="">프로젝트 선택 안 함</option>
+              <option value="">프로젝트 없음</option>
               {projects.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
                 </option>
               ))}
             </select>
+            <ChevronDown size={16} aria-hidden="true" />
           </label>
           <DatasetPicker
             datasets={datasets}
             value={datasetId}
             onChange={setDatasetId}
+            tourId="dataset"
           />
         </div>
-        <span
-          className={`connection ${xcubeConnected === false ? "offline" : ""}`}
-          title={
-            xcubeConnected === null
-              ? "확인 중"
-              : xcubeConnected
-                ? "localhost:8080 연결됨"
-                : "localhost:8080 연결 실패"
-          }
-        >
-          <i />
-          XCube Server{" "}
-          {xcubeConnected === null
-            ? "확인 중"
-            : xcubeConnected
-              ? "연결됨"
-              : "연결 안 됨"}
-        </span>
-        <button
-          className="icon-button"
-          onClick={() => setDialog("project")}
-          aria-label="프로젝트 관리"
-        >
-          P
-        </button>
-        <button
-          className="icon-button"
-          onClick={() => {
-            setDrawer(null);
-            setRightCollapsed(false);
-            setZarrStudioOpen(true);
-          }}
-          aria-label="Zarr 업로드 또는 생성"
-        >
-          ＋Z
-        </button>
-        {selected && (
-          <button
-            className="primary compact"
-            onClick={() => openRightPanel("ai")}
+        <div className="vx-top__actions">
+          <span
+            className={`vx-status ${xcubeConnected === false ? "is-offline" : xcubeConnected ? "is-online" : ""}`}
+            title={`시각화 서버 ${connectionLabel}`}
           >
-            {icon("✦")}
-            <span>AI 수체 추출</span>
-          </button>
-        )}
-        {hasInference && (
+            <i aria-hidden="true" />
+            <span>XCube Server {connectionLabel}</span>
+          </span>
+          <span className="vx-divider" aria-hidden="true" />
           <button
-            className="primary result compact"
-            onClick={() => openRightPanel("result")}
+            type="button"
+            className="vx-icon-btn"
+            onClick={() => setDialog("project")}
+            aria-label="프로젝트 관리"
+            title="프로젝트 관리"
           >
-            {icon("▱")}
-            <span>결과</span>
+            <FolderKanban size={18} aria-hidden="true" />
           </button>
-        )}
-        <button
-          className="icon-button"
-          onClick={toggleTheme}
-          aria-pressed={theme === "dark"}
-          aria-label={
-            theme === "dark" ? "라이트 모드로 전환" : "다크 모드로 전환"
-          }
-        >
-          {theme === "dark" ? icon("☀") : icon("☾")}
-        </button>
-        <button
-          className="icon-button"
-          onClick={onLogout}
-          aria-label={`${user?.name ?? "사용자"} 로그아웃`}
-        >
-          {icon("●")}
-        </button>
+          <button
+            type="button"
+            className="vx-btn vx-btn--secondary"
+            data-tour="add"
+            onClick={() => {
+              setDrawer(null);
+              setRightCollapsed(false);
+              setZarrStudioOpen(true);
+            }}
+            aria-label="Zarr 업로드 또는 생성"
+            title="Zarr 업로드 또는 생성"
+          >
+            <Plus size={16} aria-hidden="true" />
+            <span className="vx-hide-md">데이터 추가</span>
+          </button>
+          {selected && (
+            <button
+              type="button"
+              className="vx-btn vx-btn--primary"
+              aria-label="AI 수체 추출"
+              title="AI 수체 추출"
+              data-tour="ai"
+              aria-pressed={drawer === "ai"}
+              onClick={() => openRightPanel("ai")}
+            >
+              <Sparkles size={16} aria-hidden="true" />
+              <span className="vx-hide-sm">AI 수체 추출</span>
+            </button>
+          )}
+          {hasInference && (
+            <button
+              type="button"
+              className="vx-btn vx-btn--water"
+              aria-pressed={drawer === "result"}
+              onClick={() => openRightPanel("result")}
+            >
+              <Layers2 size={16} aria-hidden="true" />
+              <span>결과</span>
+            </button>
+          )}
+          <span className="vx-divider" aria-hidden="true" />
+          <button
+            type="button"
+            className="vx-icon-btn"
+            onClick={() => setTourOpen(true)}
+            aria-label="기능 둘러보기"
+            title="기능 둘러보기"
+          >
+            <CircleHelp size={18} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="vx-icon-btn"
+            onClick={toggleTheme}
+            aria-pressed={theme === "dark"}
+            aria-label={
+              theme === "dark" ? "라이트 모드로 전환" : "다크 모드로 전환"
+            }
+            title={theme === "dark" ? "라이트 모드" : "다크 모드"}
+          >
+            {theme === "dark" ? (
+              <Sun size={18} aria-hidden="true" />
+            ) : (
+              <Moon size={18} aria-hidden="true" />
+            )}
+          </button>
+          <div className="vx-user">
+            <span className="vx-user__avatar" aria-hidden="true">
+              {(user?.name ?? "사용자").slice(0, 1)}
+            </span>
+            <span className="vx-user__name vx-hide-md">
+              {user?.name ?? "사용자"}
+            </span>
+            <button
+              type="button"
+              className="vx-icon-btn"
+              onClick={onLogout}
+              aria-label={`${user?.name ?? "사용자"} 로그아웃`}
+              title="로그아웃"
+            >
+              <LogOut size={18} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
       </header>
-      {projectId ? (
+      {projectId && (
         <section
-          className="project-datasets"
+          className="vx-project"
           aria-label="현재 프로젝트의 Zarr 데이터큐브"
         >
-          <div>
-            <strong>
-              {`${projects.find((item) => item.id === projectId)?.name ?? "프로젝트"}의 데이터큐브`}
-            </strong>
+          <div className="vx-project__title">
+            <FolderKanban size={16} aria-hidden="true" />
+            <strong>{`${projectName ?? "프로젝트"}의 데이터큐브`}</strong>
             <span>프로젝트 내부 목록</span>
           </div>
-          <div className="project-datasets-list">
+          <div className="vx-project__list">
             {projectDatasets.map((item) => (
               <button
                 type="button"
                 key={item.id}
                 className={item.id === datasetId ? "active" : ""}
+                aria-pressed={item.id === datasetId}
                 onClick={() => setDatasetId(item.id)}
               >
+                <Database size={14} aria-hidden="true" />
                 {item.name}
                 <small>{item.subtitle}</small>
               </button>
             ))}
             {!projectDatasets.length && (
-              <span className="project-datasets-empty">
+              <span className="vx-project__empty">
                 이 프로젝트에 등록된 Zarr가 없습니다.
               </span>
             )}
           </div>
         </section>
-      ) : (
-        <div className="project-datasets-placeholder" aria-hidden="true" />
       )}
 
       <div
-        className={`workspace ${panelOpen ? "panel-open" : ""} ${drawer ? "drawer-open" : ""} ${rightCollapsed ? "right-collapsed" : ""} ${selected ? "" : "empty"}`}
+        className={`vx-body ${panelOpen ? "panel-open" : ""} ${drawer ? "drawer-open" : ""}`}
       >
         {panelOpen && (
-          <aside className="side left" aria-label="레이어 및 AI 작업 패널">
-            <div className="tabs" role="tablist">
+          <aside
+            className="vx-panel"
+            aria-label="레이어 및 AI 작업 패널"
+            data-tour="layers"
+          >
+            <div className="vx-panel__head">
+              <div className="vx-tabs" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "layers"}
+                  onClick={() => setTab("layers")}
+                >
+                  레이어
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "jobs"}
+                  onClick={() => setTab("jobs")}
+                >
+                  AI 작업
+                  {jobs.length > 0 && (
+                    <span className="vx-count">{jobs.length}</span>
+                  )}
+                </button>
+              </div>
               <button
-                role="tab"
-                aria-selected={tab === "layers"}
-                onClick={() => setTab("layers")}
-              >
-                레이어
-              </button>
-              <button
-                role="tab"
-                aria-selected={tab === "jobs"}
-                onClick={() => setTab("jobs")}
-              >
-                AI 작업
-              </button>
-              <button
-                className="icon-button close"
+                type="button"
+                className="vx-icon-btn"
                 onClick={() => setPanelOpen(false)}
                 aria-label="패널 닫기"
+                title="패널 접기"
               >
-                ×
+                <PanelLeftClose size={18} aria-hidden="true" />
               </button>
             </div>
             {tab === "layers" ? (
-              <div>
-                <section>
-                  <h2>표시 레이어</h2>
-                  <p>체크하면 지도에서 표시됩니다.</p>
-                </section>
-                <section className="layer-list">
-                  {hasInference && (
-                    <LayerControl
-                      label="AI 결과 Zarr"
-                      accent="result"
-                      checked={resultVisible}
-                      onChecked={setResultVisible}
-                      opacity={resultOpacity}
-                      onOpacity={setResultOpacity}
-                    />
-                  )}
-                  {selected && (
-                    <LayerControl
-                      label="원본 Zarr"
-                      accent="source"
-                      checked={sourceVisible}
-                      onChecked={setSourceVisible}
-                      opacity={sourceOpacity}
-                      onOpacity={setSourceOpacity}
-                    />
-                  )}
-                  <label className="check">
-                    <input
-                      type="checkbox"
-                      checked={baseVisible}
-                      onChange={(e) => setBaseVisible(e.target.checked)}
-                    />
-                    <i className="swatch base" />
-                    OpenLayers 배경지도
-                  </label>
+              <div className="vx-panel__body">
+                <section className="vx-section">
+                  <h2 className="vx-section__title">표시 레이어</h2>
+                  <p className="vx-section__hint">
+                    체크하면 지도에서 표시됩니다.
+                  </p>
+                  <div className="vx-layers">
+                    {hasInference && (
+                      <LayerControl
+                        label="AI 결과 Zarr"
+                        accent="result"
+                        checked={resultVisible}
+                        onChecked={setResultVisible}
+                        opacity={resultOpacity}
+                        onOpacity={setResultOpacity}
+                      />
+                    )}
+                    {selected && (
+                      <LayerControl
+                        label="원본 Zarr"
+                        accent="source"
+                        checked={sourceVisible}
+                        onChecked={setSourceVisible}
+                        opacity={sourceOpacity}
+                        onOpacity={setSourceOpacity}
+                      />
+                    )}
+                    <label className="vx-layer vx-layer--base">
+                      <input
+                        type="checkbox"
+                        checked={baseVisible}
+                        onChange={(e) => setBaseVisible(e.target.checked)}
+                      />
+                      <i className="vx-swatch vx-swatch--base" />
+                      <span>OpenLayers 배경지도</span>
+                    </label>
+                  </div>
                 </section>
                 {selected && (
-                  <section>
-                    <h3>활성 변수 / Band</h3>
-                    <div className="band-picker">
+                  <section className="vx-section">
+                    <h3 className="vx-section__title">활성 변수 / Band</h3>
+                    <div className="vx-chips">
                       {hasRgb && (
                         <button
                           type="button"
+                          aria-pressed={activeVariable === "rgb"}
                           className={activeVariable === "rgb" ? "active" : ""}
                           onClick={() => setActiveVariable("rgb")}
                         >
@@ -670,6 +782,7 @@ export default function Viewer({
                         <button
                           type="button"
                           key={variable}
+                          aria-pressed={activeVariable === variable}
                           className={
                             activeVariable === variable ? "active" : ""
                           }
@@ -681,89 +794,161 @@ export default function Viewer({
                     </div>
                   </section>
                 )}
+                {selected && (
+                  <section className="vx-section">
+                    <h3 className="vx-section__title">데이터 정보</h3>
+                    <dl className="vx-meta">
+                      <div>
+                        <dt>이름</dt>
+                        <dd title={selected.name}>{selected.name}</dd>
+                      </div>
+                      <div>
+                        <dt>시점 수</dt>
+                        <dd className="tabular">{times.length}</dd>
+                      </div>
+                      {times.length > 0 && (
+                        <div>
+                          <dt>기간</dt>
+                          <dd className="tabular">
+                            {times[0]?.label} ~ {times[times.length - 1]?.label}
+                          </dd>
+                        </div>
+                      )}
+                      <div>
+                        <dt>변수 수</dt>
+                        <dd className="tabular">{selected.variables.length}</dd>
+                      </div>
+                      <div>
+                        <dt>좌표계</dt>
+                        <dd>EPSG:4326</dd>
+                      </div>
+                    </dl>
+                  </section>
+                )}
               </div>
             ) : (
-              <section>
-                <h2>최근 AI 작업</h2>
-                {jobsError ? (
-                  <p role="status">AI 작업 목록: {jobsError}</p>
-                ) : jobs.length ? (
-                  jobs.map((job) => (
-                    <button
-                      className="job"
-                      key={job.id}
-                      onClick={() =>
-                        job.status === "SUCCEEDED" && job.outputDatacubeId
-                          ? setDrawer("result")
-                          : undefined
-                      }
-                    >
-                      <i />
-                      수체 추출 #{job.id}
-                      <small>
-                        {job.status} · {job.period}
-                      </small>
-                    </button>
-                  ))
-                ) : (
-                  <p>선택한 Zarr의 작업이 없습니다.</p>
-                )}
-              </section>
+              <div className="vx-panel__body">
+                <section className="vx-section">
+                  <h2 className="vx-section__title">최근 AI 작업</h2>
+                  {jobsError ? (
+                    <p className="vx-section__hint" role="status">
+                      AI 작업 목록: {jobsError}
+                    </p>
+                  ) : jobs.length ? (
+                    <div className="vx-jobs">
+                      {jobs.map((job) => (
+                        <button
+                          type="button"
+                          className="vx-job"
+                          key={job.id}
+                          onClick={() =>
+                            job.status === "SUCCEEDED" && job.outputDatacubeId
+                              ? setDrawer("result")
+                              : undefined
+                          }
+                        >
+                          <i
+                            className={`vx-job__dot is-${job.status.toLowerCase()}`}
+                            aria-hidden="true"
+                          />
+                          <span>
+                            수체 추출 #{job.id}
+                            <small>
+                              {job.status} · {job.period}
+                            </small>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="vx-section__hint">
+                      선택한 Zarr의 작업이 없습니다.
+                    </p>
+                  )}
+                </section>
+              </div>
             )}
           </aside>
         )}
 
-        <section className="map-shell" aria-label="시계열 위성 데이터 지도">
-          {!panelOpen && (
+        <section className="vx-map" aria-label="시계열 위성 데이터 지도">
+          <div
+            className="vx-tools"
+            role="toolbar"
+            aria-label="지도 도구"
+            data-tour="tools"
+          >
+            {!panelOpen && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setPanelOpen(true)}
+                  data-tour="layers"
+                  aria-label="레이어 및 AI 작업 패널 열기"
+                  title="레이어 / AI 작업"
+                >
+                  <Layers size={18} aria-hidden="true" />
+                </button>
+                <span className="vx-tools__sep" aria-hidden="true" />
+              </>
+            )}
             <button
-              className="rail-button"
-              onClick={() => setPanelOpen(true)}
-              aria-label="레이어 및 AI 작업 패널 열기"
-              title="레이어 / AI 작업"
-            >
-              {icon("☷")}
-            </button>
-          )}
-          <div className="map-tools" role="toolbar" aria-label="지도 도구">
-            <button
+              type="button"
               aria-label="이동"
               title="이동"
               aria-pressed={mapTool === "pan"}
               onClick={() => selectMapTool("pan")}
             >
-              {icon("✋")}
+              <Hand size={18} aria-hidden="true" />
             </button>
             <button
+              type="button"
               aria-label="픽셀 값 조회"
               title="픽셀 값 조회"
               aria-pressed={mapTool === "pixel"}
               disabled={!selected}
               onClick={() => selectMapTool("pixel")}
             >
-              {icon("⌖")}
+              <Crosshair size={18} aria-hidden="true" />
             </button>
-            <button aria-label="확대" title="확대" onClick={() => zoomMap(1)}>
-              {icon("+")}
-            </button>
-            <button aria-label="축소" title="축소" onClick={() => zoomMap(-1)}>
-              {icon("−")}
+            <span className="vx-tools__sep" aria-hidden="true" />
+            <button
+              type="button"
+              aria-label="확대"
+              title="확대"
+              onClick={() => zoomMap(1)}
+            >
+              <ZoomIn size={18} aria-hidden="true" />
             </button>
             <button
+              type="button"
+              aria-label="축소"
+              title="축소"
+              onClick={() => zoomMap(-1)}
+            >
+              <ZoomOut size={18} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
               aria-label="데이터 영역 맞춤"
               title="데이터 영역 맞춤"
               disabled={!selectedBbox}
               onClick={fitDataset}
             >
-              {icon("⌗")}
+              <Scan size={18} aria-hidden="true" />
             </button>
             {pixel && (
-              <button
-                aria-label="픽셀 선택 지우기"
-                title="픽셀 선택 지우기"
-                onClick={clearPixel}
-              >
-                {icon("×")}
-              </button>
+              <>
+                <span className="vx-tools__sep" aria-hidden="true" />
+                <button
+                  type="button"
+                  aria-label="픽셀 선택 지우기"
+                  title="픽셀 선택 지우기"
+                  onClick={clearPixel}
+                >
+                  <X size={18} aria-hidden="true" />
+                </button>
+              </>
             )}
           </div>
           <OlMap
@@ -773,25 +958,43 @@ export default function Viewer({
             interactionMode={mapTool}
           />
           {pixelTip && (
-            <div className="pixel-tip" role="status">
+            <div className="vx-toast" role="status">
+              <MousePointerClick size={16} aria-hidden="true" />
               지도를 클릭해 시계열을 조회하세요
             </div>
           )}
-          {!selected &&
-            (loading || !!apiError || !datasets.length || showDatasetHint) && (
-              <div className="map-hint" aria-live="polite">
-                {loading
-                  ? "데이터를 불러오는 중입니다…"
-                  : apiError ||
-                    (datasets.length
-                      ? showDatasetHint
-                        ? "상단에서 Zarr를 선택하면 데이터 레이어와 시간 도구가 열립니다."
-                        : ""
-                      : "등록된 Zarr가 없습니다. 상단의 Zarr 등록 버튼으로 시작하세요.")}
-              </div>
-            )}
+          {!selected && emptyMessage && (
+            <div
+              className={`vx-empty ${apiError ? "is-error" : ""}`}
+              aria-live="polite"
+            >
+              <span className="vx-empty__icon" aria-hidden="true">
+                {loading ? (
+                  <LoaderCircle size={22} className="vx-spin" />
+                ) : apiError ? (
+                  <CircleAlert size={22} />
+                ) : (
+                  <Satellite size={22} />
+                )}
+              </span>
+              <p>{emptyMessage}</p>
+              {!loading && !apiError && (
+                <div className="vx-empty__actions">
+                  <button
+                    type="button"
+                    className="vx-btn vx-btn--secondary"
+                    onClick={() => setZarrStudioOpen(true)}
+                  >
+                    <Plus size={16} aria-hidden="true" />
+                    데이터 추가
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           {selected && viewerNotice && (
-            <div className="map-hint" role="status">
+            <div className="vx-toast vx-toast--notice" role="status">
+              <CircleAlert size={16} aria-hidden="true" />
               {viewerNotice}
             </div>
           )}
@@ -802,26 +1005,36 @@ export default function Viewer({
               aria-label="AI 수체 추출 결과 레이어"
             />
           )}
+          {selected && (
+            <div className="vx-mapinfo" aria-hidden="true">
+              <span>좌표계 EPSG:4326</span>
+              {activeVariable && <span>{activeVariable.toUpperCase()}</span>}
+            </div>
+          )}
           {pixel && <PixelMarker map={map} coordinate={pixel} />}
         </section>
 
         {drawer && rightCollapsed && (
-          <aside className="right-panel-rail">
+          <aside className="vx-drawer-rail">
             <button
+              type="button"
               onClick={() => setRightCollapsed(false)}
               aria-label={`${drawer === "ai" ? "AI 작업" : "결과"} 열기`}
             >
-              {drawer === "ai" ? "✦" : "▱"}
+              {drawer === "ai" ? (
+                <Sparkles size={18} aria-hidden="true" />
+              ) : (
+                <Layers2 size={18} aria-hidden="true" />
+              )}
             </button>
           </aside>
         )}
         {drawer && !rightCollapsed && (
           <aside
-            className="side right analysis-drawer"
+            className="vx-drawer"
             aria-label={drawer === "ai" ? "AI 수체 추출 설정" : "결과 비교"}
           >
-            <div className="sheet-handle" aria-hidden="true" />
-            <div className="drawer-title">
+            <div className="vx-drawer__head">
               <div>
                 <h2>{drawer === "ai" ? "AI 수체 추출" : "결과 비교"}</h2>
                 <p title={selected?.name}>
@@ -834,36 +1047,40 @@ export default function Viewer({
               </div>
               <span>
                 <button
-                  className="chart-action"
+                  type="button"
+                  className="vx-icon-btn"
                   onClick={() => setRightCollapsed(true)}
                   aria-label="분석 패널 접기"
                   title="분석 패널 접기"
                 >
-                  ›
+                  <ChevronsRight size={18} aria-hidden="true" />
                 </button>
                 <button
-                  className="chart-action"
+                  type="button"
+                  className="vx-icon-btn"
                   onClick={closeRightPanel}
                   aria-label="패널 닫기"
+                  title="닫기"
                 >
-                  ×
+                  <X size={18} aria-hidden="true" />
                 </button>
               </span>
             </div>
-            <div
-              className="right-tabs"
-              role="tablist"
-              aria-label="분석 패널 탭"
-            >
+            <div className="vx-tabs vx-tabs--full" role="tablist" aria-label="분석 패널 탭">
               <button
+                type="button"
                 role="tab"
                 aria-selected={drawer === "ai"}
                 onClick={() => openRightPanel("ai")}
               >
-                AI 작업{jobState === "running" && <i />}
+                AI 작업
+                {jobState === "running" && (
+                  <i className="vx-pulse" aria-hidden="true" />
+                )}
               </button>
               {hasInference && (
                 <button
+                  type="button"
                   role="tab"
                   aria-selected={drawer === "result"}
                   onClick={() => openRightPanel("result")}
@@ -872,34 +1089,41 @@ export default function Viewer({
                 </button>
               )}
             </div>
-            <div className="right-panel-body" role="tabpanel">
+            <div className="vx-drawer__body" role="tabpanel">
               {drawer === "ai" ? (
-                <div className="form">
-                  <label className="stack">
-                    모델
+                <div className="vx-form">
+                  <label className="vx-field">
+                    <span>모델</span>
                     <select>
                       <option>WaterNet v2.1</option>
                       <option>NDWI 기반</option>
                     </select>
                   </label>
-                  <fieldset>
+                  <fieldset className="vx-field">
                     <legend>시간 범위</legend>
-                    {(["현재 시점", "선택 기간", "전체 기간"] as Period[]).map(
-                      (value) => (
-                        <label className="radio" key={value}>
-                          <input
-                            type="radio"
-                            name="period"
-                            checked={period === value}
-                            onChange={() => setPeriod(value)}
-                          />
-                          {value}
-                        </label>
-                      ),
-                    )}
+                    <div className="vx-radios">
+                      {(["현재 시점", "선택 기간", "전체 기간"] as Period[]).map(
+                        (value) => (
+                          <label className="vx-radio" key={value}>
+                            <input
+                              type="radio"
+                              name="period"
+                              checked={period === value}
+                              onChange={() => setPeriod(value)}
+                            />
+                            {value}
+                          </label>
+                        ),
+                      )}
+                    </div>
                   </fieldset>
-                  <label className="stack">
-                    판단 임계값 <small>{(threshold / 100).toFixed(2)}</small>
+                  <label className="vx-field">
+                    <span className="vx-field__row">
+                      판단 임계값
+                      <small className="tabular">
+                        {(threshold / 100).toFixed(2)}
+                      </small>
+                    </span>
                     <input
                       type="range"
                       min="0"
@@ -908,8 +1132,8 @@ export default function Viewer({
                       onChange={(e) => setThreshold(Number(e.target.value))}
                     />
                   </label>
-                  <label className="stack">
-                    처리 영역
+                  <label className="vx-field">
+                    <span>처리 영역</span>
                     <select>
                       <option>현재 지도 영역</option>
                       <option>전체 데이터 영역</option>
@@ -917,20 +1141,21 @@ export default function Viewer({
                     </select>
                   </label>
                   {jobState !== "idle" && (
-                    <div className="status" aria-live="polite">
+                    <div className="vx-note vx-note--info" aria-live="polite">
                       {jobState === "running"
                         ? "수체 추출 작업을 처리하고 있습니다…"
                         : "수체 추출이 완료되었습니다."}
                     </div>
                   )}
                   {!useMockApi && (
-                    <div className="status">
+                    <div className="vx-note">
                       AI 실행 API는 아직 준비되지 않았습니다. 기존 완료 결과만
                       조회할 수 있습니다.
                     </div>
                   )}
                   <button
-                    className="primary"
+                    type="button"
+                    className="vx-btn vx-btn--primary vx-btn--block"
                     disabled={!useMockApi || jobState === "running"}
                     onClick={runAi}
                   >
@@ -944,24 +1169,26 @@ export default function Viewer({
                   </button>
                 </div>
               ) : (
-                <div className="form">
-                  <LayerControl
-                    label="원본 Zarr"
-                    accent="source"
-                    checked={sourceVisible}
-                    onChecked={setSourceVisible}
-                    opacity={sourceOpacity}
-                    onOpacity={setSourceOpacity}
-                  />
-                  <LayerControl
-                    label="수체 추출 결과"
-                    accent="result"
-                    checked={resultVisible}
-                    onChecked={setResultVisible}
-                    opacity={resultOpacity}
-                    onOpacity={setResultOpacity}
-                  />
-                  <div className="status">
+                <div className="vx-form">
+                  <div className="vx-layers">
+                    <LayerControl
+                      label="원본 Zarr"
+                      accent="source"
+                      checked={sourceVisible}
+                      onChecked={setSourceVisible}
+                      opacity={sourceOpacity}
+                      onOpacity={setSourceOpacity}
+                    />
+                    <LayerControl
+                      label="수체 추출 결과"
+                      accent="result"
+                      checked={resultVisible}
+                      onChecked={setResultVisible}
+                      opacity={resultOpacity}
+                      onOpacity={setResultOpacity}
+                    />
+                  </div>
+                  <div className="vx-note vx-note--info">
                     두 레이어를 중첩 비교할 수 있습니다.
                   </div>
                 </div>
@@ -984,83 +1211,124 @@ export default function Viewer({
       )}
 
       {selected && (
-        <section className="timeline" aria-label="시계열 탐색기">
-          <div className="playbar">
-            <div className="controls">
-              <button
-                className="icon-button"
-                onClick={() => setTimeIndex(0)}
-                aria-label="첫 시점"
-              >
-                |◀
-              </button>
-              <button
-                className="icon-button"
-                onClick={() => setTimeIndex(Math.max(0, timeIndex - 1))}
-                aria-label="이전 시점"
-              >
-                ◀
-              </button>
-              <button
-                className="icon-button"
-                onClick={() => setPlaying(!playing)}
-                aria-label={playing ? "일시정지" : "재생"}
-                aria-pressed={playing}
-              >
-                {playing ? "Ⅱ" : "▶"}
-              </button>
-              <button
-                className="icon-button"
-                onClick={() =>
-                  setTimeIndex(Math.min(times.length - 1, timeIndex + 1))
-                }
-                aria-label="다음 시점"
-              >
-                ▶
-              </button>
-              <button
-                className="icon-button"
-                onClick={() => setTimeIndex(times.length - 1)}
-                aria-label="마지막 시점"
-              >
-                ▶|
-              </button>
-            </div>
-            <strong>{times[timeIndex]?.label}</strong>
+        <section
+          className="vx-timeline"
+          aria-label="시계열 탐색기"
+          data-tour="timeline"
+        >
+          <div className="vx-player">
+            <button
+              type="button"
+              className="vx-icon-btn"
+              onClick={() => setTimeIndex(0)}
+              aria-label="첫 시점"
+              title="첫 시점"
+            >
+              <SkipBack size={16} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="vx-icon-btn"
+              onClick={() => setTimeIndex(Math.max(0, timeIndex - 1))}
+              aria-label="이전 시점"
+              title="이전 시점"
+            >
+              <ChevronLeft size={18} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="vx-play"
+              onClick={() => setPlaying(!playing)}
+              aria-label={playing ? "일시정지" : "재생"}
+              aria-pressed={playing}
+              title={playing ? "일시정지" : "재생"}
+            >
+              {playing ? (
+                <Pause size={18} aria-hidden="true" />
+              ) : (
+                <Play size={18} aria-hidden="true" />
+              )}
+            </button>
+            <button
+              type="button"
+              className="vx-icon-btn"
+              onClick={() =>
+                setTimeIndex(Math.min(times.length - 1, timeIndex + 1))
+              }
+              aria-label="다음 시점"
+              title="다음 시점"
+            >
+              <ChevronRight size={18} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="vx-icon-btn"
+              onClick={() => setTimeIndex(times.length - 1)}
+              aria-label="마지막 시점"
+              title="마지막 시점"
+            >
+              <SkipForward size={16} aria-hidden="true" />
+            </button>
+          </div>
+          <div className="vx-current">
+            <strong className="tabular">{times[timeIndex]?.label ?? "—"}</strong>
+            <small className="tabular">
+              {times.length ? `${timeIndex + 1} / ${times.length}` : "시점 없음"}
+            </small>
+          </div>
+          <div className="vx-track">
             <input
-              className="time-range"
+              className="vx-range"
               type="range"
               min="0"
               max={Math.max(0, times.length - 1)}
               value={timeIndex}
+              style={
+                {
+                  "--progress": `${times.length > 1 ? (timeIndex / (times.length - 1)) * 100 : 0}%`,
+                } as React.CSSProperties
+              }
               onChange={(e) => {
                 setTimeIndex(Number(e.target.value));
                 setPlaying(false);
               }}
               aria-label="관측 시점"
             />
-            <div className="controls speed">
-              {[0.5, 1, 2].map((value) => (
-                <button
-                  key={value}
-                  aria-pressed={speed === value}
-                  onClick={() => setSpeed(value)}
-                >
-                  {value}x
-                </button>
-              ))}
-              <label>
-                <input
-                  type="checkbox"
-                  checked={loop}
-                  onChange={(e) => setLoop(e.target.checked)}
-                />
-                반복
-              </label>
-            </div>
+            {times.length > 1 && times.length <= 60 && (
+              <div className="vx-ticks" aria-hidden="true">
+                {times.map((time, index) => (
+                  <i
+                    key={time.iso}
+                    className={index <= timeIndex ? "on" : ""}
+                  />
+                ))}
+              </div>
+            )}
           </div>
+          <div className="vx-speed" role="group" aria-label="재생 속도">
+            {[0.5, 1, 2, 4].map((value) => (
+              <button
+                type="button"
+                key={value}
+                aria-pressed={speed === value}
+                onClick={() => setSpeed(value)}
+              >
+                {value}x
+              </button>
+            ))}
+          </div>
+          <label className={`vx-loop ${loop ? "on" : ""}`} title="반복 재생">
+            <input
+              type="checkbox"
+              checked={loop}
+              onChange={(e) => setLoop(e.target.checked)}
+            />
+            <Repeat size={16} aria-hidden="true" />
+            <span className="vx-hide-sm">반복</span>
+          </label>
         </section>
       )}
+      {tourOpen && <ViewerTour onClose={() => setTourOpen(false)} />}
       {dialog === "project" && (
         <ProjectManager
           projects={projects}
@@ -1149,24 +1417,38 @@ function BottomGraphPanel({
     : "픽셀 그래프 위로 펼치기";
   return (
     <section
-      className={`bottom-graph-panel ${expanded ? "expanded" : "hidden"}`}
+      className={`vx-graph ${expanded ? "expanded" : "hidden"}`}
       aria-label="픽셀 시계열 그래프 패널"
       aria-live="polite"
     >
-      <div className="bottom-graph-head">
-        <div className="graph-action">
-          <button
-            onClick={onToggle}
-            aria-label={label}
-            title={label}
-            aria-expanded={expanded}
-          >
-            {expanded ? "⌄" : "⌃"}
-          </button>
-        </div>
+      <div className="vx-graph__head">
+        <span className="vx-graph__title">
+          <Crosshair size={14} aria-hidden="true" />
+          <strong>픽셀 시계열</strong>
+          {coordinate && (
+            <small className="tabular">
+              {coordinate.lon.toFixed(5)}, {coordinate.lat.toFixed(5)}
+            </small>
+          )}
+          {variable && <b>{variable}</b>}
+        </span>
+        <button
+          type="button"
+          className="vx-icon-btn"
+          onClick={onToggle}
+          aria-label={label}
+          title={label}
+          aria-expanded={expanded}
+        >
+          {expanded ? (
+            <ChevronDown size={18} aria-hidden="true" />
+          ) : (
+            <ChevronUp size={18} aria-hidden="true" />
+          )}
+        </button>
       </div>
       {expanded && (
-        <section className="pixel-chart-card">
+        <section className="vx-graph__chart">
           <TimeseriesChart
             dataset={dataset.name}
             variable={variable}
@@ -1196,11 +1478,25 @@ function TimeseriesChart({
   coordinate: { lon: number; lat: number } | null;
   currentTime?: string;
 }) {
-  const width = 900;
-  const height = 260;
+  // Draw in the container's own pixel size so the chart fills the panel without
+  // stretching text; 900x260 is the fallback where ResizeObserver is unavailable.
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 900, height: 260 });
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width: w, height: h } = entry.contentRect;
+      if (w > 0 && h > 0)
+        setSize({ width: Math.max(320, Math.round(w)), height: Math.max(140, Math.round(h)) });
+    });
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
+  const { width, height } = size;
   const left = 56;
   const right = 16;
-  const top = 24;
+  const top = 12;
   const bottom = 36;
   const valid = points.filter(
     (point) => typeof point.value === "number" && Number.isFinite(point.value),
@@ -1255,7 +1551,7 @@ function TimeseriesChart({
       ),
     ),
   );
-  const unit = units || "단위 미제공";
+  const unit = units ?? "";
   const dateLabel = (time: string) => {
     const date = new Date(time);
     return Number.isNaN(date.getTime())
@@ -1270,7 +1566,7 @@ function TimeseriesChart({
     (ratio) => min + (max - min) * ratio,
   );
   return (
-    <div className="professional-chart">
+    <div className="professional-chart" ref={boxRef}>
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"
@@ -1280,7 +1576,7 @@ function TimeseriesChart({
           {dataset} · {variable} · {coordinateLabel}
         </title>
         <desc>
-          전체 {points.length}시점 중 유효 {valid.length}시점. 단위 {unit}.
+          전체 {points.length}시점 중 유효 {valid.length}시점.{unit && ` 단위 ${unit}.`}
         </desc>
         {yTicks.map((value) => (
           <g key={value}>
@@ -1310,9 +1606,6 @@ function TimeseriesChart({
             y2={y(0)}
           />
         )}
-        <text className="axis-title" x={4} y={16}>
-          픽셀값 ({unit})
-        </text>
         {segments.map((path, index) => (
           <path key={index} className="line" d={path} />
         ))}
@@ -1399,10 +1692,12 @@ function DatasetPicker({
   datasets,
   value,
   onChange,
+  tourId,
 }: {
   datasets: ZarrDataset[];
   value: string;
   onChange: (value: string) => void;
+  tourId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -1469,8 +1764,13 @@ function DatasetPicker({
     }
   };
   return (
-    <div className="dataset-picker" ref={rootRef} onKeyDown={onKeyDown}>
-      <span className="picker-label">데이터 / Zarr</span>
+    <div
+      className="dataset-picker"
+      ref={rootRef}
+      onKeyDown={onKeyDown}
+      data-tour={tourId}
+    >
+      <span className="picker-label">데이터</span>
       <button
         type="button"
         className="dataset-trigger"
@@ -1480,17 +1780,19 @@ function DatasetPicker({
         aria-controls="zarr-listbox"
         onClick={() => setOpen((value) => !value)}
       >
-        <span>{selected?.name ?? "선택 안 함"}</span>
+        <Database size={16} aria-hidden="true" className="dataset-trigger__icon" />
+        <span>{selected?.name ?? "데이터셋 선택"}</span>
         {selected && (
           <small className={selected.accessType === "SHARED" ? "shared" : ""}>
             {selected.accessType === "SHARED" ? "공유" : "소유"}
           </small>
         )}
-        <i aria-hidden="true">⌄</i>
+        <ChevronDown size={16} aria-hidden="true" />
       </button>
       {open && (
         <div className="dataset-popover">
           <div className="dataset-search">
+            <Search size={16} aria-hidden="true" />
             <input
               autoFocus
               value={query}
@@ -1529,7 +1831,9 @@ function DatasetPicker({
                       {item.projectName || "프로젝트 없음"}
                     </small>
                   </span>
-                  {item.id === value && <b aria-hidden="true">✓</b>}
+                  {item.id === value && (
+                    <Check size={16} aria-hidden="true" />
+                  )}
                 </button>
               ))
             ) : (
@@ -1558,18 +1862,19 @@ function LayerControl({
   onOpacity: (value: number) => void;
 }) {
   return (
-    <div className="layer-control">
-      <label className="check">
+    <div className={`vx-layer-card ${checked ? "" : "is-off"}`}>
+      <label className="vx-layer">
         <input
           type="checkbox"
           checked={checked}
           onChange={(e) => onChecked(e.target.checked)}
         />
-        <i className={`swatch ${accent}`} />
-        {label}
+        <i className={`vx-swatch vx-swatch--${accent}`} />
+        <span>{label}</span>
       </label>
-      <label className="opacity">
-        투명도 <span>{opacity}%</span>
+      <label className="vx-opacity">
+        <span>투명도</span>
+        <span className="tabular">{opacity}%</span>
         <input
           type="range"
           min="0"
