@@ -3,7 +3,7 @@
 import { activeViewerAdapter, useMockApi } from '../api';
 import { backofficeAdapter, ProjectMember } from '../api/backofficeApi';
 import { demoManagement, viewerAdapter as demoAdapter, Project, ZarrDataset } from '../api/viewerAdapter';
-import { ColorBarOption, FileJobInput, GeeCollection, generationApi, GenerationJob, SpatialInspection } from '../api/generationApi';
+import { ColorBarOption, FileJobInput, GeeCollection, generationApi, GenerationJob, JobSummary, SpatialInspection } from '../api/generationApi';
 
 export type { Project, ZarrDataset, ProjectMember };
 export type MemberRole = 'EDITOR' | 'VIEWER';
@@ -38,7 +38,15 @@ export const appApi = {
 
 const pause = (ms = 400) => new Promise((resolve) => window.setTimeout(resolve, ms));
 let demoJobs = 0;
-const demoJob = (): GenerationJob => ({ id: `demo-${++demoJobs}`, status: 'QUEUED' });
+const demoJobList: JobSummary[] = [
+  { id: 'demo-a', name: 'Sentinel-2 · 2025 (GEE)', type: 'GEE_TO_ZARR', status: 'SUCCEEDED', progress: 1, createdAt: '2025-10-22T01:00:00Z', startedAt: '2025-10-22T01:00:05Z', finishedAt: '2025-10-22T01:06:40Z', registration: { datacubeId: 0, xcubeDatasetId: 'sentinel_rgb' }, input: { collectionId: 'COPERNICUS/S2_SR_HARMONIZED', bands: ['B2', 'B3', 'B4', 'B8'], startDate: '2025-07-01', endDate: '2025-10-22' } },
+  { id: 'demo-b', name: '울산 행정구역 Shapefile', type: 'SHAPEFILE', status: 'FAILED', progress: 0.4, createdAt: '2025-10-21T08:10:00Z', startedAt: '2025-10-21T08:10:03Z', finishedAt: '2025-10-21T08:11:10Z', errorCode: 'INVALID_INPUT', errorMessage: 'No timestamp in ulsan_admin.shp; supply date or timePattern', input: { files: ['ulsan_admin.zip'], variables: [{ source: 'pop_total', name: 'pop_total', kind: 'continuous', style: { colorBar: 'viridis', min: 120, max: 31800 } }], params: { resolution: 0.00025 } } },
+];
+const demoJob = (name = '새 데이터', type = 'GEOTIFF_BANDS'): GenerationJob => {
+  const job: JobSummary = { id: `demo-${++demoJobs}`, name, type, status: 'RUNNING', progress: 0.3, stage: 'convert', createdAt: new Date().toISOString(), startedAt: new Date().toISOString(), input: {} };
+  demoJobList.unshift(job);
+  return { id: job.id, status: 'QUEUED' };
+};
 const DEMO_COLORBARS: ColorBarOption[] = ['viridis', 'plasma', 'magma', 'cividis', 'Blues', 'Greens', 'RdYlGn', 'Spectral', 'terrain', 'Greys'].map((id, index) => ({ id, category: index < 4 ? 'Perceptually Uniform Sequential' : index < 6 ? 'Sequential' : 'Diverging' }));
 const DEMO_COLLECTIONS: GeeCollection[] = [
   { id: 'COPERNICUS/S2_SR_HARMONIZED', name: 'Sentinel-2 L2A (Harmonized)', bands: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12', 'SCL'] },
@@ -73,9 +81,19 @@ export const generation = {
   colorBars: (): Promise<ColorBarOption[]> => (useMockApi ? pause(150).then(() => DEMO_COLORBARS) : generationApi.getColorBarOptions()),
   collections: (): Promise<GeeCollection[]> => (useMockApi ? pause(150).then(() => DEMO_COLLECTIONS) : generationApi.getCollections()),
   inspect: (type: 'geotiff' | 'shapefile' | 'cas500', file: File): Promise<SpatialInspection> => (useMockApi ? pause().then(() => demoInspection(type, file)) : generationApi.inspectSpatialFile(type, file)),
-  createGeeJob: (input: Parameters<typeof generationApi.createGeeJob>[0]): Promise<GenerationJob> => (useMockApi ? pause().then(demoJob) : generationApi.createGeeJob(input)),
-  createFileJob: (input: FileJobInput): Promise<GenerationJob> => (useMockApi ? pause().then(demoJob) : generationApi.createFileJob(input)),
+  createGeeJob: (input: Parameters<typeof generationApi.createGeeJob>[0]): Promise<GenerationJob> => (useMockApi ? pause().then(() => demoJob(input.name, 'GEE_TO_ZARR')) : generationApi.createGeeJob(input)),
+  createFileJob: (input: FileJobInput): Promise<GenerationJob> => (useMockApi ? pause().then(() => demoJob(input.name, input.type)) : generationApi.createFileJob(input)),
   getJob: (id: string | number): Promise<GenerationJob> => (useMockApi ? pause().then(() => ({ id, status: 'RUNNING' as const })) : generationApi.getJob(id)),
+  listJobs: (filter: { status?: string; type?: string } = {}): Promise<JobSummary[]> =>
+    useMockApi
+      ? pause(150).then(() => demoJobList.filter((job) => (!filter.status || filter.status.split(',').includes(job.status)) && (!filter.type || filter.type.split(',').includes(job.type))))
+      : generationApi.listJobs(filter),
+  jobSummary: (id: string): Promise<JobSummary> =>
+    useMockApi ? pause(150).then(() => { const job = demoJobList.find((item) => item.id === id); if (!job) throw Object.assign(new Error('작업을 찾을 수 없습니다.'), { status: 404 }); return job; }) : generationApi.jobSummary(id),
+  retryJob: (id: string): Promise<JobSummary> =>
+    useMockApi ? pause().then(() => { const job = demoJobList.find((item) => item.id === id)!; const again: JobSummary = { ...job, id: `demo-${++demoJobs}`, status: 'QUEUED', progress: 0, errorCode: null, errorMessage: null, createdAt: new Date().toISOString(), finishedAt: null }; demoJobList.unshift(again); return again; }) : generationApi.retryJob(id),
+  cancelJob: (id: string): Promise<unknown> =>
+    useMockApi ? pause().then(() => { const job = demoJobList.find((item) => item.id === id); if (job) Object.assign(job, { status: 'CANCELLED', finishedAt: new Date().toISOString() }); }) : generationApi.cancelJob(id),
 };
 
 export const roleLabel = (role?: string) => (role === 'OWNER' ? '소유자' : role === 'EDITOR' ? '편집' : '보기');

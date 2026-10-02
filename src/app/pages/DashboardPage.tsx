@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthProvider';
 import { Alert, Button, ButtonLink } from '../../components/ui';
 import { Badge, Card, EmptyState, PageHeader, Skeleton } from '../../components/ui/kit';
-import { appApi, isOwned, periodLabel, viewerHref } from '../api';
+import { appApi, generation, isOwned, periodLabel, viewerHref } from '../api';
 import { useLoad } from '../useLoad';
+import { elapsed, isActive, JOB_TYPE_LABEL, JobStatusBadge } from '../jobs';
 import { DatasetStatus } from './DataLibraryPage';
 
 /** S2: summary and next actions after sign-in. */
@@ -12,6 +13,8 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const datasets = useLoad(() => appApi.listDatasets());
   const projects = useLoad(() => appApi.listProjects());
+  const jobs = useLoad(() => generation.listJobs());
+  const jobItems = jobs.data ?? [];
   const items = datasets.data ?? [];
   const owned = items.filter(isOwned).length;
   const empty = !datasets.loading && !datasets.error && items.length === 0;
@@ -51,10 +54,10 @@ export default function DashboardPage() {
 
       {!empty && (
         <dl className="dash-kpis" aria-label="요약">
-          <div className="kpi"><dt>내 데이터큐브</dt><dd>{datasets.loading ? '—' : owned}</dd></div>
-          <div className="kpi"><dt>공유받은 데이터큐브</dt><dd>{datasets.loading ? '—' : items.length - owned}</dd></div>
-          <div className="kpi"><dt>프로젝트</dt><dd>{projects.loading ? '—' : projects.data?.length ?? '—'}</dd></div>
-          <div className="kpi"><dt>처리 중 작업</dt><dd>—<small>작업 목록 API 준비 중</small></dd></div>
+          <div className="kpi" role="group" aria-label="내 데이터큐브"><dt>내 데이터큐브</dt><dd>{datasets.loading ? '—' : owned}</dd></div>
+          <div className="kpi" role="group" aria-label="공유받은 데이터큐브"><dt>공유받은 데이터큐브</dt><dd>{datasets.loading ? '—' : items.length - owned}</dd></div>
+          <div className="kpi" role="group" aria-label="프로젝트"><dt>프로젝트</dt><dd>{projects.loading ? '—' : projects.data?.length ?? '—'}</dd></div>
+          <div className="kpi" role="group" aria-label="처리 중 작업"><dt>처리 중 작업</dt><dd>{jobs.loading ? '—' : jobs.error ? '—' : jobItems.filter(isActive).length}{jobs.error && <small>불러오지 못함</small>}</dd></div>
         </dl>
       )}
 
@@ -88,8 +91,21 @@ export default function DashboardPage() {
             </div>
           )}
         </Card>
-        <Card title="최근 작업">
-          <EmptyState title="작업 목록을 준비하고 있습니다" text="생성·AI 작업 목록 API가 연결되면 이곳에 진행 상황이 표시됩니다." />
+        <Card title="최근 작업" actions={<ButtonLink to="/app/jobs" variant="ghost" size="sm">전체 보기 <ArrowRight size={14} aria-hidden /></ButtonLink>}>
+          {jobs.loading ? <Skeleton lines={3} label="최근 작업을 불러오는 중" /> : jobs.error ? (
+            <div className="inline-error"><Alert tone="danger">작업 목록을 불러오지 못했습니다. {jobs.error}</Alert></div>
+          ) : !jobItems.length ? (
+            <EmptyState title="아직 작업이 없습니다" text="데이터를 추가하면 생성 작업의 진행 상황이 이곳에 표시됩니다." />
+          ) : (
+            <ul className="recent-jobs">
+              {jobItems.slice(0, 5).map((job) => (
+                <li key={job.id}>
+                  <span className="xc-cell-main"><strong>{job.name || '이름 없음'}</strong><small>{JOB_TYPE_LABEL[job.type] ?? job.type} · {elapsed(job)}</small></span>
+                  <JobStatusBadge job={job} />
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
       </div>
     </div>

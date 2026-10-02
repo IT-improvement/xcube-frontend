@@ -522,7 +522,7 @@ function Result({ job, registeredId, name, projectLinked }: { job: GenerationJob
           </p>
           {projectLinked && !registeredId && <p className="xc-hint">프로젝트 연결은 생성이 끝난 뒤 데이터 화면에서 확인하세요.</p>}
           <div className="wizard-result__actions">
-            {registeredId ? <ButtonLink to={`/app/data/${encodeURIComponent(registeredId)}`}>데이터 보기</ButtonLink> : <ButtonLink to="/app/data">데이터 목록</ButtonLink>}
+            {registeredId ? <ButtonLink to={`/app/data/${encodeURIComponent(registeredId)}`}>데이터 보기</ButtonLink> : <ButtonLink to="/app/jobs">작업 센터에서 보기</ButtonLink>}
             {(registeredId || finished) && <a className="xc-btn xc-btn--secondary" href={viewerHref(registeredId || undefined)} target="_blank" rel="noopener noreferrer">Viewer에서 열기<span className="sr-only">(새 탭)</span></a>}
             <Button variant="ghost" onClick={() => window.location.reload()}>다른 데이터 추가</Button>
           </div>

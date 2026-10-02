@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 jest.mock('../../api', () => ({ activeViewerAdapter: { getProjects: jest.fn(), getDatasets: jest.fn(), getProjectDatasets: jest.fn(), getJobs: jest.fn(), runWaterExtraction: jest.fn() }, useMockApi: false }));
 jest.mock('../../api/backofficeApi', () => ({ backofficeAdapter: { getProject: jest.fn(), createProject: jest.fn(), updateProject: jest.fn(), deleteProject: jest.fn(), getProjectMembers: jest.fn(), addProjectMember: jest.fn(), updateProjectMember: jest.fn(), removeProjectMember: jest.fn(), getProjectDatasets: jest.fn(), getLinkableDatacubes: jest.fn(), linkProjectDataset: jest.fn(), unlinkProjectDataset: jest.fn(), getDatasetDetail: jest.fn(), deleteDatacube: jest.fn(), registerDatacube: jest.fn() } }));
-jest.mock('../../api/generationApi', () => ({ generationApi: { getColorBarOptions: jest.fn(), getCollections: jest.fn(), inspectSpatialFile: jest.fn(), createGeeJob: jest.fn(), createFileJob: jest.fn(), getJob: jest.fn() } }));
+jest.mock('../../api/generationApi', () => ({ generationApi: { getColorBarOptions: jest.fn(), getCollections: jest.fn(), inspectSpatialFile: jest.fn(), createGeeJob: jest.fn(), createFileJob: jest.fn(), getJob: jest.fn(), listJobs: jest.fn(), jobSummary: jest.fn(), retryJob: jest.fn(), cancelJob: jest.fn() } }));
 jest.mock('../../auth/AuthProvider', () => ({ useAuth: () => ({ user: { id: 1, name: '홍길동' }, signOut: jest.fn() }) }));
 
 const adapter = require('../../api').activeViewerAdapter as Record<string, jest.Mock>;
@@ -17,6 +17,7 @@ const DataLibraryPage = require('./DataLibraryPage').default;
 const DatasetDetailPage = require('./DatasetDetailPage').default;
 const { ProjectDetailPage, ProjectsPage } = require('./ProjectsPage');
 const AddDataPage = require('../wizard/AddDataPage').default;
+const JobsPage = require('./JobsPage').default;
 
 const owned = { id: '77', projectId: '4', name: '연결된 Zarr', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: 'linked', defaultVariable: 'red', variables: ['red'], times: [], accessType: 'OWNED' };
 const shared = { ...owned, id: '88', projectId: '', name: '공유받은 Zarr', xcubeDatasetId: 'global', accessType: 'SHARED' };
@@ -31,6 +32,7 @@ function renderAt(path: string) {
         <Route path="/app/data/:datasetId" element={<DatasetDetailPage />} />
         <Route path="/app/projects" element={<ProjectsPage />} />
         <Route path="/app/projects/:projectId" element={<ProjectDetailPage />} />
+        <Route path="/app/jobs" element={<JobsPage />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -47,6 +49,7 @@ beforeEach(() => {
   backoffice.linkProjectDataset.mockResolvedValue(undefined);
   backoffice.unlinkProjectDataset.mockResolvedValue(undefined);
   backoffice.deleteDatacube.mockResolvedValue(undefined);
+  generation.listJobs.mockResolvedValue([]);
   generation.getColorBarOptions.mockResolvedValue([{ id: 'viridis', category: 'Sequential' }, { id: 'tab10', category: 'Qualitative' }]);
   window.confirm = jest.fn(() => true);
 });
@@ -305,5 +308,65 @@ describe('S4 데이터 추가 (FR-GEN-10·11)', () => {
       params: { sensor: 'SENTINEL2_L2A', date: '2026-05-01', nodata: 0 },
       variables: [{ source: 'band_2', name: 'band_2', kind: 'continuous', style: { colorBar: 'viridis', min: 120, max: 3200 } }],
     });
+  });
+});
+
+describe('M4 작업 센터·대시보드·생성 이력', () => {
+  const failed = { id: 'j1', name: '울산 Shape', type: 'SHAPEFILE', status: 'FAILED', progress: 0.4, createdAt: '2026-10-02T01:00:00Z', startedAt: '2026-10-02T01:00:00Z', finishedAt: '2026-10-02T01:01:05Z', errorCode: 'INVALID_INPUT', errorMessage: 'No timestamp in ulsan.shp', input: { files: ['ulsan.zip'], variables: [{ source: 'pop', name: 'pop', kind: 'continuous', style: { colorBar: 'viridis', min: 0, max: 100 } }], params: { resolution: 0.00025 } } };
+  const running = { id: 'j2', name: '제주 GeoTIFF', type: 'GEOTIFF_BANDS', status: 'RUNNING', progress: 0.5, stage: 'convert', createdAt: '2026-10-02T02:00:00Z', startedAt: '2026-10-02T02:00:00Z', input: { files: ['jeju.tif'], params: { sensor: 'SENTINEL2_L2A', date: '2026-05-01' } } };
+  const done = { id: 'j3', name: '완료 영상', type: 'GEE_TO_ZARR', status: 'SUCCEEDED', progress: 1, createdAt: '2026-10-01T02:00:00Z', registration: { datacubeId: 62, xcubeDatasetId: 'u7-d62' }, input: { collectionId: 'COPERNICUS/S2', bands: ['B8'], startDate: '2026-05-01', endDate: '2026-05-31' } };
+
+  test('작업 목록에서 실패 사유를 보고 다시 시도하며, 처리 중 작업은 취소할 수 있다', async () => {
+    generation.listJobs.mockResolvedValue([running, failed, done]);
+    generation.retryJob.mockResolvedValue({ ...failed, id: 'j4', status: 'QUEUED' });
+    generation.cancelJob.mockResolvedValue({});
+    renderAt('/app/jobs');
+    expect(await screen.findByText('울산 Shape')).toBeInTheDocument();
+    expect(screen.getByText('No timestamp in ulsan.shp')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: '제주 GeoTIFF 진행률' })).toHaveAttribute('aria-valuenow', '50');
+    expect(screen.getByRole('link', { name: '데이터 보기' })).toHaveAttribute('href', '/app/data/62');
+    fireEvent.click(screen.getByRole('button', { name: '울산 Shape 상세 펼치기' }));
+    expect(screen.getByText(/실패 사유: No timestamp/)).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: '처리 단계' })).toHaveTextContent('변환 실패');
+    expect(screen.getByText('viridis')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '울산 Shape 다시 시도' }));
+    await waitFor(() => expect(generation.retryJob).toHaveBeenCalledWith('j1'));
+    expect(await screen.findByText('같은 설정으로 다시 실행했습니다.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '제주 GeoTIFF 취소' }));
+    await waitFor(() => expect(generation.cancelJob).toHaveBeenCalledWith('j2'));
+  });
+
+  test('필터를 바꾸면 그 조건으로 다시 조회한다', async () => {
+    renderAt('/app/jobs');
+    expect(await screen.findByText('아직 작업이 없습니다')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Shapefile' }));
+    await waitFor(() => expect(generation.listJobs).toHaveBeenLastCalledWith({ type: 'SHAPEFILE', status: '' }));
+    fireEvent.change(screen.getByRole('combobox', { name: '상태' }), { target: { value: 'FAILED,CANCELLED' } });
+    await waitFor(() => expect(generation.listJobs).toHaveBeenLastCalledWith({ type: 'SHAPEFILE', status: 'FAILED,CANCELLED' }));
+  });
+
+  test('대시보드는 처리 중 작업 수와 최근 작업을 보여 준다', async () => {
+    generation.listJobs.mockResolvedValue([running, failed, done]);
+    renderAt('/app');
+    expect(await screen.findByText('제주 GeoTIFF')).toBeInTheDocument();
+    expect(within(screen.getByRole('group', { name: '처리 중 작업' })).getByText('1')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: /전체 보기/ }).map((link) => link.getAttribute('href'))).toContain('/app/jobs');
+  });
+
+  test('데이터 상세의 생성 이력은 생성 작업의 입력과 단계를 보여 준다', async () => {
+    backoffice.getDatasetDetail.mockResolvedValue({ ...owned, generationJobId: 'j3' });
+    generation.jobSummary.mockResolvedValue(done);
+    renderAt('/app/data/77');
+    fireEvent.click(await screen.findByRole('tab', { name: '생성 이력' }));
+    expect(await screen.findByText('COPERNICUS/S2')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: '처리 단계' })).toHaveTextContent('XCube 반영 완료');
+    expect(generation.jobSummary).toHaveBeenCalledWith('j3');
+  });
+
+  test('생성 작업 없이 추가된 데이터는 생성 이력이 없다고 알려 준다', async () => {
+    backoffice.getDatasetDetail.mockResolvedValue({ ...owned });
+    renderAt('/app/data/77');
+    fireEvent.click(await screen.findByRole('tab', { name: '생성 이력' }));
+    expect(await screen.findByText('생성 이력이 없습니다')).toBeInTheDocument();
   });
 });

@@ -1,15 +1,17 @@
-import { Database, ExternalLink, FolderKanban, LayoutDashboard, LogOut, Map, Menu, X } from 'lucide-react';
+import { Database, ExternalLink, FolderKanban, LayoutDashboard, ListChecks, LogOut, Map, Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { Logo } from '../components/ui';
 import { appApi } from './api';
+import { useActiveJobCount } from './jobs';
 import './app.css';
 
 const NAV = [
   { to: '/app', label: '대시보드', icon: LayoutDashboard, end: true },
   { to: '/app/data', label: '데이터', icon: Database, end: false },
   { to: '/app/projects', label: '프로젝트', icon: FolderKanban, end: false },
+  { to: '/app/jobs', label: '작업', icon: ListChecks, end: false },
 ];
 
 /** Signed-in layout for /app pages (S2–S6). The Viewer keeps its own full-screen layout. */
@@ -19,6 +21,7 @@ export default function AppShell() {
   const location = useLocation();
   useEffect(() => setMenuOpen(false), [location.pathname]);
   const name = user?.name ?? '사용자';
+  const activeJobs = useActiveJobCount();
   return (
     <div className={`xc app ${menuOpen ? 'app--menu-open' : ''}`}>
       <a className="skip-link" href="#app-main">본문으로 건너뛰기</a>
@@ -34,6 +37,7 @@ export default function AppShell() {
             <NavLink key={to} to={to} end={end} className="app-nav__link">
               <Icon size={18} aria-hidden />
               {label}
+              {to === '/app/jobs' && !!activeJobs && <span className="app-nav__badge" aria-label={`처리 중 ${activeJobs}개`}>{activeJobs}</span>}
             </NavLink>
           ))}
           <a className="app-nav__link" href="/app/viewer" target="_blank" rel="noopener noreferrer">

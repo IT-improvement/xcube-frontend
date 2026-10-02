@@ -13,6 +13,7 @@ import DataLibraryPage from './app/pages/DataLibraryPage';
 import DatasetDetailPage from './app/pages/DatasetDetailPage';
 import { ProjectDetailPage, ProjectsPage } from './app/pages/ProjectsPage';
 import AddDataPage from './app/wizard/AddDataPage';
+import JobsPage from './app/pages/JobsPage';
 const TestViewer = lazy(() => import('./views/TestViewer'));
 
 function ViewerPage() {
@@ -34,6 +35,7 @@ export function AppRoutes() {
         <Route path="data/:datasetId" element={<DatasetDetailPage />} />
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/:projectId" element={<ProjectDetailPage />} />
+        <Route path="jobs" element={<JobsPage />} />
       </Route>
       {/* The Viewer keeps its own full-screen layout and opens in a new tab. */}
       <Route path="/app/viewer" element={<RequireAuth><ViewerPage /></RequireAuth>} />

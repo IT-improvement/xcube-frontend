@@ -4,6 +4,15 @@ export const GENERATION_API_BASE_URL = process.env.REACT_APP_GENERATION_API_URL 
 export const BACKOFFICE_API_BASE_URL = process.env.REACT_APP_BACKOFFICE_API_URL ?? 'http://localhost:8082';
 export type GeeCollection = { id: string; name?: string; title?: string; bands: Array<string | { id?: string; name: string; description?: string }> };
 export type GenerationJob = { id: string | number; status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED'; [key: string]: unknown };
+export type JobStatus = GenerationJob['status'];
+/** One row of the job center (generation API GET /generation-jobs). */
+export type JobSummary = {
+  id: string; name: string; type: 'GEE_TO_ZARR' | 'GEOTIFF_BANDS' | 'CAS500' | 'SHAPEFILE' | string; status: JobStatus;
+  progress?: number | null; stage?: string | null; createdAt?: string; startedAt?: string | null; finishedAt?: string | null;
+  errorCode?: string | null; errorMessage?: string | null;
+  registration?: { datacubeId?: number; xcubeDatasetId?: string; error?: string } | null; zarrUri?: string | null;
+  input?: Record<string, unknown>;
+};
 export type BandStyle = { variable: string; colorBar: string; valueMin: number; valueMax: number };
 export type RgbStyle = { red: { variable: string; valueMin: number; valueMax: number }; green: { variable: string; valueMin: number; valueMax: number }; blue: { variable: string; valueMin: number; valueMax: number } };
 export type ColorBarOption = { id: string; category?: string; preview?: string };
@@ -35,6 +44,19 @@ export const generationApi = {
   },
   createFileJob(input: FileJobInput) {
     return request<GenerationJob>(GENERATION_API_BASE_URL, '/api/v1/generation-jobs/files', { method: 'POST', body: JSON.stringify(input) });
+  },
+  listJobs(filter: { status?: string; type?: string } = {}) {
+    const params = new URLSearchParams(Object.entries(filter).filter(([, v]) => !!v) as Array<[string, string]>);
+    return request<JobSummary[]>(GENERATION_API_BASE_URL, `/api/v1/generation-jobs${params.toString() ? `?${params}` : ''}`);
+  },
+  jobSummary(id: string) {
+    return request<JobSummary>(GENERATION_API_BASE_URL, `/api/v1/generation-jobs/${encodeURIComponent(id)}/summary`);
+  },
+  retryJob(id: string) {
+    return request<JobSummary>(GENERATION_API_BASE_URL, `/api/v1/generation-jobs/${encodeURIComponent(id)}/retry`, { method: 'POST' });
+  },
+  cancelJob(id: string) {
+    return request<unknown>(GENERATION_API_BASE_URL, `/api/v1/generation-jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
   },
   getJob(id: string | number) {
     return request<GenerationJob>(GENERATION_API_BASE_URL, `/api/v1/generation-jobs/${encodeURIComponent(String(id))}`);
