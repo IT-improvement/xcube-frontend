@@ -131,6 +131,15 @@ export default function Viewer({
   const selectedId = selected?.id;
   const selectedXcubeDatasetId = selected?.xcubeDatasetId;
   const selectedBbox = selected?.bbox;
+  const selectedTileBase = selected?.tileBaseUrl;
+  // Colour bar and value range of the shown variable (raw values need their real range, M1/M2).
+  const variableStyle = activeVariable && activeVariable !== "rgb" ? selected?.variableMetadata?.[activeVariable] : undefined;
+  const styleKey = variableStyle?.colorBarName || variableStyle?.colorBarMin != null ? `${variableStyle?.colorBarName}|${variableStyle?.colorBarMin}|${variableStyle?.colorBarMax}` : "";
+  const tileStyle = useMemo(() => {
+    if (!styleKey) return undefined;
+    const [cmap, vmin, vmax] = styleKey.split("|");
+    return { cmap: cmap && cmap !== "undefined" ? cmap : undefined, vmin: vmin === "undefined" ? undefined : Number(vmin), vmax: vmax === "undefined" ? undefined : Number(vmax) };
+  }, [styleKey]);
   const hasLinkedInference = jobs.some(
     (job) =>
       job.inputDatacubeId === selected?.id &&
@@ -178,6 +187,26 @@ export default function Viewer({
       return;
     }
     backofficeAdapter.checkXcubeStatus().then(setXcubeConnected);
+  }, []);
+  // The signed-in user's personal xcube pod (M2): poll while it is starting.
+  const [podState, setPodState] = useState<string | null>(null);
+  useEffect(() => {
+    if (useMockApi || typeof backofficeAdapter.getMyXcubeInstance !== "function") return;
+    let cancelled = false;
+    let timer: number | undefined;
+    const check = () =>
+      Promise.resolve(backofficeAdapter.getMyXcubeInstance())
+        .then((instance) => {
+          if (cancelled || !instance?.enabled) return;
+          setPodState(instance.state);
+          if (instance.state === "STARTING") timer = window.setTimeout(check, 5000);
+        })
+        .catch(() => undefined);
+    check();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, []);
   useEffect(() => {
     setDatasetId("");
@@ -352,11 +381,20 @@ export default function Viewer({
     if (useMockApi || !activeVariable || !selectedXcubeDatasetId) return;
     addDynamicXcubeLayer({
       map,
-      tileUrl: backofficeAdapter.tileUrl(
-        selectedXcubeDatasetId,
-        activeVariable,
-        times[timeIndex]?.iso,
-      ),
+      tileUrl:
+        selectedTileBase || tileStyle
+          ? backofficeAdapter.tileUrl(
+              selectedXcubeDatasetId,
+              activeVariable,
+              times[timeIndex]?.iso,
+              selectedTileBase,
+              tileStyle,
+            )
+          : backofficeAdapter.tileUrl(
+              selectedXcubeDatasetId,
+              activeVariable,
+              times[timeIndex]?.iso,
+            ),
       bbox: selectedBbox,
       onError: fail,
     })
@@ -388,6 +426,8 @@ export default function Viewer({
     selectedId,
     selectedXcubeDatasetId,
     selectedBbox,
+    selectedTileBase,
+    tileStyle,
     activeVariable,
     times,
     timeIndex,
@@ -524,6 +564,9 @@ export default function Viewer({
     setDrawer(null);
     setRightCollapsed(false);
   };
+  // Keep centre and zoom when the graph panel opens or closes. Skip the first run so it
+  // does not undo the fit to a dataset selected right at load (/app/viewer?dataset=…).
+  const layoutRef = useRef<string | null>(null);
   useEffect(() => {
     if (
       !map ||
@@ -531,6 +574,11 @@ export default function Viewer({
       typeof map.updateSize !== "function"
     )
       return;
+    const layout = `${graphExpanded}|${pixel ? 1 : 0}`;
+    const first = layoutRef.current === null;
+    const changed = layoutRef.current !== layout;
+    layoutRef.current = layout;
+    if (first || !changed) return;
     const view = map.getView();
     const center = view.getCenter()?.slice();
     const resolution = view.getResolution();
@@ -554,12 +602,33 @@ export default function Viewer({
     setJobState("completed");
   };
   const projectName = projects.find((item) => item.id === projectId)?.name;
+  // With personal pods on, the pill shows the user's own xcube; otherwise the main server.
+  const podLabel: Record<string, string> = {
+    READY: "내 시각화 서버 연결됨",
+    STARTING: "시각화 서버를 준비하고 있습니다",
+    ABSENT: "내 시각화 서버 없음 · 데이터를 추가하면 만들어집니다",
+    ERROR: "내 시각화 서버 오류",
+  };
   const connectionLabel =
     xcubeConnected === null
       ? "확인 중"
       : xcubeConnected
         ? "연결됨"
         : "연결 안 됨";
+  const statusText = podState ? podLabel[podState] ?? podState : `XCube Server ${connectionLabel}`;
+  const statusClass = podState
+    ? podState === "READY"
+      ? "is-online"
+      : podState === "ERROR"
+        ? "is-offline"
+        : podState === "STARTING"
+          ? "is-starting"
+          : ""
+    : xcubeConnected === false
+      ? "is-offline"
+      : xcubeConnected
+        ? "is-online"
+        : "";
   // Entry with datasets shows the bare map; the tour explains the screen instead.
   const emptyMessage = loading
     ? "데이터를 불러오는 중입니다…"
@@ -617,11 +686,12 @@ export default function Viewer({
         </div>
         <div className="vx-top__actions">
           <span
-            className={`vx-status ${xcubeConnected === false ? "is-offline" : xcubeConnected ? "is-online" : ""}`}
-            title={`시각화 서버 ${connectionLabel}`}
+            className={`vx-status ${statusClass}`}
+            title={statusText}
+            role="status"
           >
             <i aria-hidden="true" />
-            <span>XCube Server {connectionLabel}</span>
+            <span>{statusText}</span>
           </span>
           <span className="vx-divider" aria-hidden="true" />
           {/* Quick project actions stay in the Viewer; long tasks open the app pages in a new tab. */}

@@ -197,3 +197,26 @@ test('공유받은 프로젝트로만 연결된 Zarr는 아무 반응 없이 넘
   expect(await screen.findByRole('alert')).toHaveTextContent('공유받은 프로젝트를 통해서만 연결된 데이터라 아직 열 수 없습니다');
   expect(screen.queryByRole('region', { name: '시계열 탐색기' })).not.toBeInTheDocument();
 });
+
+test('M2: 소유자 Pod 주소(tileBaseUrl)가 있으면 그 주소에서 tile을 받는다', async () => {
+  const withPod = { id: '77', projectId: '4', name: '임의 데이터셋', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: 'u7-d62', defaultVariable: '', variables: [], times: [], tileBaseUrl: 'http://localhost:18007' };
+  mockAdapter.getDatasets.mockResolvedValue([withPod]);
+  mockBackoffice.getDatasetDetail.mockResolvedValue({ ...withPod, defaultVariable: 'red', variables: ['red'], times: [{ iso: '2026-05-01T00:00:00Z', label: '2026. 5. 1.' }], bbox: [126, 33, 127, 34] });
+  render(<Viewer />);
+  fireEvent.click(await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' }));
+  fireEvent.click(await screen.findByRole('option', { name: /임의 데이터셋/ }));
+  await waitFor(() => expect(mockBackoffice.tileUrl).toHaveBeenCalledWith('u7-d62', 'red', '2026-05-01T00:00:00Z', 'http://localhost:18007', undefined));
+});
+
+test('M2: 내 시각화 서버가 준비 중이면 알리고, 준비되면 연결됨으로 바꾼다', async () => {
+  jest.useFakeTimers();
+  const instance = jest.fn().mockResolvedValueOnce({ enabled: true, state: 'STARTING' }).mockResolvedValue({ enabled: true, state: 'READY' });
+  mockBackoffice.getMyXcubeInstance = instance;
+  render(<Viewer />);
+  expect(await screen.findByText('시각화 서버를 준비하고 있습니다')).toBeInTheDocument();
+  await act(async () => { jest.advanceTimersByTime(5000); });
+  expect(await screen.findByText('내 시각화 서버 연결됨')).toBeInTheDocument();
+  expect(instance).toHaveBeenCalledTimes(2);
+  delete (mockBackoffice as any).getMyXcubeInstance;
+  jest.useRealTimers();
+});

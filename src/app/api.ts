@@ -7,6 +7,9 @@ import { ColorBarOption, FileJobInput, GeeCollection, generationApi, GenerationJ
 
 export type { Project, ZarrDataset, ProjectMember };
 export type MemberRole = 'EDITOR' | 'VIEWER';
+/** "김철수 (kim)" when the server knows the name, otherwise "사용자 22". */
+export const memberLabel = (member: { userId: string; username?: string; name?: string }) =>
+  member.username ? (member.name && member.name !== member.username ? `${member.name} (${member.username})` : member.username) : `사용자 ${member.userId}`;
 
 const manage = useMockApi ? demoManagement : backofficeAdapter;
 
@@ -28,7 +31,7 @@ export const appApi = {
   linkDataset: (projectId: string, datasetId: string) => manage.linkProjectDataset(projectId, datasetId),
   unlinkDataset: (projectId: string, datasetId: string) => manage.unlinkProjectDataset(projectId, datasetId),
   members: (id: string): Promise<ProjectMember[]> => manage.getProjectMembers(id),
-  addMember: (id: string, input: { userId: string; role: MemberRole }) => manage.addProjectMember(id, input),
+  addMember: (id: string, input: { username: string; role: MemberRole }) => manage.addProjectMember(id, input),
   updateMember: (id: string, userId: string, role: MemberRole) => manage.updateProjectMember(id, userId, { role }),
   removeMember: (id: string, userId: string) => manage.removeProjectMember(id, userId),
 };

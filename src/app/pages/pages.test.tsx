@@ -52,25 +52,32 @@ beforeEach(() => {
 });
 
 describe('S6 프로젝트', () => {
-  test('OWNER는 멤버를 조회하고 숫자 사용자 ID로 추가한다', async () => {
-    backoffice.addProjectMember.mockResolvedValue({ userId: '33', role: 'EDITOR' });
+  test('OWNER는 상대 로그인 아이디로 멤버를 추가하고, 목록은 이름·아이디로 보여 준다', async () => {
+    backoffice.getProjectMembers.mockResolvedValue([{ userId: '1', role: 'OWNER' }, { userId: '22', role: 'VIEWER', username: 'kim', name: '김철수' }, { userId: '30', role: 'VIEWER' }]);
+    backoffice.addProjectMember.mockResolvedValue({ userId: '33', role: 'EDITOR', username: 'lee', name: '이영희' });
     renderAt('/app/projects/4');
     fireEvent.click(await screen.findByRole('tab', { name: '멤버' }));
-    expect(await screen.findByText('사용자 22')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('사용자 ID'), { target: { value: '33' } });
+    expect(await screen.findByText('김철수 (kim)')).toBeInTheDocument();
+    expect(screen.getByText('홍길동 (나)')).toBeInTheDocument();
+    expect(screen.getByText('사용자 30')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('상대 로그인 아이디'), { target: { value: ' lee ' } });
     fireEvent.change(screen.getByLabelText('권한'), { target: { value: 'EDITOR' } });
     fireEvent.click(screen.getByRole('button', { name: '멤버 추가' }));
-    await waitFor(() => expect(backoffice.addProjectMember).toHaveBeenCalledWith('4', { userId: '33', role: 'EDITOR' }));
-    expect(await screen.findByText('사용자 33')).toBeInTheDocument();
+    await waitFor(() => expect(backoffice.addProjectMember).toHaveBeenCalledWith('4', { username: 'lee', role: 'EDITOR' }));
+    expect(await screen.findByText('이영희 (lee)')).toBeInTheDocument();
+    expect(screen.getByText('이영희 (lee)님을 추가했습니다.')).toBeInTheDocument();
   });
 
-  test('숫자가 아닌 사용자 ID는 서버로 보내지 않는다', async () => {
+  test('없는 아이디와 빈 입력은 이유를 알려 준다', async () => {
+    backoffice.addProjectMember.mockRejectedValue(new ApiError(404, 'USER_NOT_FOUND', 'No user with that ID'));
     renderAt('/app/projects/4');
     fireEvent.click(await screen.findByRole('tab', { name: '멤버' }));
-    fireEvent.change(await screen.findByLabelText('사용자 ID'), { target: { value: '@kim' } });
-    fireEvent.click(screen.getByRole('button', { name: '멤버 추가' }));
-    expect(await screen.findByText('사용자 ID는 숫자로 입력해 주세요.')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: '멤버 추가' }));
+    expect(await screen.findByText('공유할 사람의 로그인 아이디를 입력하세요.')).toBeInTheDocument();
     expect(backoffice.addProjectMember).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('상대 로그인 아이디'), { target: { value: 'nobody' } });
+    fireEvent.click(screen.getByRole('button', { name: '멤버 추가' }));
+    expect(await screen.findByText(/해당 아이디의 사용자가 없습니다/)).toBeInTheDocument();
   });
 
   test('EDITOR는 편집만 할 수 있고 삭제·멤버 관리는 보이지 않는다', async () => {

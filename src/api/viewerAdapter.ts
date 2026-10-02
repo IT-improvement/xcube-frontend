@@ -1,7 +1,7 @@
 export type ProjectRole = 'OWNER' | 'EDITOR' | 'VIEWER';
 export type Project = { id: string; name: string; description?: string; createdAt?: string; updatedAt?: string; ownerUserId?: string; ownerUsername?: string; accessRole?: ProjectRole; canEdit?: boolean; canDelete?: boolean; canShare?: boolean };
 export type TimePoint = { iso: string; label: string };
-export type ZarrDataset = { id: string; projectId: string; projectName?: string; accessType?: 'OWNED' | 'SHARED'; name: string; subtitle: string; xcubeDatasetId: string; defaultVariable: string; variables: string[]; variableMetadata?: Record<string, { title?: string; units?: string }>; times: TimePoint[]; timeDimension?: string; bbox?: [number, number, number, number]; rgbAvailable?: boolean };
+export type ZarrDataset = { id: string; projectId: string; projectName?: string; accessType?: 'OWNED' | 'SHARED'; name: string; subtitle: string; xcubeDatasetId: string; defaultVariable: string; variables: string[]; variableMetadata?: Record<string, { title?: string; units?: string; colorBarName?: string; colorBarMin?: number; colorBarMax?: number }>; times: TimePoint[]; timeDimension?: string; bbox?: [number, number, number, number]; rgbAvailable?: boolean; /** xcube instance serving this dataset (the owner's pod, M2); absent = main server. */ tileBaseUrl?: string };
 export type AiJobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
 export type AiJob = { id: string; inputDatacubeId: string; outputDatacubeId?: string; outputType?: 'AI_RESULT' | 'INFER_ZARR'; status: AiJobStatus; period: string };
 export interface ViewerAdapter { getProjects(): Promise<Project[]>; getDatasets(projectId?: string): Promise<ZarrDataset[]>; getProjectDatasets?(projectId: string): Promise<ZarrDataset[]>; getJobs(datasetId: string): Promise<AiJob[]>; runWaterExtraction(datasetId: string, period: string): Promise<AiJob>; }
@@ -17,8 +17,8 @@ const datasets: ZarrDataset[] = [
 ];
 const jobs: AiJob[] = [{ id: '024', inputDatacubeId: 'landsat', outputDatacubeId: 'landsat-infer-024', outputType: 'INFER_ZARR', status: 'SUCCEEDED', period: '전체 기간' }, { id: '023', inputDatacubeId: 'landsat', outputDatacubeId: 'landsat-infer-023', outputType: 'AI_RESULT', status: 'SUCCEEDED', period: '현재 시점' }];
 
-type DemoMember = { userId: string; role: ProjectRole; createdAt?: string };
-const members: Record<string, DemoMember[]> = { 'han-river': [{ userId: '1', role: 'OWNER' }, { userId: '22', role: 'VIEWER', createdAt: '2025-09-01T00:00:00Z' }] };
+type DemoMember = { userId: string; role: ProjectRole; createdAt?: string; username?: string; name?: string };
+const members: Record<string, DemoMember[]> = { 'han-river': [{ userId: '1', role: 'OWNER' }, { userId: '22', role: 'VIEWER', createdAt: '2025-09-01T00:00:00Z', username: 'kim', name: '김철수' }] };
 const links: Record<string, string[]> = Object.fromEntries(projects.map((project) => [project.id, datasets.filter((item) => item.projectId === project.id).map((item) => item.id)]));
 const notFound = () => Object.assign(new Error('대상을 찾을 수 없습니다.'), { status: 404 });
 
@@ -34,7 +34,16 @@ export const demoManagement = {
   async unlinkProjectDataset(projectId: string, datasetId: string) { await pause(); links[projectId] = (links[projectId] ?? []).filter((id) => id !== datasetId); },
   async getDatasetDetail(id: string) { await pause(); const item = datasets.find((dataset) => dataset.id === id); if (!item) throw notFound(); return { ...item, projectName: projects.find((project) => project.id === item.projectId)?.name, bbox: item.bbox ?? [128.6, 35.3, 129.3, 35.7] as [number, number, number, number] }; },
   async getProjectMembers(id: string) { await pause(); return [...(members[id] ?? [{ userId: '1', role: 'OWNER' as ProjectRole }])]; },
-  async addProjectMember(id: string, input: { userId: string; role: 'EDITOR' | 'VIEWER' }) { await pause(); const member = { ...input, createdAt: new Date().toISOString() }; members[id] = [...(members[id] ?? [{ userId: '1', role: 'OWNER' }]).filter((item) => item.userId !== input.userId), member]; return member; },
+  async addProjectMember(id: string, input: { username: string; role: 'EDITOR' | 'VIEWER' } | { userId: string; role: 'EDITOR' | 'VIEWER' }) {
+    await pause();
+    // Demo directory: any login ID except "nobody" resolves to a stable fake user.
+    const username = 'username' in input ? input.username.trim().toLowerCase() : undefined;
+    if (username === 'nobody' || username === '') throw Object.assign(new Error('해당 아이디의 사용자가 없습니다.'), { status: 404 });
+    const userId = 'userId' in input ? input.userId : String(100 + (username ?? '').split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % 900);
+    const member: DemoMember = { userId, role: input.role, createdAt: new Date().toISOString(), username, name: username };
+    members[id] = [...(members[id] ?? [{ userId: '1', role: 'OWNER' }]).filter((item) => item.userId !== userId), member];
+    return member;
+  },
   async updateProjectMember(id: string, userId: string, input: { role: 'EDITOR' | 'VIEWER' }) { await pause(); const list = members[id] ?? []; const member = list.find((item) => item.userId === userId); if (!member) throw notFound(); member.role = input.role; return { ...member }; },
   async removeProjectMember(id: string, userId: string) { await pause(); members[id] = (members[id] ?? []).filter((item) => item.userId !== userId); },
 };

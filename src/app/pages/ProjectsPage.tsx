@@ -4,7 +4,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { userMessage } from '../../api/httpClient';
 import { Alert, Button, TextField } from '../../components/ui';
 import { Badge, Card, Dialog, EmptyState, PageHeader, Skeleton, Tabs, useToast } from '../../components/ui/kit';
-import { appApi, canEditProject, formatDate, isOwned, MemberRole, Project, ProjectMember, roleLabel, viewerHref, ZarrDataset } from '../api';
+import { useAuth } from '../../auth/AuthProvider';
+import { appApi, canEditProject, formatDate, isOwned, memberLabel, MemberRole, Project, ProjectMember, roleLabel, viewerHref, ZarrDataset } from '../api';
 import { useLoad } from '../useLoad';
 import { DatasetStatus } from './DataLibraryPage';
 
@@ -267,22 +268,29 @@ function LinkDatasetDialog({ linkedIds, onClose, onLink }: { linkedIds: string[]
 
 function ProjectMembers({ project, owner, onToast }: { project: Project; owner: boolean; onToast: (text: string) => void }) {
   const members = useLoad<ProjectMember[]>(() => (owner ? appApi.members(project.id) : Promise.resolve([])), [project.id, owner]);
-  const [userId, setUserId] = useState('');
+  const { user } = useAuth();
+  const [username, setUsername] = useState('');
   const [role, setRole] = useState<MemberRole>('VIEWER');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   if (!owner) return <EmptyState icon={<Lock size={22} />} title="소유자만 멤버를 관리할 수 있습니다" text="멤버 추가와 권한 변경은 프로젝트 소유자에게 요청하세요." />;
   const add = async (event: FormEvent) => {
     event.preventDefault();
-    if (!/^\d+$/.test(userId.trim())) { setError('사용자 ID는 숫자로 입력해 주세요.'); return; }
+    if (!username.trim()) { setError('공유할 사람의 로그인 아이디를 입력하세요.'); return; }
     setBusy(true);
     setError('');
     try {
-      const member = await appApi.addMember(project.id, { userId: userId.trim(), role });
-      members.setData((items) => [...(items ?? []).filter((item) => item.userId !== member.userId), member as ProjectMember]);
-      setUserId('');
-      onToast('멤버를 추가했습니다.');
-    } catch (cause) { setError(userMessage(cause)); } finally { setBusy(false); }
+      const member = await appApi.addMember(project.id, { username: username.trim(), role }) as ProjectMember;
+      members.setData((items) => [...(items ?? []).filter((item) => item.userId !== member.userId), member]);
+      setUsername('');
+      onToast(`${memberLabel(member)}님을 추가했습니다.`);
+    } catch (cause) {
+      const status = (cause as { status?: number })?.status;
+      setError(status === 404 ? '해당 아이디의 사용자가 없습니다. 아이디를 정확히 입력했는지 확인하세요.'
+        : status === 429 ? '조회가 너무 많습니다. 1분 뒤 다시 시도하세요.'
+        : status === 503 ? '사용자 조회 서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.'
+        : userMessage(cause));
+    } finally { setBusy(false); }
   };
   const change = async (member: ProjectMember, next: MemberRole) => {
     setError('');
@@ -293,7 +301,7 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
     } catch (cause) { setError(userMessage(cause)); }
   };
   const remove = async (member: ProjectMember) => {
-    if (!window.confirm(`사용자 ${member.userId}의 프로젝트 접근 권한을 제거할까요?`)) return;
+    if (!window.confirm(`${memberLabel(member)}의 프로젝트 접근 권한을 제거할까요?`)) return;
     setError('');
     try {
       await appApi.removeMember(project.id, member.userId);
@@ -305,7 +313,7 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
   return (
     <>
       <form className="member-form" onSubmit={add}>
-        <TextField label="사용자 ID" help="사용자 검색이 준비될 때까지 숫자 ID로 추가합니다." value={userId} inputMode="numeric" placeholder="숫자 사용자 ID" onChange={(event) => setUserId(event.target.value)} />
+        <TextField label="상대 로그인 아이디" help="상대가 로그인할 때 쓰는 아이디를 정확히 입력하세요." value={username} autoComplete="off" placeholder="예: kim" maxLength={150} onChange={(event) => setUsername(event.target.value)} />
         <label className="xc-field">
           <span className="xc-label">권한</span>
           <select className="xc-select" value={role} onChange={(event) => setRole(event.target.value as MemberRole)}>
@@ -325,15 +333,15 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
             <tbody>
               {items.map((member) => (
                 <tr key={member.userId}>
-                  <td><strong>사용자 {member.userId}</strong></td>
+                  <td><strong>{member.role === 'OWNER' && String(user?.id) === member.userId ? `${user?.name ?? '나'} (나)` : memberLabel(member)}</strong></td>
                   <td>{member.role === 'OWNER' ? <RoleBadge role="OWNER" /> : (
-                    <select className="xc-select" style={{ width: 110, height: 34 }} aria-label={`사용자 ${member.userId} 권한`} value={member.role} onChange={(event) => change(member, event.target.value as MemberRole)}>
+                    <select className="xc-select" style={{ width: 110, height: 34 }} aria-label={`${memberLabel(member)} 권한`} value={member.role} onChange={(event) => change(member, event.target.value as MemberRole)}>
                       <option value="VIEWER">보기</option>
                       <option value="EDITOR">편집</option>
                     </select>
                   )}</td>
                   <td className="hide-sm">{formatDate(member.createdAt)}</td>
-                  <td className="num">{member.role !== 'OWNER' && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => remove(member)} aria-label={`사용자 ${member.userId} 제거`}>제거</button>}</td>
+                  <td className="num">{member.role !== 'OWNER' && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => remove(member)} aria-label={`${memberLabel(member)} 제거`}>제거</button>}</td>
                 </tr>
               ))}
               {!items.length && <tr><td colSpan={4} className="xc-hint">아직 공유한 사용자가 없습니다.</td></tr>}
