@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Button, ButtonAnchor, ButtonLink } from '../../components/ui';
 import { Badge, Card, EmptyState, PageHeader, Skeleton, Tabs, useToast } from '../../components/ui/kit';
-import { appApi, isOwned, periodLabel, viewerHref, ZarrDataset } from '../api';
+import { appApi, formatDate, generation, isOwned, periodLabel, viewerHref, ZarrDataset } from '../api';
+import { elapsed, JOB_TYPE_LABEL, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
 import { useLoad } from '../useLoad';
 import { DatasetStatus, DeleteDatasetDialog, LinkProjectDialog } from './DataLibraryPage';
 
@@ -121,7 +122,7 @@ export default function DatasetDetailPage() {
               </table>
             </div>
           ) : <EmptyState title="변수 정보가 없습니다" text="시각화 서버 동기화가 끝나면 표시됩니다." />)}
-          {tab === 'history' && <EmptyState title="생성 이력을 준비하고 있습니다" text="생성 방식과 입력값은 생성 작업 API(M1)가 연결되면 표시됩니다." />}
+          {tab === 'history' && <GenerationHistory jobId={item.generationJobId} />}
           {tab === 'ai' && <AiResults datasetId={item.id} />}
           {tab === 'projects' && (
             <div style={{ padding: 20, display: 'grid', gap: 12 }}>
@@ -135,6 +136,28 @@ export default function DatasetDetailPage() {
       {deleting && <DeleteDatasetDialog dataset={item} onClose={() => setDeleting(false)} onDeleted={() => navigate('/app/data', { replace: true })} />}
       {linking && <LinkProjectDialog dataset={item} onClose={() => setLinking(false)} onLinked={(project) => { setLinking(false); toast.show(`“${project.name}” 프로젝트에 연결했습니다.`); }} />}
       {toast.node}
+    </div>
+  );
+}
+
+/** 생성 이력: the job that produced this dataset — method, inputs, variables with colour range, steps. */
+function GenerationHistory({ jobId }: { jobId?: string }) {
+  const job = useLoad(() => (jobId ? generation.jobSummary(jobId) : Promise.resolve(null)), [jobId]);
+  if (!jobId) return <EmptyState title="생성 이력이 없습니다" text="이 데이터는 생성 작업이 아니라 경로 등록이나 기존 설정으로 추가되었습니다." />;
+  if (job.loading) return <Skeleton lines={4} label="생성 이력을 불러오는 중" />;
+  if (job.error || !job.data) return <div className="inline-error"><Alert tone="danger">생성 이력을 불러오지 못했습니다. {job.error}</Alert></div>;
+  const data = job.data;
+  return (
+    <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+      <dl className="meta-list" style={{ padding: 0 }}>
+        <dt>생성 방식</dt><dd>{JOB_TYPE_LABEL[data.type] ?? data.type}</dd>
+        <dt>상태</dt><dd><JobStatusBadge job={data} /></dd>
+        <dt>요청일</dt><dd>{formatDate(data.createdAt)}</dd>
+        <dt>소요 시간</dt><dd className="tabular">{elapsed(data)}</dd>
+      </dl>
+      <JobSteps job={data} />
+      <JobInputSummary job={data} />
+      <div><Link className="xc-btn xc-btn--secondary xc-btn--sm" to="/app/jobs">작업 센터에서 보기</Link></div>
     </div>
   );
 }
