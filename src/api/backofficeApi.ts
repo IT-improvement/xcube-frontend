@@ -10,7 +10,11 @@ type DatacubeDto = { datacubeId: number; id?: number; projectId?: number | null;
 type DatasetSummaryDto = { datacubeId: number; xcubeDatasetId: string; ownerUserId: number; accessType: 'OWNED' | 'SHARED'; projectId?: number; projectName?: string; name: string; kind: string; integrationStatus: string; availabilityStatus: string; lastSyncedAt?: string; bbox?: number[]; time?: { dimension?: string; start?: string; end?: string; coordinates?: string[] }; variables?: Array<{ name: string; title?: string; units?: string }>; defaultVariable?: string; rgbAvailable?: boolean; rgbSchema?: unknown };
 type DatasetDetailDto = DatasetSummaryDto & { linkedSuccessfulInferResults?: Array<{ datacubeId: number; xcubeDatasetId: string; name: string; status: string }> };
 export type SeriesPoint = { time: string; value: number | null };
-export type ProjectMember = { userId: string; role: 'OWNER' | 'EDITOR' | 'VIEWER'; sharedByUserId?: string; createdAt?: string };
+export type ProjectMember = { userId: string; role: 'OWNER' | 'EDITOR' | 'VIEWER'; sharedByUserId?: string; createdAt?: string; username?: string; name?: string };
+/** Share target: the other person's login ID (UR-32); a numeric userId is still accepted by the server. */
+export type MemberTarget = { username: string; role: 'EDITOR' | 'VIEWER' } | { userId: string; role: 'EDITOR' | 'VIEWER' };
+type MemberDto = { userId: number; role: 'OWNER' | 'EDITOR' | 'VIEWER'; sharedByUserId?: number; createdAt?: string; username?: string | null; name?: string | null };
+const toMember = (item: MemberDto): ProjectMember => ({ userId: String(item.userId), role: item.role, sharedByUserId: item.sharedByUserId == null ? undefined : String(item.sharedByUserId), createdAt: item.createdAt, username: item.username ?? undefined, name: item.name ?? undefined });
 const toProject = (item: ProjectDto): Project => ({ id: String(item.id), name: item.name, description: item.description, createdAt: item.createdAt, updatedAt: item.updatedAt, ownerUserId: item.ownerUserId == null ? undefined : String(item.ownerUserId), ownerUsername: item.ownerUsername, accessRole: item.accessRole, canEdit: item.canEdit, canDelete: item.canDelete, canShare: item.canShare });
 
 const timesFrom = (dto: DatacubeDto | DatasetDetailDto): TimePoint[] => {
@@ -33,7 +37,7 @@ export const backofficeAdapter: ViewerAdapter & {
   updateProject(id: string, input: { name: string; description?: string }): Promise<Project>;
   deleteProject(id: string): Promise<void>;
   getProjectMembers(id: string): Promise<ProjectMember[]>;
-  addProjectMember(id: string, input: { userId: string; role: 'EDITOR' | 'VIEWER' }): Promise<ProjectMember>;
+  addProjectMember(id: string, input: MemberTarget): Promise<ProjectMember>;
   updateProjectMember(id: string, userId: string, input: { role: 'EDITOR' | 'VIEWER' }): Promise<ProjectMember>;
   removeProjectMember(id: string, userId: string): Promise<void>;
   registerDatacube(input: { name: string; storageUri?: string; metadata?: Record<string, unknown> }): Promise<ZarrDataset>;
@@ -55,9 +59,9 @@ export const backofficeAdapter: ViewerAdapter & {
   async getProject(id) { return toProject(await request<ProjectDto>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}`)); },
   async updateProject(id, input) { return toProject(await request<ProjectDto>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) })); },
   async deleteProject(id) { await request<void>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
-  async getProjectMembers(id) { const items = await request<Array<{ userId: number; role: 'OWNER' | 'EDITOR' | 'VIEWER'; sharedByUserId?: number; createdAt?: string }>>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}/members`); return items.map((item) => ({ ...item, userId: String(item.userId), sharedByUserId: item.sharedByUserId == null ? undefined : String(item.sharedByUserId) })); },
-  async addProjectMember(id, input) { const item = await request<{ userId: number; role: 'EDITOR' | 'VIEWER'; sharedByUserId?: number; createdAt?: string }>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}/members`, { method: 'POST', body: JSON.stringify({ userId: Number(input.userId), role: input.role }) }); return { ...item, userId: String(item.userId), sharedByUserId: item.sharedByUserId == null ? undefined : String(item.sharedByUserId) }; },
-  async updateProjectMember(id, userId, input) { const item = await request<{ userId: number; role: 'EDITOR' | 'VIEWER'; sharedByUserId?: number; createdAt?: string }>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, { method: 'PATCH', body: JSON.stringify(input) }); return { ...item, userId: String(item.userId), sharedByUserId: item.sharedByUserId == null ? undefined : String(item.sharedByUserId) }; },
+  async getProjectMembers(id) { const items = await request<MemberDto[]>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}/members`); return items.map(toMember); },
+  async addProjectMember(id, input) { const body = 'username' in input ? { username: input.username.trim(), role: input.role } : { userId: Number(input.userId), role: input.role }; return toMember(await request<MemberDto>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}/members`, { method: 'POST', body: JSON.stringify(body) })); },
+  async updateProjectMember(id, userId, input) { return toMember(await request<MemberDto>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, { method: 'PATCH', body: JSON.stringify(input) })); },
   async removeProjectMember(id, userId) { await request<void>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' }); },
   async getDatasets(projectId) { const path = projectId ? `/api/v1/datasets?scope=all&page=0&size=100&projectId=${encodeURIComponent(projectId)}` : '/api/v1/datasets?scope=all&page=0&size=100'; const page = await request<CatalogPage<DatasetSummaryDto>>(BACKOFFICE_API_BASE_URL, path); return page.content.filter((item) => item.kind === 'ORIGINAL' && (!projectId || item.projectId === Number(projectId))).map(summaryToDataset); },
   async getProjectDatasets(projectId) { const page = await request<SpringPage<DatacubeDto>>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(projectId)}/datacubes?page=0&size=100`); return page.content.filter((item) => item.kind === 'ORIGINAL').map((item) => toDataset(item, projectId)); },
