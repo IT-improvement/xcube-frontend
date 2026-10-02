@@ -1,6 +1,6 @@
 /* SVG path/cursor geometry is part of the Viewer regression baseline. */
 /* eslint-disable testing-library/no-node-access */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import Viewer from '.';
 import { viewerAdapter } from '../../api/viewerAdapter';
@@ -137,16 +137,52 @@ test('레이어 패널은 기본 접힘이며 열기와 닫기를 반복할 수 
   expect(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' })).toBeInTheDocument();
 });
 
-test('프로젝트 관리에서 개요·접근 권한·Zarr를 탐색한다', async () => {
+test('데이터 추가는 관리 화면을 새 탭으로 연다', async () => {
+  render(<Viewer />);
+  await screen.findByRole('option', { name: '한강 수체 모니터링' });
+  const add = screen.getByRole('link', { name: 'Zarr 업로드 또는 생성' });
+  expect(add).toHaveAttribute('href', '/app/data/new');
+  expect(add).toHaveAttribute('target', '_blank');
+});
+
+test('프로젝트 버튼의 작은 창에서 새 프로젝트를 만들고 바로 전환한다', async () => {
   render(<Viewer />);
   await screen.findByRole('option', { name: '한강 수체 모니터링' });
   fireEvent.click(screen.getByRole('button', { name: '프로젝트 관리' }));
-  expect(screen.getByRole('dialog', { name: '프로젝트' })).toBeInTheDocument();
-  expect(screen.getAllByRole('option', { name: /한강 수체 모니터링/ }).find((item) => item.tagName === 'BUTTON')).toHaveAttribute('aria-selected', 'true');
-  expect(screen.getByRole('button', { name: '편집' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('tab', { name: '접근 권한' }));
-  expect(screen.getByText('데모 모드에서는 공유 관리를 사용할 수 없습니다.')).toBeInTheDocument();
-  expect(screen.getByPlaceholderText('숫자 사용자 ID')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('tab', { name: 'Zarr' }));
-  expect(await screen.findByRole('button', { name: /Sentinel-2/ })).toBeInTheDocument();
+  const panel = screen.getByRole('dialog', { name: '프로젝트 작업' });
+  expect(within(panel).getByText('프로젝트 없음')).toBeInTheDocument();
+  expect(within(panel).getByRole('button', { name: /지금 보는 데이터를 이 프로젝트에 추가/ })).toBeDisabled();
+  expect(within(panel).getByText('지도에 데이터셋을 먼저 고르세요.')).toBeInTheDocument();
+  expect(within(panel).getByRole('link', { name: /프로젝트 관리 열기/ })).toHaveAttribute('target', '_blank');
+  fireEvent.click(within(panel).getByRole('button', { name: /새 프로젝트 만들기/ }));
+  fireEvent.click(within(panel).getByRole('button', { name: '만들기' }));
+  expect(within(panel).getByRole('alert')).toHaveTextContent('프로젝트 이름을 입력하세요.');
+  fireEvent.change(within(panel).getByLabelText('프로젝트 이름'), { target: { value: '새 수체 프로젝트' } });
+  fireEvent.click(within(panel).getByRole('button', { name: '만들기' }));
+  expect(await screen.findByText('“새 수체 프로젝트” 프로젝트를 만들었습니다.')).toBeInTheDocument();
+  expect(screen.queryByRole('dialog', { name: '프로젝트 작업' })).not.toBeInTheDocument();
+  expect((screen.getByRole('combobox', { name: '프로젝트 선택' }) as HTMLSelectElement).selectedOptions[0]).toHaveTextContent('새 수체 프로젝트');
+});
+
+test('지금 보는 데이터를 선택한 프로젝트에 추가하고, 이미 있으면 막는다', async () => {
+  render(<Viewer />);
+  fireEvent.click(await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' }));
+  fireEvent.click(await screen.findByRole('option', { name: /Sentinel-2/ }));
+  fireEvent.change(screen.getByRole('combobox', { name: '프로젝트 선택' }), { target: { value: 'nakdong-river' } });
+  await screen.findByRole('region', { name: '현재 프로젝트의 Zarr 데이터큐브' });
+  fireEvent.click(screen.getByRole('button', { name: '프로젝트 관리' }));
+  const add = within(screen.getByRole('dialog', { name: '프로젝트 작업' })).getByRole('button', { name: /지금 보는 데이터를 이 프로젝트에 추가/ });
+  await waitFor(() => expect(add).toBeEnabled());
+  fireEvent.click(add);
+  expect(await screen.findByText('“Sentinel-2 · 2025”을 “낙동강 변화 분석”에 추가했습니다.')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '프로젝트 관리' }));
+  expect(within(screen.getByRole('dialog', { name: '프로젝트 작업' })).getByText('이미 이 프로젝트에 있는 데이터입니다.')).toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole('dialog', { name: '프로젝트 작업' }), { key: 'Escape' });
+  expect(screen.queryByRole('dialog', { name: '프로젝트 작업' })).not.toBeInTheDocument();
+});
+
+test('주소로 받은 데이터셋을 목록을 불러온 뒤 한 번 선택한다', async () => {
+  render(<Viewer initialDatasetId="landsat" />);
+  expect(await screen.findByRole('region', { name: '시계열 탐색기' })).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: '데이터 또는 Zarr 선택' })).toHaveTextContent('Landsat-8');
 });

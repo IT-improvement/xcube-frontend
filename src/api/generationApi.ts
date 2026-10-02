@@ -7,7 +7,14 @@ export type GenerationJob = { id: string | number; status: 'QUEUED' | 'RUNNING' 
 export type BandStyle = { variable: string; colorBar: string; valueMin: number; valueMax: number };
 export type RgbStyle = { red: { variable: string; valueMin: number; valueMax: number }; green: { variable: string; valueMin: number; valueMax: number }; blue: { variable: string; valueMin: number; valueMax: number } };
 export type ColorBarOption = { id: string; category?: string; preview?: string };
-export type SpatialInspection = { sourceType: 'GEOTIFF' | 'SHAPEFILE' | 'CAS500'; fileName: string; bands: string[]; bounds: { west: number; south: number; east: number; north: number } | null; width?: number; height?: number; files: string[]; message: string };
+export type ValueStats = { min: number; max: number; p2?: number; p98?: number };
+/** Band or attribute details from the inspect API (FR-GEN-10·11). Older servers send only `bands`. */
+export type InspectionField = { name: string; type?: 'integer' | 'real' | 'string'; approxStats?: ValueStats; categories?: Array<{ value: string | number; count: number }> };
+export type FileInput = { kind?: string; uri?: string; path?: string; fileName?: string; [key: string]: unknown };
+export type SpatialInspection = { sourceType: 'GEOTIFF' | 'SHAPEFILE' | 'CAS500'; fileName: string; bands: string[]; fields?: InspectionField[]; bounds: { west: number; south: number; east: number; north: number } | null; width?: number; height?: number; files: string[]; message: string; inputs?: FileInput[] };
+/** One output variable of a generation job: only selected bands/attributes become Zarr variables. */
+export type VariableSpec = { source: string; name: string; kind: 'continuous' | 'categorical'; style: { colorBar: string; min?: number; max?: number } };
+export type FileJobInput = { type: 'GEOTIFF_BANDS' | 'CAS500' | 'SHAPEFILE'; name: string; inputs: FileInput[]; variables: VariableSpec[]; params?: Record<string, unknown>; projectId?: string };
 
 export const generationApi = {
   async getCollections(): Promise<GeeCollection[]> {
@@ -25,6 +32,12 @@ export const generationApi = {
   },
   createGeeJob(input: { name: string; collectionId: string; bands: string[]; startDate: string; endDate: string; maxCloudPercent: number; bounds: { west: number; south: number; east: number; north: number }; scaleMeters: number; bandStyles: BandStyle[]; rgbStyle?: RgbStyle }) {
     return request<GenerationJob>(GENERATION_API_BASE_URL, '/api/v1/generation-jobs/gee', { method: 'POST', body: JSON.stringify(input) });
+  },
+  createFileJob(input: FileJobInput) {
+    return request<GenerationJob>(GENERATION_API_BASE_URL, '/api/v1/generation-jobs/files', { method: 'POST', body: JSON.stringify(input) });
+  },
+  getJob(id: string | number) {
+    return request<GenerationJob>(GENERATION_API_BASE_URL, `/api/v1/generation-jobs/${encodeURIComponent(String(id))}`);
   },
   async inspectSpatialFile(type: 'geotiff' | 'shapefile' | 'cas500', file: File): Promise<SpatialInspection> {
     const data = new FormData(); data.append('file', file);
