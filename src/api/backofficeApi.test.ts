@@ -32,6 +32,8 @@ test('coordinates, legend, statistics 경로가 Backend proxy를 향한다', asy
   expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8082/api/v1/datasets/12/coordinates/time');
   expect(backofficeAdapter.legendUrl('12', 'red')).toBe('http://localhost:8082/api/v1/datasets/12/legend/red');
   expect(backofficeAdapter.tileUrl('12', 'red', '2025-01-01')).toBe('http://localhost:8080/tiles/12/red/{z}/{y}/{x}?crs=EPSG%3A3857&format=png&time=2025-01-01');
+  expect(backofficeAdapter.tileUrl('u7-d62', 'red', undefined, 'http://localhost:18007/')).toBe('http://localhost:18007/tiles/u7-d62/red/{z}/{y}/{x}?crs=EPSG%3A3857&format=png');
+  expect(backofficeAdapter.tileUrl('u7-d62', 'nir', undefined, undefined, { cmap: 'viridis', vmin: 600, vmax: 2400 })).toBe('http://localhost:8080/tiles/u7-d62/nir/{z}/{y}/{x}?crs=EPSG%3A3857&format=png&cmap=viridis&vmin=600&vmax=2400');
 });
 
 test('프로젝트 목록·상세·수정·삭제가 실제 CRUD endpoint와 DTO를 사용한다', async () => {

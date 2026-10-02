@@ -7,9 +7,12 @@ type CatalogPage<T> = { content: T[]; page: number; size: number; totalElements:
 type ProjectDto = { id: number; name: string; description?: string; createdAt: string; updatedAt: string; ownerUserId?: number; ownerUsername?: string; accessRole?: 'OWNER' | 'EDITOR' | 'VIEWER'; canEdit?: boolean; canDelete?: boolean; canShare?: boolean };
 type InferLink = { id: number; name: string; status: string; storageUri?: string };
 type DatacubeDto = { datacubeId: number; id?: number; projectId?: number | null; name: string; kind: 'ORIGINAL' | 'AI_RESULT'; status: string; sourceDatacubeId?: number; timeCoordinateName?: string; timeStart?: string; timeEnd?: string; metadata?: Record<string, any>; xcubeDatasetId?: string; linkedSuccessfulInferResults?: InferLink[] };
-type DatasetSummaryDto = { datacubeId: number; xcubeDatasetId: string; ownerUserId: number; accessType: 'OWNED' | 'SHARED'; projectId?: number; projectName?: string; name: string; kind: string; integrationStatus: string; availabilityStatus: string; lastSyncedAt?: string; bbox?: number[]; time?: { dimension?: string; start?: string; end?: string; coordinates?: string[] }; variables?: Array<{ name: string; title?: string; units?: string }>; defaultVariable?: string; rgbAvailable?: boolean; rgbSchema?: unknown };
+type DatasetSummaryDto = { datacubeId: number; xcubeDatasetId: string; ownerUserId: number; accessType: 'OWNED' | 'SHARED'; projectId?: number; projectName?: string; name: string; kind: string; integrationStatus: string; availabilityStatus: string; lastSyncedAt?: string; bbox?: number[]; time?: { dimension?: string; start?: string; end?: string; coordinates?: string[] }; variables?: Array<{ name: string; title?: string; units?: string; colorBarName?: string; colorBarMin?: number; colorBarMax?: number }>; defaultVariable?: string; rgbAvailable?: boolean; rgbSchema?: unknown; tileBaseUrl?: string | null };
 type DatasetDetailDto = DatasetSummaryDto & { linkedSuccessfulInferResults?: Array<{ datacubeId: number; xcubeDatasetId: string; name: string; status: string }> };
 export type SeriesPoint = { time: string; value: number | null };
+export type TileStyle = { cmap?: string; vmin?: number; vmax?: number };
+/** The signed-in user's personal xcube pod (M2). state: DISABLED | ABSENT | STARTING | READY | ERROR */
+export type XcubeInstance = { enabled: boolean; state: string; url?: string | null; lastError?: string | null };
 export type ProjectMember = { userId: string; role: 'OWNER' | 'EDITOR' | 'VIEWER'; sharedByUserId?: string; createdAt?: string; username?: string; name?: string };
 /** Share target: the other person's login ID (UR-32); a numeric userId is still accepted by the server. */
 export type MemberTarget = { username: string; role: 'EDITOR' | 'VIEWER' } | { userId: string; role: 'EDITOR' | 'VIEWER' };
@@ -23,7 +26,7 @@ const timesFrom = (dto: DatacubeDto | DatasetDetailDto): TimePoint[] => {
   return [];
 };
 const toDataset = (dto: DatacubeDto, projectId = dto.projectId == null ? '' : String(dto.projectId)): ZarrDataset => ({ id: String(dto.datacubeId ?? dto.id), projectId, name: dto.name, subtitle: dto.status, xcubeDatasetId: dto.xcubeDatasetId ?? '', defaultVariable: String(dto.metadata?.defaultVariable ?? dto.metadata?.variables?.[0] ?? ''), variables: Array.isArray(dto.metadata?.variables) ? dto.metadata!.variables : [], times: timesFrom(dto) });
-const summaryToDataset = (dto: DatasetSummaryDto): ZarrDataset => ({ id: String(dto.datacubeId), projectId: dto.projectId == null ? '' : String(dto.projectId), projectName: dto.projectName, accessType: dto.accessType, name: dto.name, subtitle: `${dto.integrationStatus} · ${dto.availabilityStatus}`, xcubeDatasetId: dto.xcubeDatasetId, defaultVariable: dto.defaultVariable ?? dto.variables?.[0]?.name ?? '', variables: dto.variables?.map((item) => item.name) ?? [], variableMetadata: Object.fromEntries((dto.variables ?? []).map((item) => [item.name, { title: item.title, units: item.units }])), times: timesFrom(dto), timeDimension: dto.time?.dimension ?? 'time', bbox: dto.bbox?.length === 4 ? dto.bbox as [number, number, number, number] : undefined, rgbAvailable: dto.rgbAvailable });
+const summaryToDataset = (dto: DatasetSummaryDto): ZarrDataset => ({ id: String(dto.datacubeId), projectId: dto.projectId == null ? '' : String(dto.projectId), projectName: dto.projectName, accessType: dto.accessType, name: dto.name, subtitle: `${dto.integrationStatus} · ${dto.availabilityStatus}`, xcubeDatasetId: dto.xcubeDatasetId, defaultVariable: dto.defaultVariable ?? dto.variables?.[0]?.name ?? '', variables: dto.variables?.map((item) => item.name) ?? [], variableMetadata: Object.fromEntries((dto.variables ?? []).map((item) => [item.name, { title: item.title, units: item.units, colorBarName: item.colorBarName, colorBarMin: item.colorBarMin, colorBarMax: item.colorBarMax }])), times: timesFrom(dto), timeDimension: dto.time?.dimension ?? 'time', bbox: dto.bbox?.length === 4 ? dto.bbox as [number, number, number, number] : undefined, rgbAvailable: dto.rgbAvailable, tileBaseUrl: dto.tileBaseUrl ?? undefined });
 function parseSeries(body: any): SeriesPoint[] {
   const candidates = body?.points ?? body?.series ?? body?.results ?? body?.result;
   if (Array.isArray(candidates)) return candidates.map((item: any) => ({ time: String(item.time ?? item.date ?? item.timestamp ?? ''), value: typeof item.value === 'number' ? item.value : null }));
@@ -46,7 +49,8 @@ export const backofficeAdapter: ViewerAdapter & {
   linkProjectDataset(projectId: string, datasetId: string): Promise<void>;
   unlinkProjectDataset(projectId: string, datasetId: string): Promise<void>;
   getDatasetDetail(id: string): Promise<ZarrDataset>;
-  tileUrl(id: string, variable: string, time?: string): string;
+  tileUrl(id: string, variable: string, time?: string, baseUrl?: string, style?: TileStyle): string;
+  getMyXcubeInstance(): Promise<XcubeInstance>;
   legendUrl(id: string, variable: string): string;
   getLegend(id: string, variable: string): Promise<Blob>;
   getCoordinates(id: string, dimension: string): Promise<{ name?: string; size?: number; dtype?: string; coordinates?: string[] }>;
@@ -74,7 +78,10 @@ export const backofficeAdapter: ViewerAdapter & {
   async getJobs(datasetId) { const dto = await request<DatasetDetailDto>(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${datasetId}`); return (dto.linkedSuccessfulInferResults ?? []).map<AiJob>((item) => ({ id: String(item.datacubeId), inputDatacubeId: datasetId, outputDatacubeId: String(item.datacubeId), outputType: 'INFER_ZARR', status: item.status === 'READY' ? 'SUCCEEDED' : 'RUNNING', period: 'Backend 결과' })); },
   async runWaterExtraction() { throw new Error('AI_EXECUTION_API_UNAVAILABLE'); },
   // Raster tiles are served directly by the official XCube Server.
-  tileUrl(id, variable, time) { const params = new URLSearchParams({ crs: 'EPSG:3857', format: 'png', ...(time ? { time } : {}) }); return `${XCUBE_API_BASE_URL}/tiles/${encodeURIComponent(id)}/${encodeURIComponent(variable)}/{z}/{y}/{x}?${params}`; },
+  // Tiles come straight from the xcube instance that serves the dataset: the owner's pod (tileBaseUrl) or the main server.
+  // xcube's /tiles endpoint ignores the config Style range and assumes 0-1, so the variable's colour bar and range are sent explicitly.
+  tileUrl(id, variable, time, baseUrl, style) { const params = new URLSearchParams({ crs: 'EPSG:3857', format: 'png', ...(time ? { time } : {}), ...(style?.cmap ? { cmap: style.cmap } : {}), ...(style?.vmin != null && style?.vmax != null ? { vmin: String(style.vmin), vmax: String(style.vmax) } : {}) }); return `${(baseUrl ?? XCUBE_API_BASE_URL).replace(/\/$/, '')}/tiles/${encodeURIComponent(id)}/${encodeURIComponent(variable)}/{z}/{y}/{x}?${params}`; },
+  getMyXcubeInstance() { return request<XcubeInstance>(BACKOFFICE_API_BASE_URL, '/api/v1/xcube/instances/me'); },
   legendUrl(id, variable) { return `${BACKOFFICE_API_BASE_URL}/api/v1/datasets/${id}/legend/${encodeURIComponent(variable)}`; },
   getLegend(id, variable) { return requestBlob(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${id}/legend/${encodeURIComponent(variable)}`); },
   getCoordinates(id, dimension) { return request(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${id}/coordinates/${encodeURIComponent(dimension)}`); },

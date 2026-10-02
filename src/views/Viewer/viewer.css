@@ -127,6 +127,8 @@
 .vx-status.is-online i { background: var(--vx-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--vx-success) 22%, transparent); }
 .vx-status.is-offline { color: var(--vx-danger); background: color-mix(in srgb, var(--vx-danger) 10%, var(--vx-surface)); }
 .vx-status.is-offline i { background: var(--vx-danger); }
+.vx-status.is-starting { color: var(--vx-warning); background: color-mix(in srgb, var(--vx-warning) 10%, var(--vx-surface)); }
+.vx-status.is-starting i { background: var(--vx-warning); animation: vx-pulse 1.2s ease-in-out infinite; }
 .vx-user { display: inline-flex; align-items: center; gap: 6px; padding-left: 4px; }
 .vx-user__avatar {
   width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%;
