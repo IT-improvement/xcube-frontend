@@ -606,7 +606,6 @@ export default function Viewer({
   const podLabel: Record<string, string> = {
     READY: "내 시각화 서버 연결됨",
     STARTING: "시각화 서버를 준비하고 있습니다",
-    ABSENT: "내 시각화 서버 없음 · 데이터를 추가하면 만들어집니다",
     ERROR: "내 시각화 서버 오류",
   };
   const connectionLabel =
@@ -615,8 +614,10 @@ export default function Viewer({
       : xcubeConnected
         ? "연결됨"
         : "연결 안 됨";
-  const statusText = podState ? podLabel[podState] ?? podState : `XCube Server ${connectionLabel}`;
-  const statusClass = podState
+  // ABSENT: everything of this user is already merged into the main xcube, so show the main server.
+  const showPod = !!podState && podState !== "ABSENT";
+  const statusText = showPod ? podLabel[podState!] ?? podState! : `XCube Server ${connectionLabel}`;
+  const statusClass = showPod
     ? podState === "READY"
       ? "is-online"
       : podState === "ERROR"
