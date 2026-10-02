@@ -185,6 +185,8 @@ describe('S4 데이터 추가 (FR-GEN-10·11)', () => {
     expect(await screen.findByText(/표시 범위가 자동으로 채워집니다/)).toBeInTheDocument();
     expect(screen.getByRole('list', { name: '필수 구성파일' })).toHaveTextContent('.prj 있음');
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    // admin.zip has no YYYYMM in its name, so the observation date is required.
+    fireEvent.change(screen.getByLabelText('관측 날짜'), { target: { value: '2026-05-01' } });
   }
 
   test('10개 속성 중 3개만 골라 각각 색상·범위를 정하고, 범위는 자동값으로 채워진다', async () => {
@@ -210,7 +212,8 @@ describe('S4 데이터 추가 (FR-GEN-10·11)', () => {
     fireEvent.click(await screen.findByRole('button', { name: '생성 시작' }));
     await waitFor(() => expect(generation.createFileJob).toHaveBeenCalled());
     const request = generation.createFileJob.mock.calls[0][0];
-    expect(request).toMatchObject({ type: 'SHAPEFILE', name: 'admin', inputs: inspection.inputs, params: { resolution: 0.00025 } });
+    expect(request).toMatchObject({ type: 'SHAPEFILE', name: 'admin', inputs: inspection.inputs, params: { resolution: 0.00025, date: '2026-05-01' } });
+    expect(request.params).not.toHaveProperty('sensor');
     expect(request.variables).toEqual([
       { source: 'pop_total', name: 'pop_total', kind: 'continuous', style: { colorBar: 'viridis', min: 120, max: 31800 } },
       { source: 'land_use', name: 'land_use', kind: 'categorical', style: { colorBar: 'tab10' } },
@@ -266,5 +269,34 @@ describe('S4 데이터 추가 (FR-GEN-10·11)', () => {
       collectionId: 'COPERNICUS/S2', bands: ['B8'], bandStyles: [{ variable: 'B8', colorBar: 'viridis', valueMin: 0, valueMax: 4000 }],
       bounds: { west: 126.5, south: 35, east: 127, north: 35.5 },
     })));
+  });
+
+  test('일반 GeoTIFF는 위성·센서가 필요하고, 날짜 없는 파일은 관측 날짜를 받아 함께 보낸다', async () => {
+    const tif = { sourceType: 'GEOTIFF', fileName: 'scene.tif', bands: ['band_1', 'band_2'], fields: [{ name: 'band_1', type: 'integer', approxStats: { min: 0, max: 9000, p2: 100, p98: 3000 } }, { name: 'band_2', type: 'integer', approxStats: { min: 0, max: 9000, p2: 120, p98: 3200 } }], bounds: { west: 126, south: 35, east: 127, north: 36 }, width: 100, height: 100, files: ['scene.tif'], message: 'GDAL 검사 완료', inputs: [{ kind: 'geotiff', uri: 'file:///tmp/scene.tif' }] };
+    generation.inspectSpatialFile.mockResolvedValue(tif);
+    generation.createFileJob.mockResolvedValue({ id: 'job-3', status: 'QUEUED' });
+    renderAt('/app/data/new');
+    fireEvent.click(await screen.findByRole('radio', { name: /GeoTIFF \/ CAS500/ }));
+    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    fireEvent.change(screen.getByLabelText('파일 선택'), { target: { files: [new File(['x'], 'scene.tif', { type: 'image/tiff' })] } });
+    expect(await screen.findByText('GDAL 검사 완료')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /다음/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /band_2/ }));
+    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    expect(screen.getByText('위성·센서를 고르거나 입력하세요.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('위성·센서'), { target: { value: 'SENTINEL2_L2A' } });
+    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    expect(screen.getByText('파일 이름에 날짜가 없어 관측 날짜가 필요합니다.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('관측 날짜'), { target: { value: '2026-05-01' } });
+    fireEvent.change(screen.getByLabelText('nodata 값 (선택)'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '생성 시작' }));
+    await waitFor(() => expect(generation.createFileJob).toHaveBeenCalled());
+    expect(generation.createFileJob.mock.calls[0][0]).toMatchObject({
+      type: 'GEOTIFF_BANDS',
+      params: { sensor: 'SENTINEL2_L2A', date: '2026-05-01', nodata: 0 },
+      variables: [{ source: 'band_2', name: 'band_2', kind: 'continuous', style: { colorBar: 'viridis', min: 120, max: 3200 } }],
+    });
   });
 });

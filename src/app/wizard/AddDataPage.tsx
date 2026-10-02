@@ -28,6 +28,14 @@ const METHODS: Array<{ id: Method; title: string; text: string; hint: string; ic
 ];
 const REQUIRED_SHAPE = ['.shp', '.shx', '.dbf', '.prj'];
 const TERMINAL = ['SUCCEEDED', 'FAILED', 'CANCELLED'];
+// Sensor IDs known to the normalisation registry (Backend technical guide). Others can be typed in.
+const SENSORS = [
+  { id: 'SENTINEL2_L2A', label: 'Sentinel-2 L2A' },
+  { id: 'LANDSAT_C2_L2', label: 'Landsat Collection 2 L2' },
+  { id: 'CAS500_1_L2', label: '국토위성 CAS500-1' },
+];
+// Workers read the time from file names: 14 digits (YYYYMMDDHHMMSS) for rasters, 6 digits (YYYYMM) for Shapefiles.
+const hasTimeInName = (fileName: string, method: Method) => (method === 'shape' ? /\d{6}/ : /\d{14}/).test(fileName);
 const STATUS_LABEL: Record<string, string> = { QUEUED: '대기 중', RUNNING: '처리 중', SUCCEEDED: '완료', FAILED: '실패', CANCELLED: '취소됨' };
 
 const fieldsOf = (inspection: SpatialInspection | null): InspectionField[] =>
@@ -48,6 +56,10 @@ export default function AddDataPage() {
   const [name, setName] = useState('');
   const [choices, setChoices] = useState<VariableChoice[]>([]);
   const [resolution, setResolution] = useState('0.00025');
+  const [sensor, setSensor] = useState('');
+  const [customSensor, setCustomSensor] = useState('');
+  const [obsDate, setObsDate] = useState('');
+  const [nodata, setNodata] = useState('');
   const [rgbOn, setRgbOn] = useState(false);
   const [rgb, setRgb] = useState<Rgb>({ red: '', green: '', blue: '' });
   const [projectId, setProjectId] = useState('');
@@ -90,6 +102,11 @@ export default function AddDataPage() {
   const rgbPossible = (method === 'gee' || method === 'geotiff') && continuous.length >= 3;
   const variableErrors = validateChoices(choices, colorBars.data ?? []);
   const editableProjects = (projects.data ?? []).filter(canEditProject);
+  // CAS500 and Shapefile get sensor/mode defaults on the server; a generic GeoTIFF needs them from the user.
+  const genericRaster = method === 'geotiff' && rasterKind === 'geotiff';
+  const sensorValue = sensor === 'custom' ? customSensor.trim() : sensor;
+  const fileInputs = method === 'geotiff' || method === 'shape';
+  const dateRequired = fileInputs && !(method === 'geotiff' && rasterKind === 'cas500') && !!inspection && !hasTimeInName(inspection.fileName, method!);
 
   const chooseMethod = (next: Method) => {
     if (next !== method) {
@@ -131,6 +148,9 @@ export default function AddDataPage() {
       if (!choices.length) return `만들 ${noun}을 하나 이상 고르세요.`;
       if (Object.keys(variableErrors).length) return '표시 설정을 확인하세요.';
       if (method === 'shape' && !(Number(resolution) > 0)) return '출력 해상도를 확인하세요.';
+      if (genericRaster && !sensorValue) return '위성·센서를 고르거나 입력하세요.';
+      if (dateRequired && !obsDate) return '파일 이름에 날짜가 없어 관측 날짜가 필요합니다.';
+      if (nodata !== '' && !Number.isFinite(Number(nodata))) return 'nodata 값은 숫자로 입력하세요.';
       if (rgbOn && rgbPossible && !(rgb.red && rgb.green && rgb.blue)) return 'RGB 세 채널을 모두 고르세요.';
       if (method !== 'zarr' && !colorBars.data?.length) return '색상표를 불러오지 못했습니다.';
     }
@@ -172,7 +192,13 @@ export default function AddDataPage() {
         setJob(await generation.createFileJob({
           type: method === 'shape' ? 'SHAPEFILE' : rasterKind === 'cas500' ? 'CAS500' : 'GEOTIFF_BANDS',
           name: name.trim(), inputs: inspection?.inputs ?? [], variables: specs,
-          params: { ...(method === 'shape' ? { resolution: Number(resolution) } : {}), ...(rgbStyle ? { rgbStyle } : {}) },
+          params: {
+            ...(method === 'shape' ? { resolution: Number(resolution) } : {}),
+            ...(genericRaster ? { sensor: sensorValue } : {}),
+            ...(obsDate ? { date: obsDate } : {}),
+            ...(nodata !== '' ? { nodata: Number(nodata) } : {}),
+            ...(rgbStyle ? { rgbStyle } : {}),
+          },
           ...(projectId ? { projectId } : {}),
         }));
       }
@@ -306,6 +332,29 @@ export default function AddDataPage() {
                   </select>
                 </label>
                 {method === 'shape' && <TextField label="출력 해상도 (도)" type="number" step="0.000001" min={0.000001} value={resolution} onChange={(event) => setResolution(event.target.value)} help="약 0.00025° ≈ 25m" />}
+                {genericRaster && (
+                  <label className="xc-field">
+                    <span className="xc-label">위성·센서</span>
+                    <select className="xc-select" aria-label="위성·센서" value={sensor} onChange={(event) => setSensor(event.target.value)} aria-invalid={showErrors && !sensorValue ? true : undefined}>
+                      <option value="">선택하세요</option>
+                      {SENSORS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                      <option value="custom">기타 (직접 입력)</option>
+                    </select>
+                    <span className="xc-hint">융합·AI에서 위성별 정규화식을 고를 때 씁니다.</span>
+                  </label>
+                )}
+                {genericRaster && sensor === 'custom' && <TextField label="센서 이름" placeholder="예: PLANETSCOPE" value={customSensor} maxLength={64} onChange={(event) => setCustomSensor(event.target.value.toUpperCase())} error={showErrors && !customSensor.trim() ? '센서 이름을 입력하세요.' : undefined} />}
+                {fileInputs && !(method === 'geotiff' && rasterKind === 'cas500') && (
+                  <TextField
+                    label={dateRequired ? '관측 날짜' : '관측 날짜 (선택)'}
+                    type="date"
+                    value={obsDate}
+                    onChange={(event) => setObsDate(event.target.value)}
+                    help={dateRequired ? `파일 이름에 ${method === 'shape' ? 'YYYYMM' : 'YYYYMMDDHHMMSS'} 날짜가 없어 꼭 입력해야 합니다.` : '비워 두면 파일 이름의 날짜를 씁니다.'}
+                    error={showErrors && dateRequired && !obsDate ? '관측 날짜를 입력하세요.' : undefined}
+                  />
+                )}
+                {fileInputs && <TextField label="nodata 값 (선택)" type="number" step="any" value={nodata} onChange={(event) => setNodata(event.target.value)} help="파일에 nodata가 없는 정수 데이터는 입력해야 합니다. 예: 0" />}
               </div>
               {colorBars.error && method !== 'zarr' && <Alert tone="danger">색상표를 불러오지 못했습니다. {colorBars.error}</Alert>}
               <VariableStyleEditor
@@ -361,6 +410,9 @@ export default function AddDataPage() {
                 </dd>
                 {rgbOn && rgbPossible && <><dt>RGB</dt><dd>R {rgb.red} · G {rgb.green} · B {rgb.blue}</dd></>}
                 {method === 'shape' && <><dt>해상도</dt><dd>{resolution}°</dd></>}
+                {genericRaster && <><dt>위성·센서</dt><dd>{SENSORS.find((item) => item.id === sensorValue)?.label ?? sensorValue}</dd></>}
+                {obsDate && <><dt>관측 날짜</dt><dd>{obsDate}</dd></>}
+                {nodata !== '' && <><dt>nodata</dt><dd>{nodata}</dd></>}
               </dl>
               {submitError && <Alert tone="danger">{submitError}</Alert>}
             </div>
