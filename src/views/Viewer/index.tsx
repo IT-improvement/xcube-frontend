@@ -11,12 +11,10 @@ import { User } from "../../api/authApi";
 import { toLonLat, transformExtent } from "ol/proj";
 import { useTheme } from "../../hooks/useTheme";
 import {
-  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsRight,
-  ChevronUp,
   CircleAlert,
   CircleHelp,
   Crosshair,
@@ -36,7 +34,6 @@ import {
   Repeat,
   Satellite,
   Scan,
-  Search,
   SkipBack,
   SkipForward,
   Sparkles,
@@ -50,11 +47,51 @@ import "./v2.css";
 import "./viewer.css";
 import ViewerTour, { tourDismissed } from "./ViewerTour";
 import ProjectQuickMenu from "./ProjectQuickMenu";
+import { BottomGraphPanel, PixelMarker } from "./PixelGraph";
+import DatasetPicker from "./DatasetPicker";
+import LayerControl from "./LayerControl";
+import {
+  CompareControl,
+  CompareMap,
+  DisplayMode,
+  SwipeDivider,
+  useCompareLayer,
+} from "./CompareView";
 
 type Drawer = "ai" | "result" | null;
 type Period = "현재 시점" | "선택 기간" | "전체 기간";
 type MapTool = "pan" | "pixel";
 const noop = () => undefined;
+
+/** Viewer state kept in the address so a view can be reloaded or shared (M5). */
+type UrlState = {
+  dataset?: string;
+  project?: string;
+  variable?: string;
+  time?: string;
+  mode?: DisplayMode;
+  compare?: string;
+};
+const VIEWER_PATH = "/app/viewer";
+function readUrlState(): UrlState {
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get("mode");
+  return {
+    dataset: params.get("dataset") ?? undefined,
+    project: params.get("project") ?? undefined,
+    variable: params.get("var") ?? undefined,
+    time: params.get("t") ?? undefined,
+    mode: mode === "swipe" || mode === "split" ? mode : undefined,
+    compare: params.get("b") ?? undefined,
+  };
+}
+/** Keys typed into fields, buttons and dialogs keep their own meaning. */
+function ownsKeys(target: EventTarget | null, key: string) {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const fields = "input, textarea, select, [role='slider'], [role='combobox'], [role='listbox'], [role='dialog'], [role='menu'], [role='tablist']";
+  return !!target.closest(key === " " ? `${fields}, button, a, summary` : fields);
+}
 
 export default function Viewer({
   user,
@@ -120,6 +157,12 @@ export default function Viewer({
   const [pixelTip, setPixelTip] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [graphExpanded, setGraphExpanded] = useState(true);
+  const urlStateRef = useRef<UrlState>(readUrlState());
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("single");
+  const [compareIndex, setCompareIndex] = useState(-1);
+  const [swipe, setSwipe] = useState(50);
+  const swipeRef = useRef(50);
+  const [compareMap, setCompareMap] = useState<Map | null>(null);
   const sourceLayer = useRef<TileLayer<any> | null>(null);
   const sourceVisibleRef = useRef(sourceVisible);
   const sourceOpacityRef = useRef(sourceOpacity);
@@ -319,7 +362,74 @@ export default function Viewer({
     setPlaying(false);
     setActiveVariable("");
     detailLoadedRef.current = "";
+    setCompareIndex(-1);
+    if (urlStateRef.current.dataset && urlStateRef.current.dataset !== datasetId && datasetId)
+      urlStateRef.current = {}; // the user picked another dataset: the address no longer applies
   }, [datasetId]);
+  // Restore project, variable, times and display mode from the address once their lists are known.
+  useEffect(() => {
+    const pending = urlStateRef.current;
+    if (!pending.project || !projects.length) return;
+    if (projects.some((item) => item.id === pending.project)) setProjectId(pending.project);
+    urlStateRef.current = { ...urlStateRef.current, project: undefined };
+  }, [projects]);
+  useEffect(() => {
+    const pending = urlStateRef.current;
+    if (!selected || pending.dataset !== selected.id) return;
+    const next = { ...pending };
+    if (pending.variable && (pending.variable === "rgb" || selected.variables.includes(pending.variable))) {
+      setActiveVariable(pending.variable);
+      next.variable = undefined;
+    }
+    if (times.length) {
+      const a = pending.time ? times.findIndex((time) => time.iso === pending.time) : -1;
+      if (a >= 0) setTimeIndex(a);
+      const b = pending.compare ? times.findIndex((time) => time.iso === pending.compare) : -1;
+      if (pending.mode && times.length > 1) {
+        setDisplayMode(pending.mode);
+        setCompareIndex(b >= 0 ? b : a > 0 ? a - 1 : 1);
+      }
+      next.time = next.compare = next.mode = undefined;
+    }
+    urlStateRef.current = next;
+  }, [selected, times]);
+  useEffect(() => {
+    if (!window.location.pathname.startsWith(VIEWER_PATH)) return;
+    if (loading || (initialDatasetId && !initialAppliedRef.current)) return;
+    const params = new URLSearchParams();
+    if (datasetId) params.set("dataset", datasetId);
+    if (projectId) params.set("project", projectId);
+    if (datasetId && activeVariable) params.set("var", activeVariable);
+    if (datasetId && times[timeIndex]) params.set("t", times[timeIndex].iso);
+    if (datasetId && displayMode !== "single") {
+      params.set("mode", displayMode);
+      if (times[compareIndex]) params.set("b", times[compareIndex].iso);
+    }
+    const query = params.toString();
+    const next = `${window.location.pathname}${query ? `?${query}` : ""}`;
+    if (next !== `${window.location.pathname}${window.location.search}`)
+      window.history.replaceState(window.history.state, "", next);
+  }, [loading, initialDatasetId, datasetId, projectId, activeVariable, times, timeIndex, displayMode, compareIndex]);
+  // ←/→ step through times, Space plays or pauses, unless a field, button or dialog has focus.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (tourOpen || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented) return;
+      if (ownsKeys(event.target, event.key) || document.querySelector("[role='dialog'][aria-modal='true']")) return;
+      if (times.length < 1) return;
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        setPlaying(false);
+        setTimeIndex((current) =>
+          Math.min(times.length - 1, Math.max(0, current + (event.key === "ArrowRight" ? 1 : -1))),
+        );
+      } else if (event.key === " " && times.length > 1) {
+        event.preventDefault();
+        setPlaying((value) => !value);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [times.length, tourOpen]);
   useEffect(() => {
     if (!datasetId || useMockApi) {
       setViewerNotice("");
@@ -434,6 +544,61 @@ export default function Viewer({
     fail,
   ]);
 
+  const compareTileUrl =
+    displayMode !== "single" &&
+    !useMockApi &&
+    activeVariable &&
+    selectedXcubeDatasetId &&
+    times[compareIndex]
+      ? backofficeAdapter.tileUrl(
+          selectedXcubeDatasetId,
+          activeVariable,
+          times[compareIndex].iso,
+          selectedTileBase,
+          tileStyle,
+        )
+      : null;
+  useCompareLayer({
+    map,
+    tileUrl: displayMode === "swipe" ? compareTileUrl : null,
+    bbox: selectedBbox,
+    visible: sourceVisible,
+    opacity: sourceOpacity,
+    swipeRef,
+  });
+  useCompareLayer({
+    map: compareMap,
+    tileUrl: displayMode === "split" ? compareTileUrl : null,
+    bbox: selectedBbox,
+    visible: sourceVisible,
+    opacity: sourceOpacity,
+  });
+  const changeSwipe = useCallback(
+    (value: number) => {
+      swipeRef.current = value;
+      setSwipe(value);
+      map?.render();
+    },
+    [map],
+  );
+  const changeDisplayMode = useCallback(
+    (mode: DisplayMode) => {
+      setDisplayMode(mode);
+      if (mode !== "single")
+        setCompareIndex((current) =>
+          current >= 0 && current < times.length && current !== timeIndex
+            ? current
+            : timeIndex > 0
+              ? timeIndex - 1
+              : Math.min(1, times.length - 1),
+        );
+    },
+    [times.length, timeIndex],
+  );
+  const compareActive = !!selected && displayMode !== "single" && times.length > 1;
+  useEffect(() => {
+    if (selected && times.length < 2 && displayMode !== "single") setDisplayMode("single");
+  }, [selected, times.length, displayMode]);
   const onMapReady = useCallback((instance: Map) => setMap(instance), []);
   const openRightPanel = useCallback((type: Exclude<Drawer, null>) => {
     setDrawer(type);
@@ -1026,7 +1191,10 @@ export default function Viewer({
           </aside>
         )}
 
-        <section className="vx-map" aria-label="시계열 위성 데이터 지도">
+        <section
+          className={`vx-map ${compareActive && displayMode === "split" ? "is-split" : ""}`}
+          aria-label="시계열 위성 데이터 지도"
+        >
           <div
             className="vx-tools"
             role="toolbar"
@@ -1179,6 +1347,37 @@ export default function Viewer({
             </div>
           )}
           {pixel && <PixelMarker map={map} coordinate={pixel} />}
+          {selected && (
+            <CompareControl
+              mode={displayMode}
+              onMode={changeDisplayMode}
+              times={times}
+              compareIndex={compareIndex}
+              onCompareIndex={setCompareIndex}
+              disabled={times.length < 2}
+            />
+          )}
+          {compareActive && displayMode === "swipe" && (
+            <SwipeDivider
+              value={swipe}
+              onChange={changeSwipe}
+              leftLabel={times[timeIndex]?.label ?? "—"}
+              rightLabel={times[compareIndex]?.label ?? "—"}
+            />
+          )}
+          {compareActive && displayMode === "split" && (
+            <>
+              <span className="vx-swipe__label vx-swipe__label--a vx-split-label">
+                A · {times[timeIndex]?.label ?? "—"}
+              </span>
+              <CompareMap
+                mainMap={map}
+                baseVisible={baseVisible}
+                onMapReady={setCompareMap}
+                label={times[compareIndex]?.label ?? "—"}
+              />
+            </>
+          )}
         </section>
 
         {drawer && rightCollapsed && (
@@ -1497,530 +1696,5 @@ export default function Viewer({
       )}
       {tourOpen && <ViewerTour onClose={() => setTourOpen(false)} />}
     </main>
-  );
-}
-
-function PixelMarker({
-  map,
-  coordinate,
-}: {
-  map: Map | null;
-  coordinate: [number, number];
-}) {
-  const [position, setPosition] = useState<[number, number] | null>(null);
-  useEffect(() => {
-    if (!map || typeof map.getPixelFromCoordinate !== "function") return;
-    const update = () => {
-      const pixel = map.getPixelFromCoordinate(coordinate);
-      setPosition(pixel ? [pixel[0], pixel[1]] : null);
-    };
-    update();
-    map.on("postrender", update);
-    map.on("moveend", update);
-    return () => {
-      map.un("postrender", update);
-      map.un("moveend", update);
-    };
-  }, [map, coordinate]);
-  if (!position) return null;
-  return (
-    <div
-      className="pixel-marker"
-      style={{ left: position[0], top: position[1] }}
-      aria-label="선택한 픽셀 위치"
-    />
-  );
-}
-
-function BottomGraphPanel({
-  expanded,
-  onToggle,
-  dataset,
-  variable,
-  points,
-  coordinate,
-  currentTime,
-}: {
-  expanded: boolean;
-  onToggle: () => void;
-  dataset: ZarrDataset;
-  variable: string;
-  points: SeriesPoint[];
-  coordinate: { lon: number; lat: number } | null;
-  currentTime?: string;
-}) {
-  const units = dataset.variableMetadata?.[variable]?.units;
-  const label = expanded
-    ? "픽셀 그래프 아래로 숨기기"
-    : "픽셀 그래프 위로 펼치기";
-  return (
-    <section
-      className={`vx-graph ${expanded ? "expanded" : "hidden"}`}
-      aria-label="픽셀 시계열 그래프 패널"
-      aria-live="polite"
-    >
-      <div className="vx-graph__head">
-        <span className="vx-graph__title">
-          <Crosshair size={14} aria-hidden="true" />
-          <strong>픽셀 시계열</strong>
-          {coordinate && (
-            <small className="tabular">
-              {coordinate.lon.toFixed(5)}, {coordinate.lat.toFixed(5)}
-            </small>
-          )}
-          {variable && <b>{variable}</b>}
-        </span>
-        <button
-          type="button"
-          className="vx-icon-btn"
-          onClick={onToggle}
-          aria-label={label}
-          title={label}
-          aria-expanded={expanded}
-        >
-          {expanded ? (
-            <ChevronDown size={18} aria-hidden="true" />
-          ) : (
-            <ChevronUp size={18} aria-hidden="true" />
-          )}
-        </button>
-      </div>
-      {expanded && (
-        <section className="vx-graph__chart">
-          <TimeseriesChart
-            dataset={dataset.name}
-            variable={variable}
-            units={units}
-            points={points}
-            coordinate={coordinate}
-            currentTime={currentTime}
-          />
-        </section>
-      )}
-    </section>
-  );
-}
-
-function TimeseriesChart({
-  dataset,
-  variable,
-  units,
-  points,
-  coordinate,
-  currentTime,
-}: {
-  dataset: string;
-  variable: string;
-  units?: string;
-  points: SeriesPoint[];
-  coordinate: { lon: number; lat: number } | null;
-  currentTime?: string;
-}) {
-  // Draw in the container's own pixel size so the chart fills the panel without
-  // stretching text; 900x260 is the fallback where ResizeObserver is unavailable.
-  const boxRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ width: 900, height: 260 });
-  useEffect(() => {
-    const box = boxRef.current;
-    if (!box || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => {
-      const { width: w, height: h } = entry.contentRect;
-      if (w > 0 && h > 0)
-        setSize({ width: Math.max(320, Math.round(w)), height: Math.max(140, Math.round(h)) });
-    });
-    observer.observe(box);
-    return () => observer.disconnect();
-  }, []);
-  const { width, height } = size;
-  const left = 56;
-  const right = 16;
-  const top = 12;
-  const bottom = 36;
-  const valid = points.filter(
-    (point) => typeof point.value === "number" && Number.isFinite(point.value),
-  );
-  const rawMin = valid.length
-    ? Math.min(...valid.map((point) => point.value as number))
-    : 0;
-  const rawMax = valid.length
-    ? Math.max(...valid.map((point) => point.value as number))
-    : 1;
-  const padding =
-    rawMin === rawMax
-      ? Math.max(Math.abs(rawMin) * 0.05, 1)
-      : (rawMax - rawMin) * 0.05;
-  const min = rawMin - padding;
-  const max = rawMax + padding;
-  const x = (index: number) =>
-    left + (index * (width - left - right)) / Math.max(points.length - 1, 1);
-  const y = (value: number) =>
-    top + ((max - value) * (height - top - bottom)) / (max - min);
-  const segments: string[] = [];
-  let segment = "";
-  points.forEach((point, index) => {
-    if (point.value == null || !Number.isFinite(point.value)) {
-      if (segment) segments.push(segment);
-      segment = "";
-      return;
-    }
-    segment += `${segment ? " L" : "M"}${x(index)} ${y(point.value)}`;
-  });
-  if (segment) segments.push(segment);
-  const exactIndex = currentTime
-    ? points.findIndex((point) => point.time === currentTime)
-    : -1;
-  const target = currentTime ? new Date(currentTime).getTime() : NaN;
-  let currentIndex = exactIndex >= 0 ? exactIndex : 0;
-  if (exactIndex < 0 && Number.isFinite(target))
-    points.forEach((point, index) => {
-      const candidate = new Date(point.time).getTime();
-      const currentCandidate = new Date(points[currentIndex]?.time).getTime();
-      if (
-        Number.isFinite(candidate) &&
-        (!Number.isFinite(currentCandidate) ||
-          Math.abs(candidate - target) < Math.abs(currentCandidate - target))
-      )
-        currentIndex = index;
-    });
-  const tickIndexes = Array.from(
-    new Set(
-      [0, 0.25, 0.5, 0.75, 1].map((ratio) =>
-        Math.round(Math.max(0, points.length - 1) * ratio),
-      ),
-    ),
-  );
-  const unit = units ?? "";
-  const dateLabel = (time: string) => {
-    const date = new Date(time);
-    return Number.isNaN(date.getTime())
-      ? time
-      : `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  };
-  const current = points[currentIndex];
-  const coordinateLabel = coordinate
-    ? `EPSG:4326 · 경도 ${coordinate.lon.toFixed(5)}° · 위도 ${coordinate.lat.toFixed(5)}°`
-    : "EPSG:4326";
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(
-    (ratio) => min + (max - min) * ratio,
-  );
-  return (
-    <div className="professional-chart" ref={boxRef}>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label={`${dataset} ${variable} 시계열 그래프, ${coordinateLabel}, 최소 ${rawMin}, 최대 ${rawMax}, 유효 ${valid.length}개`}
-      >
-        <title>
-          {dataset} · {variable} · {coordinateLabel}
-        </title>
-        <desc>
-          전체 {points.length}시점 중 유효 {valid.length}시점.{unit && ` 단위 ${unit}.`}
-        </desc>
-        {yTicks.map((value) => (
-          <g key={value}>
-            <line
-              className="grid"
-              x1={left}
-              y1={y(value)}
-              x2={width - right}
-              y2={y(value)}
-            />
-            <text
-              className="axis-label"
-              x={left - 5}
-              y={y(value) + 3}
-              textAnchor="end"
-            >
-              {value.toFixed(Math.abs(value) < 10 ? 2 : 1)}
-            </text>
-          </g>
-        ))}
-        {min < 0 && max > 0 && (
-          <line
-            className="zero-line"
-            x1={left}
-            y1={y(0)}
-            x2={width - right}
-            y2={y(0)}
-          />
-        )}
-        {segments.map((path, index) => (
-          <path key={index} className="line" d={path} />
-        ))}
-        {points.map((point, index) =>
-          point.value == null || !Number.isFinite(point.value) ? (
-            <circle
-              key={index}
-              className="missing-point"
-              cx={x(index)}
-              cy={(top + height - bottom) / 2}
-              r="3"
-            >
-              <title>{point.time}: 값 없음</title>
-            </circle>
-          ) : (
-            <circle
-              key={index}
-              className="data-point"
-              cx={x(index)}
-              cy={y(point.value)}
-              r="2"
-            >
-              <title>
-                {point.time} · {variable}: {point.value} {unit} ·{" "}
-                {coordinateLabel}
-              </title>
-            </circle>
-          ),
-        )}
-        {tickIndexes.map(
-          (index) =>
-            points[index] && (
-              <text
-                key={index}
-                className="axis-label"
-                x={x(index)}
-                y={height - 5}
-                textAnchor={
-                  index === 0
-                    ? "start"
-                    : index === points.length - 1
-                      ? "end"
-                      : "middle"
-                }
-              >
-                {dateLabel(points[index].time)}
-              </text>
-            ),
-        )}
-        {current && (
-          <g className="current-time">
-            <line
-              className="cursor"
-              x1={x(currentIndex)}
-              y1={top}
-              x2={x(currentIndex)}
-              y2={height - bottom}
-            />
-            {current.value != null && Number.isFinite(current.value) && (
-              <circle
-                className="current-point"
-                cx={x(currentIndex)}
-                cy={y(current.value)}
-                r="6"
-              >
-                <title>
-                  {current.time}: {current.value} {unit}
-                </title>
-              </circle>
-            )}
-          </g>
-        )}
-      </svg>
-      {!valid.length && (
-        <div className="chart-empty">
-          선택한 위치에 유효한 픽셀값이 없습니다.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DatasetPicker({
-  datasets,
-  value,
-  onChange,
-  tourId,
-}: {
-  datasets: ZarrDataset[];
-  value: string;
-  onChange: (value: string) => void;
-  tourId?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const selected = datasets.find((item) => item.id === value);
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return datasets
-      .filter(
-        (item) =>
-          !needle ||
-          [item.name, item.xcubeDatasetId, item.projectName].some((text) =>
-            text?.toLowerCase().includes(needle),
-          ),
-      )
-      .sort(
-        (a, b) =>
-          (a.accessType === "SHARED" ? 1 : 0) -
-          (b.accessType === "SHARED" ? 1 : 0),
-      );
-  }, [datasets, query]);
-  useEffect(() => {
-    const close = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, []);
-  useEffect(() => {
-    itemRefs.current[active]?.scrollIntoView({ block: "nearest" });
-  }, [active]);
-  const choose = (id: string) => {
-    onChange(id);
-    setOpen(false);
-    setQuery("");
-  };
-  const onKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === "Escape") {
-      setOpen(false);
-      return;
-    }
-    if (!open && ["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) {
-      event.preventDefault();
-      setOpen(true);
-      return;
-    }
-    if (!open) return;
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      setActive((current) =>
-        Math.max(
-          0,
-          Math.min(
-            filtered.length - 1,
-            current + (event.key === "ArrowDown" ? 1 : -1),
-          ),
-        ),
-      );
-    } else if (event.key === "Enter" && filtered[active]) {
-      event.preventDefault();
-      choose(filtered[active].id);
-    }
-  };
-  return (
-    <div
-      className="dataset-picker"
-      ref={rootRef}
-      onKeyDown={onKeyDown}
-      data-tour={tourId}
-    >
-      <span className="picker-label">데이터</span>
-      <button
-        type="button"
-        className="dataset-trigger"
-        role="combobox"
-        aria-label="데이터 또는 Zarr 선택"
-        aria-expanded={open}
-        aria-controls="zarr-listbox"
-        onClick={() => setOpen((value) => !value)}
-      >
-        <Database size={16} aria-hidden="true" className="dataset-trigger__icon" />
-        <span>{selected?.name ?? "데이터셋 선택"}</span>
-        {selected && (
-          <small className={selected.accessType === "SHARED" ? "shared" : ""}>
-            {selected.accessType === "SHARED" ? "공유" : "소유"}
-          </small>
-        )}
-        <ChevronDown size={16} aria-hidden="true" />
-      </button>
-      {open && (
-        <div className="dataset-popover">
-          <div className="dataset-search">
-            <Search size={16} aria-hidden="true" />
-            <input
-              autoFocus
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setActive(0);
-              }}
-              placeholder="Zarr 검색"
-              aria-label="Zarr 검색"
-            />
-          </div>
-          <div
-            id="zarr-listbox"
-            className="dataset-list"
-            role="listbox"
-            aria-label="Zarr 목록"
-          >
-            {filtered.length ? (
-              filtered.map((item, index) => (
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={item.id === value}
-                  key={item.id}
-                  ref={(node) => {
-                    itemRefs.current[index] = node;
-                  }}
-                  className={index === active ? "active-option" : ""}
-                  onMouseEnter={() => setActive(index)}
-                  onClick={() => choose(item.id)}
-                >
-                  <span>
-                    <strong>{item.name}</strong>
-                    <small>
-                      {item.accessType === "SHARED" ? "공유" : "소유"} ·{" "}
-                      {item.projectName || "프로젝트 없음"}
-                    </small>
-                  </span>
-                  {item.id === value && (
-                    <Check size={16} aria-hidden="true" />
-                  )}
-                </button>
-              ))
-            ) : (
-              <p className="dataset-empty">검색 결과가 없습니다.</p>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LayerControl({
-  label,
-  accent,
-  checked,
-  onChecked,
-  opacity,
-  onOpacity,
-}: {
-  label: string;
-  accent: string;
-  checked: boolean;
-  onChecked: (value: boolean) => void;
-  opacity: number;
-  onOpacity: (value: number) => void;
-}) {
-  return (
-    <div className={`vx-layer-card ${checked ? "" : "is-off"}`}>
-      <label className="vx-layer">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChecked(e.target.checked)}
-        />
-        <i className={`vx-swatch vx-swatch--${accent}`} />
-        <span>{label}</span>
-      </label>
-      <label className="vx-opacity">
-        <span>투명도</span>
-        <span className="tabular">{opacity}%</span>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={opacity}
-          onChange={(e) => onOpacity(Number(e.target.value))}
-        />
-      </label>
-    </div>
   );
 }

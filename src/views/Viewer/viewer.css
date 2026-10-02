@@ -510,3 +510,55 @@
   .vx-spin, .vx-pulse { animation-duration: 3s; }
   .vx-btn { transition: none; }
 }
+
+/* Time comparison: display mode switch, swipe divider, split maps (M5) */
+.vx-compare {
+  position: absolute; z-index: 8; right: 12px; top: 12px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; align-items: center;
+  max-width: calc(100% - 96px);
+}
+.vx-compare__modes {
+  display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--vx-border); border-radius: var(--radius-md);
+  background: var(--vx-surface); box-shadow: var(--vx-float);
+}
+.vx-compare__modes button {
+  display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px; border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--vx-text-2); font: 500 12px/1 var(--font-sans); cursor: pointer;
+}
+.vx-compare__modes button:hover:not(:disabled) { background: var(--vx-subtle); color: var(--vx-text); }
+.vx-compare__modes button[aria-pressed="true"] { background: var(--vx-primary-subtle); color: var(--vx-primary); }
+.vx-compare__modes button:disabled { opacity: 0.45; cursor: not-allowed; }
+.vx-compare__modes button:focus-visible, .vx-compare__time select:focus-visible, .vx-swipe__handle:focus-visible { outline: 2px solid var(--vx-primary); outline-offset: 2px; }
+.vx-compare__time {
+  display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 6px 0 10px; border: 1px solid var(--vx-border);
+  border-radius: var(--radius-md); background: var(--vx-surface); box-shadow: var(--vx-float); color: var(--vx-text-2); font: 600 12px/1 var(--font-sans);
+}
+.vx-compare__time select {
+  height: 28px; max-width: 180px; padding: 0 6px; border: 1px solid var(--vx-border); border-radius: var(--radius-sm);
+  background: var(--vx-surface); color: var(--vx-text); font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums;
+}
+.vx-swipe { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+.vx-swipe__line { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--vx-surface); box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.35); }
+.vx-swipe__handle {
+  position: absolute; top: 50%; left: 50%; width: 36px; height: 36px; transform: translate(-50%, -50%); display: grid; place-items: center;
+  border: 1px solid var(--vx-border); border-radius: 999px; background: var(--vx-surface); color: var(--vx-text); box-shadow: var(--vx-float);
+  pointer-events: auto; cursor: ew-resize; touch-action: none;
+}
+.vx-swipe.is-dragging .vx-swipe__handle { color: var(--vx-primary); }
+.vx-swipe__label {
+  position: absolute; z-index: 6; bottom: 44px; padding: 3px 8px; border-radius: var(--radius-sm); background: rgba(15, 23, 42, 0.78); color: #fff;
+  font: 600 11px/1.4 var(--font-sans); font-variant-numeric: tabular-nums; pointer-events: none;
+}
+.vx-swipe__label--a { left: 12px; }
+.vx-swipe__label--b { right: 12px; }
+.vx-map.is-split > .map-component { width: 50%; }
+.vx-compare-map { position: absolute; top: 0; right: 0; bottom: 0; width: 50%; border-left: 2px solid var(--vx-surface); box-shadow: -1px 0 0 rgba(15, 23, 42, 0.3); }
+.vx-compare-map .map-component { width: 100%; height: 100%; }
+.vx-split-label { right: auto; }
+.vx-map.is-split .vx-split-label { left: calc(50% - 8px); transform: translateX(-100%); }
+@media (max-width: 720px) {
+  .vx-compare__modes span { display: none; }
+  .vx-compare { top: 56px; }
+  .vx-map.is-split > .map-component { width: 100%; height: 50%; }
+  .vx-compare-map { top: 50%; width: 100%; height: 50%; border-left: 0; border-top: 2px solid var(--vx-surface); }
+  .vx-map.is-split .vx-split-label { left: 12px; transform: none; bottom: calc(50% + 12px); }
+}
