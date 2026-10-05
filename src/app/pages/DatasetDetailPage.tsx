@@ -3,8 +3,9 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Button, ButtonAnchor, ButtonLink } from '../../components/ui';
 import { Badge, Card, EmptyState, PageHeader, Skeleton, Tabs, useToast } from '../../components/ui/kit';
-import { appApi, formatDate, generation, isOwned, periodLabel, viewerHref, ZarrDataset } from '../api';
-import { elapsed, JOB_TYPE_LABEL, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
+import { appApi, formatDate, fusion, generation, isOwned, periodLabel, viewerHref, ZarrDataset } from '../api';
+import { asFusionRequest } from '../fusion';
+import { elapsed, FusionRequestSummary, JOB_TYPE_LABEL, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
 import { useLoad } from '../useLoad';
 import { DatasetStatus, DeleteDatasetDialog, LinkProjectDialog } from './DataLibraryPage';
 
@@ -71,7 +72,7 @@ export default function DatasetDetailPage() {
       <PageHeader
         back={back}
         title={item.name}
-        description={<span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>{owned ? <Badge tone="primary">내 데이터</Badge> : <Badge tone="water">공유받음</Badge>}<Badge>원본</Badge><DatasetStatus dataset={item} /><span className="xc-hint">{item.xcubeDatasetId}</span></span>}
+        description={<span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>{owned ? <Badge tone="primary">내 데이터</Badge> : <Badge tone="water">공유받음</Badge>}{item.kind === 'FUSION' ? <Badge tone="water">융합 결과</Badge> : <Badge>원본</Badge>}<DatasetStatus dataset={item} /><span className="xc-hint">{item.xcubeDatasetId}</span></span>}
         actions={
           <>
             <ButtonAnchor href={viewerHref(item.id)} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} aria-hidden />Viewer에서 열기<span className="sr-only">(새 탭)</span></ButtonAnchor>
@@ -122,7 +123,7 @@ export default function DatasetDetailPage() {
               </table>
             </div>
           ) : <EmptyState title="변수 정보가 없습니다" text="시각화 서버 동기화가 끝나면 표시됩니다." />)}
-          {tab === 'history' && <GenerationHistory jobId={item.generationJobId} />}
+          {tab === 'history' && (item.kind === 'FUSION' ? <FusionHistory dataset={item} /> : <GenerationHistory jobId={item.generationJobId} />)}
           {tab === 'ai' && <AiResults datasetId={item.id} />}
           {tab === 'projects' && (
             <div style={{ padding: 20, display: 'grid', gap: 12 }}>
@@ -158,6 +159,30 @@ function GenerationHistory({ jobId }: { jobId?: string }) {
       <JobSteps job={data} />
       <JobInputSummary job={data} />
       <div><Link className="xc-btn xc-btn--secondary xc-btn--sm" to="/app/jobs">작업 센터에서 보기</Link></div>
+    </div>
+  );
+}
+
+/** 생성 이력 of a fusion result: formula, bindings and rules, and a shortcut to run the same fusion again (FR-FUS-10). */
+function FusionHistory({ dataset }: { dataset: ZarrDataset }) {
+  const job = useLoad(() => (dataset.generationJobId ? fusion.getJob(dataset.generationJobId).catch(() => null) : Promise.resolve(null)), [dataset.generationJobId]);
+  const navigate = useNavigate();
+  if (job.loading) return <Skeleton lines={4} label="생성 이력을 불러오는 중" />;
+  const data = job.data;
+  const request = asFusionRequest(data?.input) ?? asFusionRequest(dataset.fusion);
+  if (!request) return <EmptyState title="융합 조건을 찾을 수 없습니다" text="이 융합 결과에는 수식과 규칙 기록이 없습니다." />;
+  return (
+    <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+      <dl className="meta-list" style={{ padding: 0 }}>
+        <dt>생성 방식</dt><dd>수식 융합</dd>
+        {data && <><dt>상태</dt><dd><JobStatusBadge job={data} /></dd><dt>요청일</dt><dd>{formatDate(data.createdAt)}</dd><dt>소요 시간</dt><dd className="tabular">{elapsed(data)}</dd></>}
+      </dl>
+      {data && <JobSteps job={data} />}
+      <FusionRequestSummary request={request} />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <Button variant="secondary" size="sm" onClick={() => navigate('/app/analysis/fusion', { state: { request } })}>같은 조건으로 다시 실행</Button>
+        {data && <Link className="xc-btn xc-btn--ghost xc-btn--sm" to="/app/jobs">작업 센터에서 보기</Link>}
+      </div>
     </div>
   );
 }

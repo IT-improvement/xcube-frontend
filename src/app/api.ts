@@ -3,6 +3,8 @@
 import { activeViewerAdapter, useMockApi } from '../api';
 import { backofficeAdapter, ProjectMember } from '../api/backofficeApi';
 import { demoManagement, viewerAdapter as demoAdapter, Project, ZarrDataset } from '../api/viewerAdapter';
+import { analysisApi, DryRun, FusionRequest, ValidateResult } from '../api/analysisApi';
+import { dryRunDemo, fusionJobsDemo, validateFormula } from './fusionDemo';
 import { ColorBarOption, FileJobInput, GeeCollection, generationApi, GenerationJob, JobSummary, SpatialInspection } from '../api/generationApi';
 
 export type { Project, ZarrDataset, ProjectMember };
@@ -94,6 +96,43 @@ export const generation = {
     useMockApi ? pause().then(() => { const job = demoJobList.find((item) => item.id === id)!; const again: JobSummary = { ...job, id: `demo-${++demoJobs}`, status: 'QUEUED', progress: 0, errorCode: null, errorMessage: null, createdAt: new Date().toISOString(), finishedAt: null }; demoJobList.unshift(again); return again; }) : generationApi.retryJob(id),
   cancelJob: (id: string): Promise<unknown> =>
     useMockApi ? pause().then(() => { const job = demoJobList.find((item) => item.id === id); if (job) Object.assign(job, { status: 'CANCELLED', finishedAt: new Date().toISOString() }); }) : generationApi.cancelJob(id),
+};
+
+/** Fusion (M6): the Data Analysis API; demo mode answers locally with the same grammar rules. */
+export const fusion = {
+  validate: (formula: string, variables: string[]): Promise<ValidateResult> =>
+    useMockApi ? pause(120).then(() => validateFormula(formula, variables)) : analysisApi.validate({ formula, variables }),
+  dryRun: (request: FusionRequest): Promise<DryRun> =>
+    useMockApi ? pause(250).then(() => demoAdapter.getDatasets()).then((datasets) => dryRunDemo(request, datasets)) : analysisApi.dryRun(request),
+  createJob: (request: FusionRequest): Promise<JobSummary> => (useMockApi ? fusionJobsDemo.create(request) : analysisApi.createJob(request)),
+  listJobs: (filter: { status?: string } = {}): Promise<JobSummary[]> => (useMockApi ? fusionJobsDemo.list(filter) : analysisApi.listJobs(filter)),
+  getJob: (id: string): Promise<JobSummary> => (useMockApi ? fusionJobsDemo.get(id) : analysisApi.getJob(id)),
+  cancelJob: (id: string): Promise<unknown> => (useMockApi ? fusionJobsDemo.cancel(id) : analysisApi.cancelJob(id)),
+  retryJob: (id: string): Promise<JobSummary> => (useMockApi ? fusionJobsDemo.retry(id) : analysisApi.retryJob(id)),
+};
+
+export const isFusionJob = (job: Pick<JobSummary, 'type'>) => job.type === 'FUSION';
+const newestFirst = (a: JobSummary, b: JobSummary) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
+
+/** Job center view: generation and fusion jobs together, routed to the service that owns each job. */
+export const jobs = {
+  /** A fusion-only type filter skips the generation service and vice versa. When both are asked for, a fusion outage does not hide generation jobs. */
+  async list(filter: { status?: string; type?: string } = {}): Promise<JobSummary[]> {
+    const types = filter.type ? filter.type.split(',') : [];
+    const wantsFusion = !types.length || types.includes('FUSION');
+    const wantsGeneration = !types.length || types.some((type) => type !== 'FUSION');
+    const generationFilter = { ...filter, type: types.filter((type) => type !== 'FUSION').join(',') };
+    const [generated, fused] = await Promise.allSettled([
+      wantsGeneration ? generation.listJobs(generationFilter) : Promise.resolve([] as JobSummary[]),
+      wantsFusion ? fusion.listJobs({ status: filter.status }) : Promise.resolve([] as JobSummary[]),
+    ]);
+    if (generated.status === 'rejected') throw generated.reason;
+    if (fused.status === 'rejected' && !wantsGeneration) throw fused.reason;
+    const items = [...(generated.status === 'fulfilled' ? generated.value : []), ...(fused.status === 'fulfilled' ? fused.value : [])];
+    return items.sort(newestFirst);
+  },
+  cancel: (job: JobSummary) => (isFusionJob(job) ? fusion.cancelJob(job.id) : generation.cancelJob(job.id)),
+  retry: (job: JobSummary) => (isFusionJob(job) ? fusion.retryJob(job.id) : generation.retryJob(job.id)),
 };
 
 export const roleLabel = (role?: string) => (role === 'OWNER' ? '소유자' : role === 'EDITOR' ? '편집' : '보기');

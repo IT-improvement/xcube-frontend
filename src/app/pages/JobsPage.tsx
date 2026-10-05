@@ -5,23 +5,23 @@ import { userMessage } from '../../api/httpClient';
 import { JobSummary } from '../../api/generationApi';
 import { Alert, Button, ButtonLink } from '../../components/ui';
 import { Card, EmptyState, PageHeader, Skeleton, useToast } from '../../components/ui/kit';
-import { formatDate, generation } from '../api';
+import { formatDate, jobs as jobService } from '../api';
 import { elapsed, isActive, JOB_TYPE_LABEL, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
 import { useLoad } from '../useLoad';
 
-type TypeFilter = '' | 'GEE_TO_ZARR' | 'GEOTIFF_BANDS,CAS500' | 'SHAPEFILE';
+type TypeFilter = '' | 'GEE_TO_ZARR' | 'GEOTIFF_BANDS,CAS500' | 'SHAPEFILE' | 'FUSION';
 type StatusFilter = '' | 'QUEUED,RUNNING' | 'SUCCEEDED' | 'FAILED,CANCELLED';
 
-/** S10 작업 센터: the user's generation jobs with progress, steps, cancel and retry (FR-JOB-01·02). */
+/** S10 작업 센터: the user's generation and fusion jobs with progress, steps, cancel and retry (FR-JOB-01·02). */
 export default function JobsPage() {
   const [type, setType] = useState<TypeFilter>('');
   const [status, setStatus] = useState<StatusFilter>('');
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null); // jobKey of the expanded row
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [tick, setTick] = useState(0);
   const toast = useToast();
-  const jobs = useLoad(() => generation.listJobs({ type, status }), [type, status, tick]);
+  const jobs = useLoad(() => jobService.list({ type, status }), [type, status, tick]);
   const items = useMemo(() => jobs.data ?? [], [jobs.data]);
   const anyActive = items.some(isActive);
 
@@ -32,23 +32,25 @@ export default function JobsPage() {
     return () => window.clearTimeout(timer);
   }, [anyActive, items]);
 
+  // Ids are unique per service only, so rows are keyed by type too.
+  const keyOf = (job: JobSummary) => `${job.type === 'FUSION' ? 'FUSION' : 'GEN'}:${job.id}`;
   const act = async (job: JobSummary, action: 'cancel' | 'retry') => {
-    setBusy(job.id);
+    setBusy(keyOf(job));
     setError('');
     try {
-      if (action === 'cancel') { await generation.cancelJob(job.id); toast.show('작업을 취소했습니다.'); }
-      else { const again = await generation.retryJob(job.id); setOpen(again.id); toast.show('같은 설정으로 다시 실행했습니다.'); }
+      if (action === 'cancel') { await jobService.cancel(job); toast.show('작업을 취소했습니다.'); }
+      else { const again = await jobService.retry(job); setOpen(keyOf(again)); toast.show('같은 설정으로 다시 실행했습니다.'); }
       setTick((value) => value + 1);
     } catch (cause) { setError(userMessage(cause)); } finally { setBusy(''); }
   };
 
   return (
     <div className="page-stack">
-      <PageHeader title="작업" description="데이터 생성 작업의 진행 상황입니다. 처리 중인 작업이 있으면 10초마다 갱신합니다." actions={<ButtonLink to="/app/data/new">데이터 추가</ButtonLink>} />
+      <PageHeader title="작업" description="데이터 생성·수식 융합 작업의 진행 상황입니다. 처리 중인 작업이 있으면 10초마다 갱신합니다." actions={<><ButtonLink to="/app/analysis/fusion" variant="secondary">수식 융합</ButtonLink><ButtonLink to="/app/data/new">데이터 추가</ButtonLink></>} />
       <Card>
         <div className="toolbar">
           <div className="segmented" role="group" aria-label="작업 종류">
-            {([['', '전체'], ['GEE_TO_ZARR', 'GEE'], ['GEOTIFF_BANDS,CAS500', 'GeoTIFF·CAS500'], ['SHAPEFILE', 'Shapefile']] as Array<[TypeFilter, string]>).map(([value, label]) => (
+            {([['', '전체'], ['GEE_TO_ZARR', 'GEE'], ['GEOTIFF_BANDS,CAS500', 'GeoTIFF·CAS500'], ['SHAPEFILE', 'Shapefile'], ['FUSION', '수식 융합']] as Array<[TypeFilter, string]>).map(([value, label]) => (
               <button key={label} type="button" aria-pressed={type === value} onClick={() => setType(value)}>{label}</button>
             ))}
           </div>
@@ -69,7 +71,7 @@ export default function JobsPage() {
         ) : jobs.error ? (
           <div className="inline-error"><Alert tone="danger">작업 목록을 불러오지 못했습니다. {jobs.error}</Alert><Button variant="secondary" size="sm" onClick={jobs.reload} style={{ marginTop: 12 }}>다시 시도</Button></div>
         ) : !items.length ? (
-          <EmptyState icon={<ListChecks size={22} />} title={type || status ? '조건에 맞는 작업이 없습니다' : '아직 작업이 없습니다'} text="데이터 추가에서 Zarr를 만들면 이곳에 진행 상황이 표시됩니다." />
+          <EmptyState icon={<ListChecks size={22} />} title={type || status ? '조건에 맞는 작업이 없습니다' : '아직 작업이 없습니다'} text="데이터 추가나 수식 융합을 실행하면 이곳에 진행 상황이 표시됩니다." />
         ) : (
           <div className="xc-table-wrap">
             <table className="xc-table">
@@ -87,13 +89,14 @@ export default function JobsPage() {
               </thead>
               <tbody>
                 {items.map((job) => {
-                  const expanded = open === job.id;
+                  const key = keyOf(job);
+                  const expanded = open === key;
                   const percent = Math.round((job.progress ?? (job.status === 'SUCCEEDED' ? 1 : 0)) * 100);
                   return (
-                    <Fragment key={job.id}>
+                    <Fragment key={key}>
                       <tr>
                         <td>
-                          <button type="button" className="xc-icon-btn" aria-expanded={expanded} aria-label={`${job.name} 상세 ${expanded ? '접기' : '펼치기'}`} onClick={() => setOpen(expanded ? null : job.id)}>
+                          <button type="button" className="xc-icon-btn" aria-expanded={expanded} aria-label={`${job.name} 상세 ${expanded ? '접기' : '펼치기'}`} onClick={() => setOpen(expanded ? null : key)}>
                             {expanded ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
                           </button>
                         </td>
@@ -113,8 +116,8 @@ export default function JobsPage() {
                             {job.registration?.datacubeId != null && job.status === 'SUCCEEDED' && (
                               <Link className="xc-btn xc-btn--ghost xc-btn--sm" to={`/app/data/${job.registration.datacubeId}`}>데이터 보기</Link>
                             )}
-                            {isActive(job) && <Button size="sm" variant="ghost" disabled={busy === job.id} onClick={() => act(job, 'cancel')} aria-label={`${job.name} 취소`}><Square size={14} aria-hidden />취소</Button>}
-                            {(job.status === 'FAILED' || job.status === 'CANCELLED') && <Button size="sm" variant="secondary" disabled={busy === job.id} onClick={() => act(job, 'retry')} aria-label={`${job.name} 다시 시도`}><RotateCcw size={14} aria-hidden />다시 시도</Button>}
+                            {isActive(job) && <Button size="sm" variant="ghost" disabled={busy === key} onClick={() => act(job, 'cancel')} aria-label={`${job.name} 취소`}><Square size={14} aria-hidden />취소</Button>}
+                            {(job.status === 'FAILED' || job.status === 'CANCELLED') && <Button size="sm" variant="secondary" disabled={busy === key} onClick={() => act(job, 'retry')} aria-label={`${job.name} 다시 시도`}><RotateCcw size={14} aria-hidden />다시 시도</Button>}
                           </div>
                         </td>
                       </tr>

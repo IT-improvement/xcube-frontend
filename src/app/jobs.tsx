@@ -3,13 +3,16 @@
 import { Fragment, useEffect, useState } from 'react';
 import { JobSummary } from '../api/generationApi';
 import { Badge, BadgeTone } from '../components/ui/kit';
-import { generation } from './api';
+import { jobs as allJobs } from './api';
+import { AGG_LABEL, asFusionRequest, EXTENT_LABEL, GRID_LABEL, normalizationLabel, PERIOD_LABEL, RESAMPLING_LABEL, TIME_LABEL } from './fusion';
+import { FusionRequest } from '../api/analysisApi';
 
 export const JOB_TYPE_LABEL: Record<string, string> = {
   GEE_TO_ZARR: 'GEE',
   GEOTIFF_BANDS: 'GeoTIFF',
   CAS500: 'CAS500',
   SHAPEFILE: 'Shapefile',
+  FUSION: '수식 융합',
 };
 const STATUS: Record<string, { label: string; tone: BadgeTone }> = {
   QUEUED: { label: '대기 중', tone: 'neutral' },
@@ -50,7 +53,8 @@ export function jobSteps(job: JobSummary): Array<{ label: string; state: StepSta
     registered ? 'done' : registrationFailed ? 'failed' : job.status === 'SUCCEEDED' ? 'current' : 'todo',
     registered ? 'done' : 'todo',
   ];
-  return ['검사', '변환', '검증', '등록', 'XCube 반영'].map((label, index) => ({ label, state: states[index] }));
+  const labels = job.type === 'FUSION' ? ['입력 확인', '계산', '검증', '등록', 'XCube 반영'] : ['검사', '변환', '검증', '등록', 'XCube 반영'];
+  return labels.map((label, index) => ({ label, state: states[index] }));
 }
 
 export function JobSteps({ job }: { job: JobSummary }) {
@@ -69,8 +73,46 @@ export function JobSteps({ job }: { job: JobSummary }) {
 
 type VariableIn = { source?: string; name?: string; variable?: string; kind?: string; colorBar?: string; valueMin?: number; valueMax?: number; style?: { colorBar?: string; min?: number; max?: number } };
 
+/** Formula, bindings and rules of a fusion request (job input or dataset history). */
+export function FusionRequestSummary({ request, names }: { request: Partial<FusionRequest>; names?: Record<string, string> }) {
+  const bindings = Object.entries(request.bindings ?? {});
+  const grid = request.grid;
+  const time = request.time;
+  const rules: Array<[string, string]> = [];
+  if (grid) rules.push(['격자', `${GRID_LABEL[grid.reference] ?? grid.reference}${grid.reference === 'datacube' && grid.datacubeId != null ? ` (${names?.[String(grid.datacubeId)] ?? `#${grid.datacubeId}`})` : ''} · 리샘플링 ${RESAMPLING_LABEL[grid.resampling] ?? grid.resampling}`]);
+  if (request.extent) rules.push(['범위', EXTENT_LABEL[request.extent] ?? request.extent]);
+  if (time) rules.push(['시간', `${TIME_LABEL[time.mode] ?? time.mode}${time.mode === 'nearest' && time.toleranceDays != null ? ` (±${time.toleranceDays}일)` : ''}${time.mode === 'aggregate' ? ` (${time.period ? PERIOD_LABEL[time.period] : '—'} 단위 ${time.agg ? AGG_LABEL[time.agg] : '—'})` : ''}`]);
+  if (request.outputVariable) rules.push(['결과 변수', request.outputVariable]);
+  return (
+    <div className="job-input">
+      <dl className="meta-list" style={{ padding: 0 }}>
+        <dt>수식</dt><dd><code className="fusion-code">{request.formula}</code></dd>
+        {rules.map(([label, value]) => (<Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>))}
+      </dl>
+      {bindings.length > 0 && (
+        <table className="xc-table job-vars">
+          <caption className="sr-only">입력 변수</caption>
+          <thead><tr><th scope="col">문자</th><th scope="col">데이터</th><th scope="col">변수</th><th scope="col">정규화</th></tr></thead>
+          <tbody>
+            {bindings.map(([letter, binding]) => (
+              <tr key={letter}>
+                <td><strong>{letter}</strong></td>
+                <td>{names?.[String(binding.datacubeId)] ?? `#${binding.datacubeId}`}</td>
+                <td>{binding.variable}</td>
+                <td>{normalizationLabel(binding.normalization)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 /** What the job was asked to do: inputs, chosen variables with colour range, parameters. */
 export function JobInputSummary({ job }: { job: JobSummary }) {
+  const fusionRequest = job.type === 'FUSION' ? asFusionRequest(job.input) : null;
+  if (fusionRequest) return <FusionRequestSummary request={fusionRequest} />;
   const input = job.input ?? {};
   const variables = ((input.variables as VariableIn[] | undefined) ?? (input.bandStyles as VariableIn[] | undefined) ?? []);
   const params = (input.params as Record<string, unknown> | undefined) ?? {};
@@ -119,7 +161,7 @@ export function useActiveJobCount() {
     let cancelled = false;
     let timer: number | undefined;
     const check = () =>
-      generation.listJobs({ status: 'QUEUED,RUNNING' })
+      allJobs.list({ status: 'QUEUED,RUNNING' })
         .then((jobs) => { if (!cancelled) setCount(jobs.length); return jobs.length; })
         .catch(() => 0)
         .then((active) => { if (!cancelled) timer = window.setTimeout(check, active ? 10000 : 60000); });

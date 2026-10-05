@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthProvider';
 import { Alert, Button, ButtonLink } from '../../components/ui';
 import { Badge, Card, EmptyState, PageHeader, Skeleton } from '../../components/ui/kit';
-import { appApi, generation, isOwned, periodLabel, viewerHref } from '../api';
+import { appApi, isOwned, jobs as jobService, periodLabel, viewerHref } from '../api';
 import { useLoad } from '../useLoad';
 import { elapsed, isActive, JOB_TYPE_LABEL, JobStatusBadge } from '../jobs';
 import { DatasetStatus } from './DataLibraryPage';
@@ -13,7 +13,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const datasets = useLoad(() => appApi.listDatasets());
   const projects = useLoad(() => appApi.listProjects());
-  const jobs = useLoad(() => generation.listJobs());
+  const jobs = useLoad(() => jobService.list());
   const jobItems = jobs.data ?? [];
   const items = datasets.data ?? [];
   const owned = items.filter(isOwned).length;
@@ -38,12 +38,11 @@ export default function DashboardPage() {
           <small>{items[0] ? `최근 데이터 “${items[0].name}”을 엽니다.` : '시계열 지도를 새 탭에서 엽니다.'}</small>
           <span className="sr-only">(새 탭)</span>
         </a>
-        <div className="dash-quick__card is-disabled" aria-disabled="true">
-          <Badge>준비 중</Badge>
+        <Link className="dash-quick__card" to="/app/analysis/fusion">
           <span className="dash-quick__icon"><Sigma size={20} aria-hidden /></span>
           <strong>수식 융합</strong>
-          <small>여러 Zarr를 수식으로 합칩니다. (M6)</small>
-        </div>
+          <small>여러 Zarr를 수식으로 합칩니다.</small>
+        </Link>
         <div className="dash-quick__card is-disabled" aria-disabled="true">
           <Badge>준비 중</Badge>
           <span className="dash-quick__icon"><Sparkles size={20} aria-hidden /></span>
@@ -95,11 +94,11 @@ export default function DashboardPage() {
           {jobs.loading ? <Skeleton lines={3} label="최근 작업을 불러오는 중" /> : jobs.error ? (
             <div className="inline-error"><Alert tone="danger">작업 목록을 불러오지 못했습니다. {jobs.error}</Alert></div>
           ) : !jobItems.length ? (
-            <EmptyState title="아직 작업이 없습니다" text="데이터를 추가하면 생성 작업의 진행 상황이 이곳에 표시됩니다." />
+            <EmptyState title="아직 작업이 없습니다" text="데이터를 추가하거나 수식 융합을 실행하면 진행 상황이 이곳에 표시됩니다." />
           ) : (
             <ul className="recent-jobs">
               {jobItems.slice(0, 5).map((job) => (
-                <li key={job.id}>
+                <li key={`${job.type}:${job.id}`}>
                   <span className="xc-cell-main"><strong>{job.name || '이름 없음'}</strong><small>{JOB_TYPE_LABEL[job.type] ?? job.type} · {elapsed(job)}</small></span>
                   <JobStatusBadge job={job} />
                 </li>
