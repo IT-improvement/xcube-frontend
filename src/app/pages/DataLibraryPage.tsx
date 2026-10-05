@@ -91,7 +91,7 @@ export default function DataLibraryPage() {
               <tbody>
                 {visible.map((item) => (
                   <tr key={item.id}>
-                    <td><span className="xc-cell-main"><Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link><small>{item.xcubeDatasetId}</small></span></td>
+                    <td><span className="xc-cell-main"><Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link><small>{item.kind === 'FUSION' && <Badge tone="water">융합 결과</Badge>} {item.xcubeDatasetId}</small></span></td>
                     <td className="hide-sm tabular">{periodLabel(item)}</td>
                     <td className="num hide-sm">{item.times.length}</td>
                     <td className="num hide-sm">{item.variables.length}</td>

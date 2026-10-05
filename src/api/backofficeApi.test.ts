@@ -103,3 +103,20 @@ test('Zarr 전역 등록과 프로젝트 연결·해제를 분리한다', async 
   expect((fetchMock.mock.calls[2][1] as RequestInit).method).toBe('POST');
   expect((fetchMock.mock.calls[3][1] as RequestInit).method).toBe('DELETE');
 });
+
+test('Viewer 목록은 융합 결과(FUSION)도 포함하고 AI 결과는 제외한다', async () => {
+  const base = { ownerUserId: 7, accessType: 'OWNED', integrationStatus: 'REGISTERED', availabilityStatus: 'AVAILABLE', variables: [{ name: 'fusion' }] };
+  jest.spyOn(global, 'fetch').mockResolvedValue(json({ content: [
+    { ...base, datacubeId: 1, xcubeDatasetId: 'a', name: 'original', kind: 'ORIGINAL' },
+    { ...base, datacubeId: 2, xcubeDatasetId: 'b', name: 'NDWI 융합', kind: 'FUSION', metadata: { fusion: { formula: 'A - B' } } },
+    { ...base, datacubeId: 3, xcubeDatasetId: 'c', name: 'infer', kind: 'AI_RESULT' },
+  ], page: 0, size: 100, totalElements: 3, totalPages: 1 }));
+  const items = await backofficeAdapter.getDatasets();
+  expect(items.map((item) => item.name)).toEqual(['original', 'NDWI 융합']);
+  expect(items[1]).toMatchObject({ kind: 'FUSION', fusion: { formula: 'A - B' } });
+  jest.spyOn(global, 'fetch').mockResolvedValue(json({ content: [
+    { datacubeId: 2, name: 'NDWI 융합', kind: 'FUSION', status: 'READY', metadata: {} },
+    { datacubeId: 3, name: 'infer', kind: 'AI_RESULT', status: 'READY', metadata: {} },
+  ], totalElements: 2, totalPages: 1, number: 0, size: 100 }));
+  expect((await backofficeAdapter.getProjectDatasets!('10')).map((item) => item.name)).toEqual(['NDWI 융합']);
+});

@@ -6,11 +6,13 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 jest.mock('../../api', () => ({ activeViewerAdapter: { getProjects: jest.fn(), getDatasets: jest.fn(), getProjectDatasets: jest.fn(), getJobs: jest.fn(), runWaterExtraction: jest.fn() }, useMockApi: false }));
 jest.mock('../../api/backofficeApi', () => ({ backofficeAdapter: { getProject: jest.fn(), createProject: jest.fn(), updateProject: jest.fn(), deleteProject: jest.fn(), getProjectMembers: jest.fn(), addProjectMember: jest.fn(), updateProjectMember: jest.fn(), removeProjectMember: jest.fn(), getProjectDatasets: jest.fn(), getLinkableDatacubes: jest.fn(), linkProjectDataset: jest.fn(), unlinkProjectDataset: jest.fn(), getDatasetDetail: jest.fn(), deleteDatacube: jest.fn(), registerDatacube: jest.fn() } }));
 jest.mock('../../api/generationApi', () => ({ generationApi: { getColorBarOptions: jest.fn(), getCollections: jest.fn(), inspectSpatialFile: jest.fn(), createGeeJob: jest.fn(), createFileJob: jest.fn(), getJob: jest.fn(), listJobs: jest.fn(), jobSummary: jest.fn(), retryJob: jest.fn(), cancelJob: jest.fn() } }));
+jest.mock('../../api/analysisApi', () => ({ ...jest.requireActual('../../api/analysisApi'), analysisApi: { validate: jest.fn(), dryRun: jest.fn(), createJob: jest.fn(), listJobs: jest.fn(), getJob: jest.fn(), cancelJob: jest.fn(), retryJob: jest.fn() } }));
 jest.mock('../../auth/AuthProvider', () => ({ useAuth: () => ({ user: { id: 1, name: '홍길동' }, signOut: jest.fn() }) }));
 
 const adapter = require('../../api').activeViewerAdapter as Record<string, jest.Mock>;
 const backoffice = require('../../api/backofficeApi').backofficeAdapter as Record<string, jest.Mock>;
 const generation = require('../../api/generationApi').generationApi as Record<string, jest.Mock>;
+const analysis = require('../../api/analysisApi').analysisApi as Record<string, jest.Mock>;
 const { ApiError } = require('../../api/httpClient');
 const DashboardPage = require('./DashboardPage').default;
 const DataLibraryPage = require('./DataLibraryPage').default;
@@ -18,6 +20,7 @@ const DatasetDetailPage = require('./DatasetDetailPage').default;
 const { ProjectDetailPage, ProjectsPage } = require('./ProjectsPage');
 const AddDataPage = require('../wizard/AddDataPage').default;
 const JobsPage = require('./JobsPage').default;
+const FusionPage = require('./FusionPage').default;
 
 const owned = { id: '77', projectId: '4', name: '연결된 Zarr', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: 'linked', defaultVariable: 'red', variables: ['red'], times: [], accessType: 'OWNED' };
 const shared = { ...owned, id: '88', projectId: '', name: '공유받은 Zarr', xcubeDatasetId: 'global', accessType: 'SHARED' };
@@ -33,6 +36,7 @@ function renderAt(path: string) {
         <Route path="/app/projects" element={<ProjectsPage />} />
         <Route path="/app/projects/:projectId" element={<ProjectDetailPage />} />
         <Route path="/app/jobs" element={<JobsPage />} />
+        <Route path="/app/analysis/fusion" element={<FusionPage />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -50,6 +54,7 @@ beforeEach(() => {
   backoffice.unlinkProjectDataset.mockResolvedValue(undefined);
   backoffice.deleteDatacube.mockResolvedValue(undefined);
   generation.listJobs.mockResolvedValue([]);
+  analysis.listJobs.mockResolvedValue([]);
   generation.getColorBarOptions.mockResolvedValue([{ id: 'viridis', category: 'Sequential' }, { id: 'tab10', category: 'Qualitative' }]);
   window.confirm = jest.fn(() => true);
 });
@@ -368,5 +373,84 @@ describe('M4 작업 센터·대시보드·생성 이력', () => {
     renderAt('/app/data/77');
     fireEvent.click(await screen.findByRole('tab', { name: '생성 이력' }));
     expect(await screen.findByText('생성 이력이 없습니다')).toBeInTheDocument();
+  });
+});
+
+describe('M6 수식 융합 작업·데이터 표시', () => {
+  const fusionDone = { id: 'f1', name: 'NDWI 융합', type: 'FUSION', status: 'SUCCEEDED', progress: 1, createdAt: '2026-10-05T03:00:00Z', registration: { datacubeId: 91, xcubeDatasetId: 'u1-d91' }, input: { name: 'NDWI 융합', formula: '(A - B) / (A + B)', bindings: { A: { datacubeId: 77, variable: 'red', normalization: 'auto' }, B: { datacubeId: 88, variable: 'red', normalization: { scale: 0.0001, offset: 0 } } }, grid: { reference: 'coarsest', datacubeId: null, resampling: 'average' }, extent: 'intersection', time: { mode: 'nearest', toleranceDays: 3, period: null, agg: null }, outputVariable: 'fusion', projectId: null } };
+  const fusionFailed = { ...fusionDone, id: 'f2', name: '실패한 융합', status: 'FAILED', progress: 0.5, createdAt: '2026-10-05T02:00:00Z', registration: null, errorMessage: 'GRID_MISMATCH' };
+  const generated = { id: 'g1', name: '제주 GeoTIFF', type: 'GEOTIFF_BANDS', status: 'RUNNING', progress: 0.5, stage: 'convert', createdAt: '2026-10-05T01:00:00Z', input: {} };
+
+  test('작업 센터는 생성 작업과 융합 작업을 최근순으로 합쳐 보여 주고, 취소·다시 시도는 각 서비스로 간다', async () => {
+    generation.listJobs.mockResolvedValue([generated]);
+    analysis.listJobs.mockResolvedValue([fusionFailed, fusionDone]);
+    analysis.retryJob.mockResolvedValue({ ...fusionFailed, id: 'f3', status: 'QUEUED' });
+    generation.cancelJob.mockResolvedValue({});
+    renderAt('/app/jobs');
+    expect(await screen.findByText('NDWI 융합')).toBeInTheDocument();
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows.map((row) => within(row).getByText(/NDWI 융합|실패한 융합|제주 GeoTIFF/, { selector: 'strong' }).textContent)).toEqual(['NDWI 융합', '실패한 융합', '제주 GeoTIFF']);
+    expect(screen.getAllByText('수식 융합').length).toBeGreaterThan(1);
+    expect(screen.getByRole('link', { name: '데이터 보기' })).toHaveAttribute('href', '/app/data/91');
+    fireEvent.click(screen.getByRole('button', { name: '실패한 융합 다시 시도' }));
+    await waitFor(() => expect(analysis.retryJob).toHaveBeenCalledWith('f2'));
+    expect(generation.retryJob).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '제주 GeoTIFF 취소' }));
+    await waitFor(() => expect(generation.cancelJob).toHaveBeenCalledWith('g1'));
+    expect(analysis.cancelJob).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'NDWI 융합 상세 펼치기' }));
+    expect(screen.getByText('(A - B) / (A + B)')).toBeInTheDocument();
+  });
+
+  test('종류 필터 “수식 융합”은 융합 서비스만 조회한다', async () => {
+    analysis.listJobs.mockResolvedValue([fusionDone]);
+    renderAt('/app/jobs');
+    await screen.findByText('NDWI 융합');
+    generation.listJobs.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: '수식 융합' }));
+    await waitFor(() => expect(analysis.listJobs).toHaveBeenLastCalledWith({ status: '' }));
+    expect(generation.listJobs).not.toHaveBeenCalled();
+  });
+
+  test('융합 서비스가 꺼져 있어도 생성 작업은 계속 보인다', async () => {
+    generation.listJobs.mockResolvedValue([generated]);
+    analysis.listJobs.mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.'));
+    renderAt('/app/jobs');
+    expect(await screen.findByText('제주 GeoTIFF')).toBeInTheDocument();
+  });
+
+  test('대시보드의 처리 중 작업 수와 최근 작업에 융합 작업이 함께 들어간다', async () => {
+    generation.listJobs.mockResolvedValue([generated]);
+    analysis.listJobs.mockResolvedValue([{ ...fusionDone, status: 'RUNNING', registration: null }]);
+    renderAt('/app');
+    expect(await screen.findByText('NDWI 융합')).toBeInTheDocument();
+    expect(within(screen.getByRole('group', { name: '처리 중 작업' })).getByText('2')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /수식 융합/ })).toHaveAttribute('href', '/app/analysis/fusion');
+  });
+
+  test('융합 결과 데이터는 목록·상세에 “융합 결과” badge를 달고, 상세 이력에서 같은 조건으로 S12를 연다', async () => {
+    const fusionData = { ...owned, id: '91', name: 'NDWI 융합 결과', kind: 'FUSION', generationJobId: 'f1', variables: ['fusion'] };
+    adapter.getDatasets.mockResolvedValue([owned, fusionData]);
+    renderAt('/app/data');
+    await screen.findByText('NDWI 융합 결과');
+    const rowOf = (text: string) => screen.getAllByRole('row').find((row) => within(row).queryByText(text))!;
+    expect(within(rowOf('NDWI 융합 결과')).getByText('융합 결과')).toBeInTheDocument();
+    expect(within(rowOf('연결된 Zarr')).queryByText('융합 결과')).toBeNull();
+  });
+
+  test('융합 결과 상세: 수식·규칙을 보여 주고 “같은 조건으로 다시 실행”이 S12를 채워 연다', async () => {
+    const fusionData = { ...owned, id: '91', name: 'NDWI 융합 결과', kind: 'FUSION', generationJobId: 'f1', variables: ['fusion'] };
+    backoffice.getDatasetDetail.mockResolvedValue(fusionData);
+    adapter.getDatasets.mockResolvedValue([owned, shared]);
+    analysis.getJob.mockResolvedValue(fusionDone);
+    renderAt('/app/data/91');
+    expect(await screen.findByText('융합 결과')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '생성 이력' }));
+    expect(await screen.findByText('(A - B) / (A + B)')).toBeInTheDocument();
+    expect(screen.getByText('±3일', { exact: false })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '같은 조건으로 다시 실행' }));
+    expect(await screen.findByRole('heading', { name: '입력' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('A 데이터')).toHaveValue('77'));
+    expect(screen.getByLabelText('B 정규화')).toHaveValue('custom');
   });
 });

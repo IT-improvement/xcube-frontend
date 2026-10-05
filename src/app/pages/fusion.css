@@ -1,0 +1,33 @@
+/* S12 수식 융합 */
+.fusion-bindings { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.fusion-binding { display: grid; grid-template-columns: 36px repeat(3, minmax(0, 1fr)) auto; gap: var(--space-3); align-items: end; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-subtle); }
+.fusion-binding__letter { display: grid; place-items: center; height: 40px; border-radius: var(--radius-sm); background: var(--color-primary); color: #fff; font: 700 16px/1 var(--font-sans); }
+.fusion-binding__custom { grid-column: 2 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); align-items: start; }
+.fusion-binding__custom .xc-hint { grid-column: 1 / -1; margin: 0; }
+.fusion-formula .xc-field__input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 16px; }
+.fusion-status { min-height: 24px; display: grid; gap: var(--space-2); }
+.fusion-status p { margin: 0; }
+.fusion-ok { display: flex; align-items: center; gap: 6px; color: var(--color-success); font-weight: 600; }
+.fusion-error { color: var(--color-danger); font-weight: 600; }
+.fusion-error p { margin: 4px 0 0; }
+.fusion-marker { font: 16px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--color-text-secondary); padding: 0 var(--space-3); }
+.fusion-marker mark { background: #fef2f2; color: var(--color-danger); text-decoration: underline wavy var(--color-danger); text-underline-offset: 4px; }
+.fusion-help { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
+.fusion-help summary { cursor: pointer; font-weight: 600; }
+.fusion-help code, .fusion-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; background: var(--color-surface-subtle); padding: 1px 6px; border-radius: 4px; }
+.fusion-preview { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+.fusion-preview__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.fusion-preview__body { display: grid; gap: var(--space-4); }
+.fusion-list { margin: 6px 0 0; padding-left: 18px; }
+.fusion-caption { text-align: left; padding: 8px var(--space-4); font: 600 13px/1.4 var(--font-sans); color: var(--color-text-secondary); }
+.fusion-quota { display: flex; height: 10px; overflow: hidden; border-radius: 999px; background: var(--color-surface-subtle); border: 1px solid var(--color-border); }
+.fusion-quota i { display: block; height: 100%; }
+.fusion-quota .is-used { background: var(--color-text-tertiary); }
+.fusion-quota .is-new { background: var(--color-primary); min-width: 2px; }
+.fusion-quota .is-over { background: var(--color-danger); min-width: 2px; }
+@media (max-width: 720px) {
+  .fusion-binding { grid-template-columns: 36px minmax(0, 1fr); }
+  .fusion-binding > * { grid-column: 2; }
+  .fusion-binding__letter { grid-column: 1; grid-row: 1; }
+  .fusion-binding__custom { grid-column: 2; grid-template-columns: 1fr; }
+}
