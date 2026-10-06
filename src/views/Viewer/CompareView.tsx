@@ -7,7 +7,7 @@ import type TileLayer from "ol/layer/Tile";
 import type RenderEvent from "ol/render/Event";
 import OlMap from "../../components/map";
 import addDynamicXcubeLayer from "../../components/xcubeLayer";
-import { Columns2, Square, SplitSquareHorizontal } from "lucide-react";
+import { ChevronDown, Columns2, GripVertical, Square, SplitSquareHorizontal } from "lucide-react";
 
 export type DisplayMode = "single" | "swipe" | "split";
 export const DISPLAY_MODES: Array<{ value: DisplayMode; label: string }> = [
@@ -130,8 +130,14 @@ export function SwipeDivider({
   };
   return (
     <div className={`vx-swipe ${dragging ? "is-dragging" : ""}`} ref={rootRef}>
-      <span className="vx-swipe__label vx-swipe__label--a">A · {leftLabel}</span>
-      <span className="vx-swipe__label vx-swipe__label--b">B · {rightLabel}</span>
+      <span className="vx-maplabel vx-maplabel--a">
+        <b className="vx-flag">A</b>
+        <span className="tabular">{leftLabel}</span>
+      </span>
+      <span className="vx-maplabel vx-maplabel--b">
+        <b className="vx-flag vx-flag--b">B</b>
+        <span className="tabular">{rightLabel}</span>
+      </span>
       <div className="vx-swipe__line" style={{ left: `${value}%` }}>
         <button
           type="button"
@@ -157,7 +163,7 @@ export function SwipeDivider({
             }
           }}
         >
-          <SplitSquareHorizontal size={16} aria-hidden="true" />
+          <GripVertical size={16} aria-hidden="true" />
         </button>
       </div>
     </div>
@@ -193,63 +199,72 @@ export function CompareMap({
   return (
     <div className="vx-compare-map" aria-label={`비교 지도 B · ${label}`} role="region">
       <OlMap onMapReady={setOwn} baseVisible={baseVisible} />
-      <span className="vx-swipe__label vx-swipe__label--b">B · {label}</span>
+      <span className="vx-maplabel vx-maplabel--b">
+        <b className="vx-flag vx-flag--b">B</b>
+        <span className="tabular">{label}</span>
+      </span>
     </div>
   );
 }
 
-/** Display-mode switch and time-B picker, floating at the top right of the map. */
-export function CompareControl({
+/** Display-mode switch (single / swipe / side by side), set at the end of the time staff. */
+export function CompareModes({
   mode,
   onMode,
-  times,
-  compareIndex,
-  onCompareIndex,
   disabled,
 }: {
   mode: DisplayMode;
   onMode: (mode: DisplayMode) => void;
-  times: Array<{ iso: string; label: string }>;
-  compareIndex: number;
-  onCompareIndex: (index: number) => void;
   disabled: boolean;
 }) {
   return (
-    <div className="vx-compare" data-tour="compare">
-      <div className="vx-compare__modes" role="group" aria-label="표시 방식">
-        {DISPLAY_MODES.map(({ value, label }) => {
-          const Icon = ICON[value];
-          return (
-            <button
-              type="button"
-              key={value}
-              aria-pressed={mode === value}
-              disabled={disabled && value !== "single"}
-              onClick={() => onMode(value)}
-              title={value === "single" ? "단일 표시" : `${label} 비교`}
-            >
-              <Icon size={15} aria-hidden="true" />
-              <span>{label}</span>
-            </button>
-          );
-        })}
-      </div>
-      {mode !== "single" && (
-        <label className="vx-compare__time">
-          <span>B 시점</span>
-          <select
-            aria-label="비교 시점 B"
-            value={compareIndex}
-            onChange={(event) => onCompareIndex(Number(event.target.value))}
+    <div className="vx-modes" role="group" aria-label="표시 방식" data-tour="compare">
+      {DISPLAY_MODES.map(({ value, label }) => {
+        const Icon = ICON[value];
+        return (
+          <button
+            type="button"
+            key={value}
+            aria-pressed={mode === value}
+            disabled={disabled && value !== "single"}
+            onClick={() => onMode(value)}
+            title={value === "single" ? "단일 표시" : `${label} 비교`}
           >
-            {times.map((time, index) => (
-              <option key={time.iso} value={index}>
-                {time.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
+            <Icon size={15} aria-hidden="true" />
+            <span className="vx-modes__label">{label}</span>
+          </button>
+        );
+      })}
     </div>
+  );
+}
+
+/** Time B picker. A is always the timeline's current time. */
+export function CompareTime({
+  times,
+  compareIndex,
+  onCompareIndex,
+}: {
+  times: Array<{ iso: string; label: string }>;
+  compareIndex: number;
+  onCompareIndex: (index: number) => void;
+}) {
+  return (
+    <label className="vx-btime">
+      <b className="vx-flag vx-flag--b" aria-hidden="true">B</b>
+      <select
+        aria-label="비교 시점 B"
+        className="tabular"
+        value={compareIndex}
+        onChange={(event) => onCompareIndex(Number(event.target.value))}
+      >
+        {times.map((time, index) => (
+          <option key={time.iso} value={index}>
+            {time.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown size={14} aria-hidden="true" />
+    </label>
   );
 }

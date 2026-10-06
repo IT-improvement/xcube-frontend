@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Map from "ol/Map";
 import { ChevronDown, ChevronUp, Crosshair } from "lucide-react";
 import { ZarrDataset } from "../../api/viewerAdapter";
+import { PLOT_INSET } from "./TimeStaff";
 import { SeriesPoint } from "../../api/backofficeApi";
 
 export function PixelMarker({
@@ -37,6 +38,32 @@ export function PixelMarker({
   );
 }
 
+const numberFormat = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 4 });
+
+/** Index of the point at, or nearest to, the given time. */
+export function nearestIndex(points: SeriesPoint[], currentTime?: string) {
+  if (!currentTime || !points.length) return 0;
+  const exact = points.findIndex((point) => point.time === currentTime);
+  if (exact >= 0) return exact;
+  const target = new Date(currentTime).getTime();
+  let best = 0;
+  if (Number.isFinite(target))
+    points.forEach((point, index) => {
+      const candidate = new Date(point.time).getTime();
+      const bestTime = new Date(points[best]?.time).getTime();
+      if (
+        Number.isFinite(candidate) &&
+        (!Number.isFinite(bestTime) || Math.abs(candidate - target) < Math.abs(bestTime - target))
+      )
+        best = index;
+    });
+  return best;
+}
+
+/**
+ * The pixel reading in the bottom dock: where it is (record), the full series on the
+ * shared time axis (plot) and the value at the shown time (tail).
+ */
 export function BottomGraphPanel({
   expanded,
   onToggle,
@@ -45,6 +72,10 @@ export function BottomGraphPanel({
   points,
   coordinate,
   currentTime,
+  currentLabel,
+  timeCount,
+  compareTime,
+  compareLabel,
 }: {
   expanded: boolean;
   onToggle: () => void;
@@ -53,28 +84,126 @@ export function BottomGraphPanel({
   points: SeriesPoint[];
   coordinate: { lon: number; lat: number } | null;
   currentTime?: string;
+  /** Label of the shown time, as on the time staff. */
+  currentLabel?: string;
+  /** Number of times on the staff; the chart hides its own dates when it matches. */
+  timeCount?: number;
+  /** Time B while comparing: the tail then shows A, B and the change. */
+  compareTime?: string;
+  compareLabel?: string;
 }) {
   const units = dataset.variableMetadata?.[variable]?.units;
   const label = expanded
     ? "픽셀 그래프 아래로 숨기기"
     : "픽셀 그래프 위로 펼치기";
+  // The series may omit times without a valid value, so the nearest point only counts when it is
+  // the same observation (within an hour); otherwise that time has no value here.
+  const valueAt = (time?: string) => {
+    const point = points.length ? points[nearestIndex(points, time)] : undefined;
+    if (!point || typeof point.value !== "number" || !Number.isFinite(point.value)) return null;
+    if (time && point.time !== time) {
+      const gap = Math.abs(new Date(point.time).getTime() - new Date(time).getTime());
+      if (!Number.isFinite(gap) || gap > 60 * 60 * 1000) return null;
+    }
+    return point.value;
+  };
+  const a = valueAt(currentTime);
+  const b = compareTime ? valueAt(compareTime) : null;
+  const unitText = units && units !== "1" ? units : "";
+  // Change reads in time order (earlier → later), whichever of A/B is earlier.
+  const aFirst =
+    !compareTime || !currentTime || new Date(currentTime).getTime() <= new Date(compareTime).getTime();
+  const [from, to] = aFirst ? [a, b] : [b, a];
+  const change =
+    compareTime && from != null && to != null
+      ? {
+          delta: to - from,
+          percent: from !== 0 ? ((to - from) / Math.abs(from)) * 100 : null,
+        }
+      : null;
   return (
     <section
       className={`vx-graph ${expanded ? "expanded" : "hidden"}`}
       aria-label="픽셀 시계열 그래프 패널"
       aria-live="polite"
     >
-      <div className="vx-graph__head">
-        <span className="vx-graph__title">
+      <div className="vx-reading">
+        <span className="vx-reading__title">
           <Crosshair size={14} aria-hidden="true" />
           <strong>픽셀 시계열</strong>
-          {coordinate && (
-            <small className="tabular">
-              {coordinate.lon.toFixed(5)}, {coordinate.lat.toFixed(5)}
-            </small>
-          )}
-          {variable && <b>{variable}</b>}
+          {variable && <b className="vx-reading__var">{variable}</b>}
         </span>
+        {coordinate && (
+          <dl className="vx-reading__coords tabular">
+            <div>
+              <dt>위도</dt>
+              <dd>{coordinate.lat.toFixed(5)}°</dd>
+            </div>
+            <div>
+              <dt>경도</dt>
+              <dd>{coordinate.lon.toFixed(5)}°</dd>
+            </div>
+          </dl>
+        )}
+      </div>
+      <div className="vx-graph__chart">
+        {expanded && (
+          <TimeseriesChart
+            dataset={dataset.name}
+            variable={variable}
+            units={units}
+            points={points}
+            coordinate={coordinate}
+            currentTime={currentTime}
+            showDates={timeCount !== points.length}
+          />
+        )}
+      </div>
+      <div className="vx-reading__tail">
+        {expanded && !compareTime && (
+          <div className="vx-reading__value">
+            <small className="tabular">{currentLabel ? `${currentLabel} 값` : "현재 시점 값"}</small>
+            {a != null ? (
+              <strong className="tabular">
+                {numberFormat.format(a)}
+                {unitText && <span>{unitText}</span>}
+              </strong>
+            ) : (
+              <em>이 시점에는 값이 없습니다</em>
+            )}
+          </div>
+        )}
+        {expanded && compareTime && (
+          <dl className="vx-reading__compare tabular">
+            <div>
+              <dt>
+                <b className="vx-flag" aria-hidden="true">A</b>
+                {currentLabel}
+              </dt>
+              <dd>{a != null ? numberFormat.format(a) : "값 없음"}</dd>
+            </div>
+            <div>
+              <dt>
+                <b className="vx-flag vx-flag--b" aria-hidden="true">B</b>
+                {compareLabel}
+              </dt>
+              <dd>{b != null ? numberFormat.format(b) : "값 없음"}</dd>
+            </div>
+            <div className="vx-reading__change">
+              <dt>{aFirst ? "A → B 변화" : "B → A 변화"}</dt>
+              <dd>
+                {change
+                  ? `${change.delta > 0 ? "+" : ""}${numberFormat.format(change.delta)}${
+                      change.percent != null
+                        ? ` (${change.percent > 0 ? "+" : ""}${change.percent.toFixed(1)}%)`
+                        : ""
+                    }`
+                  : "—"}
+                {change && unitText && <span>{unitText}</span>}
+              </dd>
+            </div>
+          </dl>
+        )}
         <button
           type="button"
           className="vx-icon-btn"
@@ -90,18 +219,6 @@ export function BottomGraphPanel({
           )}
         </button>
       </div>
-      {expanded && (
-        <section className="vx-graph__chart">
-          <TimeseriesChart
-            dataset={dataset.name}
-            variable={variable}
-            units={units}
-            points={points}
-            coordinate={coordinate}
-            currentTime={currentTime}
-          />
-        </section>
-      )}
     </section>
   );
 }
@@ -113,6 +230,7 @@ export function TimeseriesChart({
   points,
   coordinate,
   currentTime,
+  showDates = true,
 }: {
   dataset: string;
   variable: string;
@@ -120,6 +238,8 @@ export function TimeseriesChart({
   points: SeriesPoint[];
   coordinate: { lon: number; lat: number } | null;
   currentTime?: string;
+  /** Draw dates under the plot; off when the time staff below already labels the same axis. */
+  showDates?: boolean;
 }) {
   // Draw in the container's own pixel size so the chart fills the panel without
   // stretching text; 900x260 is the fallback where ResizeObserver is unavailable.
@@ -137,10 +257,9 @@ export function TimeseriesChart({
     return () => observer.disconnect();
   }, []);
   const { width, height } = size;
-  const left = 56;
-  const right = 16;
+  const { left, right } = PLOT_INSET;
   const top = 12;
-  const bottom = 36;
+  const bottom = showDates ? 30 : 10;
   const valid = points.filter(
     (point) => typeof point.value === "number" && Number.isFinite(point.value),
   );
@@ -150,12 +269,17 @@ export function TimeseriesChart({
   const rawMax = valid.length
     ? Math.max(...valid.map((point) => point.value as number))
     : 1;
-  const padding =
-    rawMin === rawMax
-      ? Math.max(Math.abs(rawMin) * 0.05, 1)
-      : (rawMax - rawMin) * 0.05;
-  const min = rawMin - padding;
-  const max = rawMax + padding;
+  // Round axis steps (1, 2, 2.5, 5 × 10^n) so the ticks read as plain numbers.
+  const span = rawMax - rawMin || Math.max(Math.abs(rawMin) * 0.1, 1);
+  const rough = span / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const step = ([1, 2, 2.5, 5, 10].find((factor) => factor * magnitude >= rough) ?? 10) * magnitude;
+  let min = Math.floor(rawMin / step) * step;
+  let max = Math.ceil(rawMax / step) * step;
+  if (min === max) {
+    min -= step;
+    max += step;
+  }
   const x = (index: number) =>
     left + (index * (width - left - right)) / Math.max(points.length - 1, 1);
   const y = (value: number) =>
@@ -171,22 +295,7 @@ export function TimeseriesChart({
     segment += `${segment ? " L" : "M"}${x(index)} ${y(point.value)}`;
   });
   if (segment) segments.push(segment);
-  const exactIndex = currentTime
-    ? points.findIndex((point) => point.time === currentTime)
-    : -1;
-  const target = currentTime ? new Date(currentTime).getTime() : NaN;
-  let currentIndex = exactIndex >= 0 ? exactIndex : 0;
-  if (exactIndex < 0 && Number.isFinite(target))
-    points.forEach((point, index) => {
-      const candidate = new Date(point.time).getTime();
-      const currentCandidate = new Date(points[currentIndex]?.time).getTime();
-      if (
-        Number.isFinite(candidate) &&
-        (!Number.isFinite(currentCandidate) ||
-          Math.abs(candidate - target) < Math.abs(currentCandidate - target))
-      )
-        currentIndex = index;
-    });
+  const currentIndex = nearestIndex(points, currentTime);
   const tickIndexes = Array.from(
     new Set(
       [0, 0.25, 0.5, 0.75, 1].map((ratio) =>
@@ -205,9 +314,11 @@ export function TimeseriesChart({
   const coordinateLabel = coordinate
     ? `EPSG:4326 · 경도 ${coordinate.lon.toFixed(5)}° · 위도 ${coordinate.lat.toFixed(5)}°`
     : "EPSG:4326";
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(
-    (ratio) => min + (max - min) * ratio,
-  );
+  const yTicks: number[] = [];
+  if (valid.length)
+    for (let value = min; value <= max + step / 2; value += step)
+      yTicks.push(Number(value.toFixed(10)));
+  const decimals = Math.max(0, -Math.floor(Math.log10(step)) + (step / magnitude === 2.5 ? 1 : 0));
   return (
     <div className="professional-chart" ref={boxRef}>
       <svg
@@ -236,11 +347,11 @@ export function TimeseriesChart({
               y={y(value) + 3}
               textAnchor="end"
             >
-              {value.toFixed(Math.abs(value) < 10 ? 2 : 1)}
+              {value.toLocaleString("ko-KR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
             </text>
           </g>
         ))}
-        {min < 0 && max > 0 && (
+        {valid.length > 0 && min < 0 && max > 0 && (
           <line
             className="zero-line"
             x1={left}
@@ -258,7 +369,7 @@ export function TimeseriesChart({
               key={index}
               className="missing-point"
               cx={x(index)}
-              cy={(top + height - bottom) / 2}
+              cy={height - bottom - 4}
               r="3"
             >
               <title>{point.time}: 값 없음</title>
@@ -269,7 +380,7 @@ export function TimeseriesChart({
               className="data-point"
               cx={x(index)}
               cy={y(point.value)}
-              r="2"
+              r="3.5"
             >
               <title>
                 {point.time} · {variable}: {point.value} {unit} ·{" "}
@@ -278,7 +389,7 @@ export function TimeseriesChart({
             </circle>
           ),
         )}
-        {tickIndexes.map(
+        {showDates && tickIndexes.map(
           (index) =>
             points[index] && (
               <text
@@ -312,7 +423,7 @@ export function TimeseriesChart({
                 className="current-point"
                 cx={x(currentIndex)}
                 cy={y(current.value)}
-                r="6"
+                r="5"
               >
                 <title>
                   {current.time}: {current.value} {unit}
@@ -324,7 +435,7 @@ export function TimeseriesChart({
       </svg>
       {!valid.length && (
         <div className="chart-empty">
-          선택한 위치에 유효한 픽셀값이 없습니다.
+          이 지점에는 영상 값이 없습니다. 지도에서 영상이 덮인 곳을 다시 선택하세요.
         </div>
       )}
     </div>

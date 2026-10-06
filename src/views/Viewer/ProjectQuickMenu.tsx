@@ -215,7 +215,7 @@ export default function ProjectQuickMenu({
               <div className="vx-pmenu__actions">
                 <button
                   type="button"
-                  className="vx-btn vx-btn--secondary"
+                  className="vx-btn vx-btn--line"
                   onClick={() => {
                     setMode("menu");
                     setError("");
@@ -225,7 +225,7 @@ export default function ProjectQuickMenu({
                 </button>
                 <button
                   type="submit"
-                  className="vx-btn vx-btn--primary"
+                  className="vx-btn vx-btn--ink"
                   disabled={busy}
                 >
                   {busy ? "만드는 중…" : "만들기"}

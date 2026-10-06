@@ -1,0 +1,571 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-06T10:29:54.171802+00:00",
+  "title": "Design System: XCube",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Field-Book Ground",
+        "canonical": "#f3f5f2",
+        "cssVar": "--vx-ground",
+        "dark": "#111412",
+        "tonalRamp": [
+          "#0a0c0a",
+          "#232422",
+          "#3f403e",
+          "#5c5e5c",
+          "#7f817e",
+          "#a3a5a2",
+          "#c9cbc8",
+          "#edefec"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Sheet White",
+        "canonical": "#ffffff",
+        "cssVar": "--vx-surface",
+        "dark": "#181c19",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#808080",
+          "#a4a4a4",
+          "#cacaca",
+          "#eeeeee"
+        ]
+      },
+      "sunken": {
+        "role": "neutral",
+        "displayName": "Sunken Paper",
+        "canonical": "#eceee9",
+        "cssVar": "--vx-sunken",
+        "dark": "#222723",
+        "tonalRamp": [
+          "#0a0c09",
+          "#232521",
+          "#3f403c",
+          "#5d5e5a",
+          "#7f817c",
+          "#a3a5a1",
+          "#c9cbc6",
+          "#edefea"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Ruling Line",
+        "canonical": "#d8ddd5",
+        "cssVar": "--vx-rule",
+        "dark": "#2d3430",
+        "tonalRamp": [
+          "#090c07",
+          "#22251f",
+          "#3d413b",
+          "#5b5f58",
+          "#7d827b",
+          "#a2a69f",
+          "#c7ccc4",
+          "#ebf0e8"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Strong Rule",
+        "canonical": "#b3bbb0",
+        "cssVar": "--vx-rule-strong",
+        "dark": "#46504a",
+        "tonalRamp": [
+          "#080d06",
+          "#20261e",
+          "#3b4239",
+          "#596056",
+          "#7b8379",
+          "#a0a79d",
+          "#c5cdc2",
+          "#e9f1e6"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Graphite Ink",
+        "canonical": "#1b201d",
+        "cssVar": "--vx-ink",
+        "dark": "#e7ebe7",
+        "tonalRamp": [
+          "#080c0a",
+          "#202522",
+          "#3c413e",
+          "#595f5c",
+          "#7c827e",
+          "#a0a6a2",
+          "#c6ccc8",
+          "#e9f0ec"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink 2",
+        "canonical": "#454d47",
+        "cssVar": "--vx-ink-2",
+        "dark": "#bcc4be",
+        "tonalRamp": [
+          "#070d08",
+          "#1f2621",
+          "#3a423c",
+          "#58605a",
+          "#7a837c",
+          "#9ea7a0",
+          "#c4cdc6",
+          "#e8f1ea"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Ink 3",
+        "canonical": "#5f6862",
+        "cssVar": "--vx-ink-3",
+        "dark": "#99a29c",
+        "tonalRamp": [
+          "#060d09",
+          "#1e2621",
+          "#3a423d",
+          "#57605a",
+          "#7a837d",
+          "#9ea7a1",
+          "#c3cdc7",
+          "#e7f2eb"
+        ]
+      },
+      "on-ink": {
+        "role": "neutral",
+        "displayName": "On Ink",
+        "canonical": "#ffffff",
+        "cssVar": "--vx-on-ink",
+        "dark": "#111412",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#808080",
+          "#a4a4a4",
+          "#cacaca",
+          "#eeeeee"
+        ]
+      },
+      "overprint": {
+        "role": "primary",
+        "displayName": "Overprint Magenta",
+        "canonical": "#b8166f",
+        "cssVar": "--vx-mark",
+        "dark": "#ff6fb3",
+        "tonalRamp": [
+          "#25000d",
+          "#4e0028",
+          "#7c0045",
+          "#aa0064",
+          "#d53a87",
+          "#f570ab",
+          "#ffa5cf",
+          "#ffd4f2"
+        ]
+      },
+      "overprint-text": {
+        "role": "primary",
+        "displayName": "Overprint Text",
+        "canonical": "#a3135f",
+        "cssVar": "--vx-mark-text",
+        "dark": "#ff8cc2",
+        "tonalRamp": [
+          "#23000c",
+          "#4c0026",
+          "#780042",
+          "#a51661",
+          "#cf4584",
+          "#f175a8",
+          "#ffa8cd",
+          "#ffd6f0"
+        ]
+      },
+      "overprint-soft": {
+        "role": "primary",
+        "displayName": "Overprint Wash",
+        "canonical": "#f8e3ee",
+        "cssVar": "--vx-mark-soft",
+        "dark": "#3d1b2d",
+        "tonalRamp": [
+          "#13070e",
+          "#2e1f27",
+          "#4b3a43",
+          "#695861",
+          "#8d7a84",
+          "#b29ea9",
+          "#d8c4cf",
+          "#fde8f3"
+        ]
+      },
+      "water": {
+        "role": "secondary",
+        "displayName": "Water Blue",
+        "canonical": "#1769aa",
+        "cssVar": "--vx-water",
+        "dark": "#6db3ec",
+        "tonalRamp": [
+          "#000a27",
+          "#00244f",
+          "#00417a",
+          "#0761a1",
+          "#3985c8",
+          "#63aaed",
+          "#99d0ff",
+          "#c9f4ff"
+        ]
+      },
+      "water-soft": {
+        "role": "secondary",
+        "displayName": "Water Wash",
+        "canonical": "#e2eef8",
+        "cssVar": "--vx-water-soft",
+        "dark": "#172b3c",
+        "tonalRamp": [
+          "#050c12",
+          "#1c252c",
+          "#374149",
+          "#555f68",
+          "#77828b",
+          "#9ba6b0",
+          "#c1ccd6",
+          "#e4f0fa"
+        ]
+      },
+      "result": {
+        "role": "tertiary",
+        "displayName": "Result Teal",
+        "canonical": "#0f7a6e",
+        "cssVar": "--vx-result",
+        "dark": "#4fc4b4",
+        "tonalRamp": [
+          "#00120d",
+          "#002f27",
+          "#004e44",
+          "#006e62",
+          "#339285",
+          "#5cb7a9",
+          "#91dbcf",
+          "#c3fcf2"
+        ]
+      },
+      "basemap": {
+        "role": "tertiary",
+        "displayName": "Basemap Sage",
+        "canonical": "#7f9a7f",
+        "cssVar": "--vx-base",
+        "dark": "#7d977d",
+        "tonalRamp": [
+          "#001001",
+          "#132a14",
+          "#2f472f",
+          "#4c654c",
+          "#6e886e",
+          "#92ad92",
+          "#b7d4b7",
+          "#dcf7dc"
+        ]
+      },
+      "ok": {
+        "role": "status",
+        "displayName": "Status OK",
+        "canonical": "#2e7a3c",
+        "cssVar": "--vx-ok",
+        "dark": "#6fcf7f",
+        "tonalRamp": [
+          "#001200",
+          "#002f03",
+          "#004f15",
+          "#216f32",
+          "#499354",
+          "#70b879",
+          "#a2dba8",
+          "#d0fcd4"
+        ]
+      },
+      "warn": {
+        "role": "status",
+        "displayName": "Status Warn",
+        "canonical": "#94580a",
+        "cssVar": "--vx-warn",
+        "dark": "#f0b45a",
+        "tonalRamp": [
+          "#1d0200",
+          "#3f1700",
+          "#652f00",
+          "#884d00",
+          "#ae702d",
+          "#d59556",
+          "#f3bf8d",
+          "#ffe6c0"
+        ]
+      },
+      "bad": {
+        "role": "status",
+        "displayName": "Status Bad",
+        "canonical": "#b42318",
+        "cssVar": "--vx-bad",
+        "dark": "#ff8a80",
+        "tonalRamp": [
+          "#260000",
+          "#510000",
+          "#7f0000",
+          "#ad1a10",
+          "#d74839",
+          "#f97867",
+          "#ffab9b",
+          "#ffd8cb"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "value": {
+        "displayName": "Value",
+        "purpose": "Current pixel value in the dock tail; 18px <1024px, 16px on phones."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Drawer headings, current date, tour and empty-state titles (15–16px)."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Base text with keep-all."
+      },
+      "control": {
+        "displayName": "Control",
+        "purpose": "Buttons, tabs, chips, menu items, layer names (500–600, 13–13.5px)."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Section titles inside sheets, sentence case, ink-2."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Hints, metadata, secondary list lines, ink-3."
+      },
+      "axis": {
+        "displayName": "Axis",
+        "purpose": "Chart axis labels and time-staff dates, tabular."
+      }
+    },
+    "shadows": [
+      {
+        "name": "lift",
+        "value": "0 1px 2px rgba(27,32,29,0.07), 0 6px 16px rgba(27,32,29,0.09)",
+        "dark": "0 1px 2px rgba(0,0,0,0.4), 0 6px 16px rgba(0,0,0,0.4)",
+        "purpose": "Resting surfaces floating over the map."
+      },
+      {
+        "name": "lift-high",
+        "value": "0 2px 4px rgba(27,32,29,0.08), 0 16px 36px rgba(27,32,29,0.16)",
+        "dark": "0 2px 4px rgba(0,0,0,0.45), 0 16px 36px rgba(0,0,0,0.55)",
+        "purpose": "Popovers and menus opening over chrome."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-change",
+        "value": "140ms ease-out",
+        "purpose": "Button background/border/colour transitions."
+      },
+      {
+        "name": "staff-cursor",
+        "value": "left 160ms ease-out",
+        "purpose": "A/B flag movement on the time staff."
+      },
+      {
+        "name": "spin",
+        "value": "0.9s linear infinite (status 1.4s)",
+        "purpose": "Loading and starting-server indicators."
+      },
+      {
+        "name": "pulse",
+        "value": "1.2s ease-in-out infinite",
+        "purpose": "Water-blue running-job pulse."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "transition-duration 0ms; animations off",
+        "purpose": "prefers-reduced-motion: reduce."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "lg",
+        "value": "1279px"
+      },
+      {
+        "name": "status-collapse",
+        "value": "1159px"
+      },
+      {
+        "name": "md",
+        "value": "1023px"
+      },
+      {
+        "name": "sm",
+        "value": "767px"
+      }
+    ],
+    "layout": {
+      "topBar": "48px",
+      "dockLead": "276px (252 <1280, 232 <1024)",
+      "dockTail": "344px (312 <1280, 200 <1024)",
+      "plotInsets": "56px left, 16px right",
+      "floatInset": "12px (8px phones)"
+    },
+    "scope": "Viewer (src/views/Viewer/viewer.css, .vx). Landing, auth and management screens still use src/styles/tokens.css and have not migrated."
+  },
+  "components": [
+    {
+      "name": "Ink Button",
+      "kind": "button",
+      "refersTo": "button-ink",
+      "description": "Primary action; graphite fill, words as the control.",
+      "html": "<button class=\"ds-btn ds-btn-ink\">데이터 추가</button>",
+      "css": ".ds-btn{height:32px;display:inline-flex;align-items:center;gap:6px;padding:0 12px;border:1px solid transparent;border-radius:6px;font:600 13px/1 'Pretendard Variable',Pretendard,sans-serif;cursor:pointer;transition:background-color 140ms ease-out,border-color 140ms ease-out,color 140ms ease-out}.ds-btn-ink{background:#1b201d;color:#fff}.ds-btn-ink:hover{background:color-mix(in srgb,#1b201d 86%,#fff)}.ds-btn:focus-visible{outline:2px solid #1b201d;outline-offset:2px}"
+    },
+    {
+      "name": "Line Button",
+      "kind": "button",
+      "refersTo": "button-line",
+      "description": "Secondary action and toggles; ruled outline, ink outline when pressed.",
+      "html": "<button class=\"ds-btn-line\" aria-pressed=\"false\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M2 12h20M12 2v20\"/><circle cx=\"12\" cy=\"12\" r=\"6\"/></svg>AI 수체 추출</button>",
+      "css": ".ds-btn-line{height:32px;display:inline-flex;align-items:center;gap:6px;padding:0 12px;border:1px solid #b3bbb0;border-radius:6px;background:#fff;color:#1b201d;font:600 13px/1 'Pretendard Variable',Pretendard,sans-serif;cursor:pointer;transition:background-color 140ms ease-out,border-color 140ms ease-out}.ds-btn-line:hover{background:#eceee9}.ds-btn-line[aria-pressed=true]{border-color:#1b201d;background:#eceee9}.ds-btn-line:focus-visible{outline:2px solid #1b201d;outline-offset:2px}"
+    },
+    {
+      "name": "Band Chips",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Single-choice band selection inside the layer sheet; selected fills with ink.",
+      "html": "<div class=\"ds-chips\"><button>RGB</button><button>blue</button><button class=\"on\">nir</button><button>red</button></div>",
+      "css": ".ds-chips{display:flex;gap:6px}.ds-chips button{min-width:44px;height:30px;padding:0 11px;border:1px solid #b3bbb0;border-radius:6px;background:#fff;color:#1b201d;font:500 13px/1 'Pretendard Variable',Pretendard,sans-serif;cursor:pointer}.ds-chips button:hover{background:#eceee9}.ds-chips button.on{border-color:#1b201d;background:#1b201d;color:#fff}.ds-chips button:focus-visible{outline:2px solid #1b201d;outline-offset:2px}"
+    },
+    {
+      "name": "Segmented Mode Switch",
+      "kind": "custom",
+      "refersTo": "segment-pressed",
+      "description": "Display mode (single / swipe / side-by-side) in the dock tail.",
+      "html": "<div class=\"ds-modes\"><button aria-pressed=\"false\">단일</button><button aria-pressed=\"true\">스와이프</button><button aria-pressed=\"false\">나란히</button></div>",
+      "css": ".ds-modes{display:inline-flex;padding:2px;gap:2px;border:1px solid #b3bbb0;border-radius:6px}.ds-modes button{height:28px;padding:0 9px;border:0;border-radius:4px;background:transparent;color:#454d47;font:500 12.5px/1 'Pretendard Variable',Pretendard,sans-serif;cursor:pointer}.ds-modes button:hover{background:#eceee9;color:#1b201d}.ds-modes button[aria-pressed=true]{background:#1b201d;color:#fff}.ds-modes button:focus-visible{outline:2px solid #1b201d;outline-offset:2px}"
+    },
+    {
+      "name": "Select Field",
+      "kind": "input",
+      "refersTo": "field-select",
+      "description": "Form select in drawers and popovers; ruled outline, ink focus.",
+      "html": "<label class=\"ds-field\">모델<select><option>수체 추출 v1</option></select></label>",
+      "css": ".ds-field{display:grid;gap:6px;font:600 13px/1.4 'Pretendard Variable',Pretendard,sans-serif;color:#1b201d}.ds-field select{height:36px;padding:0 10px;border:1px solid #b3bbb0;border-radius:6px;background:#fff;color:#1b201d;font:400 14px/1 'Pretendard Variable',Pretendard,sans-serif}.ds-field select:focus-visible{outline:2px solid #1b201d;outline-offset:2px}"
+    },
+    {
+      "name": "Sheet Tabs",
+      "kind": "nav",
+      "refersTo": "floating-sheet",
+      "description": "Tabs in a floating sheet head; ink underline on the sheet rule.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\"><button role=\"tab\" aria-selected=\"true\">레이어</button><button role=\"tab\" aria-selected=\"false\">AI 작업</button></div>",
+      "css": ".ds-tabs{display:flex;gap:2px;height:44px;padding:0 6px;border-bottom:1px solid #d8ddd5;background:#fff}.ds-tabs button{position:relative;padding:0 10px;border:0;background:transparent;color:#5f6862;font:600 13px/1 'Pretendard Variable',Pretendard,sans-serif;cursor:pointer}.ds-tabs button:hover{color:#1b201d}.ds-tabs button[aria-selected=true]{color:#1b201d}.ds-tabs button[aria-selected=true]::after{content:'';position:absolute;left:10px;right:10px;bottom:-1px;height:2px;background:#1b201d}.ds-tabs button:focus-visible{outline:2px solid #1b201d;outline-offset:2px}"
+    },
+    {
+      "name": "Time Staff",
+      "kind": "custom",
+      "refersTo": "flag-a",
+      "description": "Signature: ruled acquisition staff with the overprint A cursor and hollow B flag.",
+      "html": "<div class=\"ds-staff\"><i style=\"left:10%\"></i><i style=\"left:45%\"></i><i style=\"left:90%\"></i><b class=\"ds-flag\" style=\"left:10%\">A</b><b class=\"ds-flag ds-flag-b\" style=\"left:90%\">B</b><span style=\"left:10%\">2021. 11. 27.</span><span style=\"left:90%\">2022. 10. 19.</span></div>",
+      "css": ".ds-staff{position:relative;width:420px;height:72px;background:#fff;font-family:'Pretendard Variable',Pretendard,sans-serif}.ds-staff::before{content:'';position:absolute;left:0;right:0;top:34px;height:1px;background:#b3bbb0}.ds-staff i{position:absolute;top:28px;width:1px;height:13px;background:#5f6862}.ds-staff span{position:absolute;top:46px;transform:translateX(-50%);color:#5f6862;font:500 11.5px/1 inherit;font-variant-numeric:tabular-nums;white-space:nowrap}.ds-flag{position:absolute;top:8px;width:18px;height:18px;margin-left:-9px;display:grid;place-items:center;border-radius:4px;background:#b8166f;color:#fff;font:700 11px/1 inherit;transition:left 160ms ease-out}.ds-flag::after{content:'';position:absolute;left:50%;top:100%;width:2px;height:16px;margin-left:-1px;background:inherit}.ds-flag-b{background:#fff;color:#a3135f;box-shadow:inset 0 0 0 1.5px #b8166f}.ds-flag-b::after{background:#b8166f;width:1.5px}"
+    },
+    {
+      "name": "Play Button",
+      "kind": "button",
+      "refersTo": "play-button",
+      "description": "Round ink play control; turns overprint while playing.",
+      "html": "<button class=\"ds-play\" aria-pressed=\"false\" aria-label=\"재생\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linejoin=\"round\"><path d=\"M7 4l13 8-13 8z\"/></svg></button>",
+      "css": ".ds-play{width:36px;height:36px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:#1b201d;color:#fff;cursor:pointer}.ds-play:hover{background:color-mix(in srgb,#1b201d 84%,#fff)}.ds-play[aria-pressed=true]{background:#b8166f}.ds-play:focus-visible{outline:2px solid #1b201d;outline-offset:2px}"
+    },
+    {
+      "name": "Floating Layer Sheet",
+      "kind": "card",
+      "refersTo": "floating-sheet",
+      "description": "Sheet floating over the map: Lift shadow outside, rules inside.",
+      "html": "<section class=\"ds-sheet\"><div class=\"ds-sec\"><h3>표시할 밴드</h3><p>RGB · blue · green · nir · red</p></div><div class=\"ds-sec\"><h3>데이터 정보</h3><dl><div><dt>시점</dt><dd>2개</dd></div><div><dt>좌표계</dt><dd>EPSG:4326</dd></div></dl></div></section>",
+      "css": ".ds-sheet{width:312px;background:#fff;border:1px solid #d8ddd5;border-radius:8px;box-shadow:0 1px 2px rgba(27,32,29,.07),0 6px 16px rgba(27,32,29,.09);color:#1b201d;font:400 14px/1.55 'Pretendard Variable',Pretendard,sans-serif;word-break:keep-all}.ds-sec{display:grid;gap:10px;padding:14px 16px;border-bottom:1px solid #d8ddd5}.ds-sec:last-child{border-bottom:0}.ds-sec h3{margin:0;font:600 12.5px/1.4 inherit;color:#454d47}.ds-sec p,.ds-sec dl{margin:0}.ds-sec dl div{display:grid;grid-template-columns:56px 1fr;gap:8px;padding:6px 0;border-bottom:1px solid #d8ddd5;font-size:13px}.ds-sec dl div:last-child{border-bottom:0}.ds-sec dt{color:#5f6862}.ds-sec dd{margin:0;font-variant-numeric:tabular-nums}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Survey Field Book",
+    "overview": "**Creative North Star: \"The Survey Field Book\"**\n\nXCube reads like a surveyor's field book laid over the map. The ground is cool green-grey paper. Sheets are white and separated by 1px ruling lines, not cards. Text is graphite ink, and a selection is filled with that ink. The map and the data carry the colour. The chrome stays quiet enough that a long session in front of the map never competes with the imagery.\n\nOne overprint magenta is reserved for marks the user places: the time cursor, the A/B compare flags, the pixel reticle and the chart's current point. It works like the overprint on an orienteering map, a single colour printed over the terrain. Water blue belongs to data series, teal to AI results and sage to the basemap. State is always named in words (\"내 시각화 서버 연결됨\"), and an icon only reinforces it. Every date, coordinate and value is set in tabular figures so columns of numbers hold still while playback runs.\n\nThe density is high and work-tool calm. A 48px bar sits on top, the map fills the body, sheets and tools float over the map, and a ruled dock holds the pixel reading and the time staff on one shared plot column. **Status:** this world is shipped on the Viewer (`src/views/Viewer/viewer.css`, tokens under `.vx`) and is the project's direction. The landing page, auth and management screens (`src/styles/tokens.css`, `app.css`, `landing.css`) still use the older system and have not migrated yet. The landing redesign is next and should inherit this file.",
+    "keyCharacteristics": [
+      "Ruled, not carded: 1px rules divide every docked region.",
+      "One reserved mark colour (overprint magenta) for user-placed marks only.",
+      "Selection is graphite ink fill, never a brand hue.",
+      "Data owns the hues: water, result and basemap each have one colour.",
+      "Pretendard throughout, with tabular figures for every number.",
+      "State is named in words, and the icon is secondary.",
+      "Light and dark themes share one token set (`:root[data-theme='dark'] .vx`)."
+    ],
+    "rules": [
+      {
+        "name": "The Overprint Rule",
+        "body": "Magenta marks only what the user placed or set in motion: cursor, A/B flags, reticle, chart current point, playing state. If the user did not put it there, it is not magenta.",
+        "section": "colors"
+      },
+      {
+        "name": "The Data Owns the Hues Rule",
+        "body": "Chrome is green-grey and graphite. Blue, teal and sage are spent only on data layers and series.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink Selection Rule",
+        "body": "Selected, pressed and active controls fill with graphite ink and use on-ink text. There is no blue selection state.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Every date, coordinate, count and value uses `font-variant-numeric: tabular-nums`, so numbers do not shift while playback steps.",
+        "section": "typography"
+      },
+      {
+        "name": "The Keep-All Rule",
+        "body": "Korean text never breaks mid-word (`word-break: keep-all; overflow-wrap: break-word`).",
+        "section": "typography"
+      },
+      {
+        "name": "The Shared Plot Column Rule",
+        "body": "Anything on the time axis (chart cursor, points, staff ticks, flags) is positioned on the same plot column with the same insets. A time-aware element never gets its own axis.",
+        "section": "layout"
+      },
+      {
+        "name": "The Float-Only Shadow Rule",
+        "body": "A surface casts a shadow only if it floats over the map or opens over chrome. Docked regions are separated by rules, never shadows.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** separate docked regions, rows and sections with 1px rule lines (rule) instead of cards or shadows.",
+      "**Do** fill selected, pressed and active controls with graphite ink (ink / on-ink).",
+      "**Do** reserve overprint magenta (overprint) for user-placed marks: cursor, A/B flags, reticle, chart current point, playing state.",
+      "**Do** set every date, coordinate and value in tabular figures.",
+      "**Do** name state in words next to any status icon or colour.",
+      "**Do** place any time-aware element on the shared plot column (56px / 16px insets).",
+      "**Do** give shadows (Lift, Lift High) only to surfaces floating over the map or opening over chrome.",
+      "**Do** define both themes through the `.vx` token set. Never hard-code a light-only value."
+    ],
+    "donts": [
+      "**Don't** use magenta for navigation, selection, headings, links or decoration.",
+      "**Don't** use a blue selection or primary-button state. Blue is water and data.",
+      "**Don't** use decorative gradients or glow. The only gradient in the system is the result-layer hatch pattern.",
+      "**Don't** wrap content in shadowed cards inside docked regions.",
+      "**Don't** give time-aware elements a separate axis or slider of their own.",
+      "**Don't** signal state with a coloured dot or icon alone."
+    ]
+  }
+}

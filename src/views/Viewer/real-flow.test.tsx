@@ -85,6 +85,8 @@ test('M0 FR-VIEW-03: 첫/마지막/이전/다음, 재생, 반복과 속도를 �
   render(<Viewer />);
   await selectBaselineDataset();
   const slider = screen.getByRole('slider', { name: '관측 시점' });
+  // First/last, speed and loop sit behind the playback options button (progressive disclosure).
+  fireEvent.click(screen.getByRole('button', { name: /재생 옵션/ }));
   for (const [button, value] of [['마지막 시점', '1'], ['이전 시점', '0'], ['다음 시점', '1'], ['첫 시점', '0']]) {
     fireEvent.click(screen.getByRole('button', { name: button }));
     expect(slider).toHaveValue(value);
@@ -193,7 +195,10 @@ test('공유받은 프로젝트로만 연결된 Zarr는 아무 반응 없이 넘
   mockAdapter.getProjectDatasets.mockResolvedValue([{ id: '99', projectId: '4', name: '남의 Zarr', subtitle: 'READY', xcubeDatasetId: 'other', defaultVariable: 'red', variables: ['red'], times: [] }]);
   render(<Viewer />);
   fireEvent.change(await screen.findByRole('combobox', { name: '프로젝트 선택' }), { target: { value: '4' } });
-  fireEvent.click(await screen.findByRole('button', { name: /남의 Zarr/ }));
+  // The project's data is listed in the dataset picker, narrowed to that project.
+  await waitFor(() => expect(mockAdapter.getProjectDatasets).toHaveBeenCalledWith('4'));
+  fireEvent.click(screen.getByRole('combobox', { name: '데이터 또는 Zarr 선택' }));
+  fireEvent.click(await screen.findByRole('option', { name: /남의 Zarr/ }));
   expect(await screen.findByRole('alert')).toHaveTextContent('공유받은 프로젝트를 통해서만 연결된 데이터라 아직 열 수 없습니다');
   expect(screen.queryByRole('region', { name: '시계열 탐색기' })).not.toBeInTheDocument();
 });

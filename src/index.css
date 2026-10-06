@@ -12,6 +12,11 @@
   font-style: normal;
 }
 
+/* Global reset (was supplied by the old Viewer stylesheet, which every page loaded). */
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   min-width: 320px;
