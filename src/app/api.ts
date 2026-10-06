@@ -5,7 +5,8 @@ import { backofficeAdapter, ProjectMember } from '../api/backofficeApi';
 import { demoManagement, viewerAdapter as demoAdapter, Project, ZarrDataset } from '../api/viewerAdapter';
 import { analysisApi, DryRun, FusionRequest, ValidateResult } from '../api/analysisApi';
 import { dryRunDemo, fusionJobsDemo, validateFormula } from './fusionDemo';
-import { ColorBarOption, FileJobInput, GeeCollection, generationApi, GenerationJob, JobSummary, SpatialInspection } from '../api/generationApi';
+import { AdminArea, AdminLevel, AdminSearch, AreaPick, AreaUpload, ColorBarOption, FileJobInput, GeeCollection, GeeEstimate, GeeJobBody, generationApi, GenerationJob, JobSummary, SavedArea, SpatialInspection } from '../api/generationApi';
+import { areaDemo } from './areaDemo';
 
 export type { Project, ZarrDataset, ProjectMember };
 export type MemberRole = 'EDITOR' | 'VIEWER';
@@ -42,6 +43,7 @@ const pause = (ms = 400) => new Promise((resolve) => window.setTimeout(resolve, 
 let demoJobs = 0;
 const demoJobList: JobSummary[] = [
   { id: 'demo-a', name: 'Sentinel-2 · 2025 (GEE)', type: 'GEE_TO_ZARR', status: 'SUCCEEDED', progress: 1, createdAt: '2025-10-22T01:00:00Z', startedAt: '2025-10-22T01:00:05Z', finishedAt: '2025-10-22T01:06:40Z', registration: { datacubeId: 0, xcubeDatasetId: 'sentinel_rgb' }, input: { collectionId: 'COPERNICUS/S2_SR_HARMONIZED', bands: ['B2', 'B3', 'B4', 'B8'], startDate: '2025-07-01', endDate: '2025-10-22' } },
+  { id: 'demo-s', name: '제주 시군구 Shapefile', type: 'SHAPEFILE', status: 'SUCCEEDED', progress: 1, createdAt: '2025-10-20T08:10:00Z', startedAt: '2025-10-20T08:10:03Z', finishedAt: '2025-10-20T08:12:10Z', registration: { datacubeId: 0, xcubeDatasetId: 'jeju_sgg' }, input: { files: ['jeju_sgg.zip'] } },
   { id: 'demo-b', name: '울산 행정구역 Shapefile', type: 'SHAPEFILE', status: 'FAILED', progress: 0.4, createdAt: '2025-10-21T08:10:00Z', startedAt: '2025-10-21T08:10:03Z', finishedAt: '2025-10-21T08:11:10Z', errorCode: 'INVALID_INPUT', errorMessage: 'No timestamp in ulsan_admin.shp; supply date or timePattern', input: { files: ['ulsan_admin.zip'], variables: [{ source: 'pop_total', name: 'pop_total', kind: 'continuous', style: { colorBar: 'viridis', min: 120, max: 31800 } }], params: { resolution: 0.00025 } } },
 ];
 const demoJob = (name = '새 데이터', type = 'GEOTIFF_BANDS'): GenerationJob => {
@@ -84,6 +86,14 @@ export const generation = {
   collections: (): Promise<GeeCollection[]> => (useMockApi ? pause(150).then(() => DEMO_COLLECTIONS) : generationApi.getCollections()),
   inspect: (type: 'geotiff' | 'shapefile' | 'cas500', file: File): Promise<SpatialInspection> => (useMockApi ? pause().then(() => demoInspection(type, file)) : generationApi.inspectSpatialFile(type, file)),
   createGeeJob: (input: Parameters<typeof generationApi.createGeeJob>[0]): Promise<GenerationJob> => (useMockApi ? pause().then(() => demoJob(input.name, 'GEE_TO_ZARR')) : generationApi.createGeeJob(input)),
+  estimateGee: (body: GeeJobBody): Promise<GeeEstimate> => (useMockApi ? areaDemo.estimate(body) : generationApi.estimateGee(body)),
+  searchAdminAreas: (query: string, level?: AdminLevel): Promise<AdminSearch> => (useMockApi ? areaDemo.searchAdmin(query, level) : generationApi.searchAdminAreas(query, level)),
+  getAdminArea: (code: string): Promise<AdminArea> => (useMockApi ? areaDemo.getAdmin(code) : generationApi.getAdminArea(code)),
+  listAreas: (): Promise<SavedArea[]> => (useMockApi ? areaDemo.list() : generationApi.listAreas()),
+  getArea: (id: string | number): Promise<SavedArea> => (useMockApi ? areaDemo.get(id) : generationApi.getArea(id)),
+  deleteArea: (id: string | number): Promise<unknown> => (useMockApi ? areaDemo.remove(id) : generationApi.deleteArea(id)),
+  uploadArea: (file: File, name: string, pick?: AreaPick): Promise<AreaUpload> => (useMockApi ? areaDemo.upload(file, name, pick) : generationApi.uploadArea(file, name, pick)),
+  areaFromJob: (jobId: string | number, name: string, pick?: AreaPick): Promise<AreaUpload> => (useMockApi ? areaDemo.fromJob(jobId, name, pick) : generationApi.areaFromJob(jobId, name, pick)),
   createFileJob: (input: FileJobInput): Promise<GenerationJob> => (useMockApi ? pause().then(() => demoJob(input.name, input.type)) : generationApi.createFileJob(input)),
   getJob: (id: string | number): Promise<GenerationJob> => (useMockApi ? pause().then(() => ({ id, status: 'RUNNING' as const })) : generationApi.getJob(id)),
   listJobs: (filter: { status?: string; type?: string } = {}): Promise<JobSummary[]> =>

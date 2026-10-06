@@ -9,14 +9,16 @@ import { Alert, Button, ButtonLink, TextField } from '../../components/ui';
 import { Badge, Card, PageHeader, Skeleton } from '../../components/ui/kit';
 import { appApi, canEditProject, generation, viewerHref } from '../api';
 import { BBoxMap } from '../pages/DatasetDetailPage';
+import AreaStep, { EstimatePanel } from './AreaStep';
+import { AreaState, bboxBounds, blockerText, emptyArea, resolveArea, ResolvedArea } from './areaModel';
+import { useGeeEstimate } from './useGeeEstimate';
 import { useLoad } from '../useLoad';
 import VariableStyleEditor, { autoRange, toVariableSpecs, validateChoices, VariableChoice } from './VariableStyleEditor';
 import './wizard.css';
 
 type Method = 'geotiff' | 'shape' | 'gee' | 'zarr';
 type RasterKind = 'geotiff' | 'cas500';
-type Bounds = { west: string; south: string; east: string; north: string };
-type GeeParams = { startDate: string; endDate: string; maxCloudPercent: string; scaleMeters: string } & Bounds;
+type GeeParams = { startDate: string; endDate: string; maxCloudPercent: string; scaleMeters: string };
 type Rgb = { red: string; green: string; blue: string };
 
 const STEPS = ['방식 선택', '원본 입력', '자동 검사 결과', '설정', '확인 및 생성'];
@@ -40,7 +42,6 @@ const STATUS_LABEL: Record<string, string> = { QUEUED: '대기 중', RUNNING: '�
 
 const fieldsOf = (inspection: SpatialInspection | null): InspectionField[] =>
   inspection ? inspection.fields ?? inspection.bands.map((name) => ({ name })) : [];
-const numberOk = (value: string) => value !== '' && Number.isFinite(Number(value));
 
 export default function AddDataPage() {
   const [step, setStep] = useState(0);
@@ -51,7 +52,8 @@ export default function AddDataPage() {
   const [inspectError, setInspectError] = useState('');
   const [collectionId, setCollectionId] = useState('');
   const [catalogQuery, setCatalogQuery] = useState('');
-  const [gee, setGee] = useState<GeeParams>({ startDate: '', endDate: '', maxCloudPercent: '20', scaleMeters: '30', west: '', south: '', east: '', north: '' });
+  const [gee, setGee] = useState<GeeParams>({ startDate: '', endDate: '', maxCloudPercent: '20', scaleMeters: '30' });
+  const [area, setArea] = useState<AreaState>(emptyArea);
   const [storageUri, setStorageUri] = useState('');
   const [name, setName] = useState('');
   const [choices, setChoices] = useState<VariableChoice[]>([]);
@@ -97,6 +99,15 @@ export default function AddDataPage() {
     if (method === 'gee') return (collection?.bands ?? []).map((band) => ({ name: typeof band === 'string' ? band : band.id ?? band.name }));
     return fieldsOf(inspection);
   }, [method, collection, inspection]);
+  const resolved = useMemo(() => resolveArea(area), [area]);
+  const datesOk = !!gee.startDate && !!gee.endDate && gee.startDate <= gee.endDate;
+  const estimateBands = choices.length ? choices.map((item) => item.source) : fields.map((field) => field.name);
+  const estimateBody = method === 'gee' && step >= 1 && collectionId && datesOk && resolved.request && resolved.bbox
+    ? { name: name.trim() || '새 데이터', collectionId, bands: estimateBands, startDate: gee.startDate, endDate: gee.endDate, maxCloudPercent: Number(gee.maxCloudPercent), scaleMeters: Number(gee.scaleMeters), bounds: bboxBounds(resolved.bbox), area: resolved.request, bandStyles: [] }
+    : null;
+  const estimate = useGeeEstimate(estimateBody);
+  const blockers = method === 'gee' ? estimate.data?.blockers ?? [] : [];
+  const estimateHint = !collectionId ? '컬렉션을 고르세요.' : !datesOk ? '기간을 입력하세요.' : resolved.error;
   const noun = method === 'shape' ? '속성' : 'band';
   const continuous = choices.filter((choice) => choice.kind === 'continuous');
   const rgbPossible = (method === 'gee' || method === 'geotiff') && continuous.length >= 3;
@@ -136,8 +147,8 @@ export default function AddDataPage() {
         if (!collectionId) return '컬렉션을 고르세요.';
         if (!gee.startDate || !gee.endDate) return '기간을 입력하세요.';
         if (gee.startDate > gee.endDate) return '시작 날짜가 끝 날짜보다 늦습니다.';
-        if (!(['west', 'south', 'east', 'north'] as const).every((key) => numberOk(gee[key]))) return '영역 좌표 네 개를 모두 입력하세요.';
-        if (Number(gee.west) >= Number(gee.east) || Number(gee.south) >= Number(gee.north)) return '좌하단 좌표는 우상단 좌표보다 작아야 합니다.';
+        if (resolved.error) return resolved.error;
+        if (blockers.length) return blockerText(blockers[0]);
         return '';
       }
       if (method === 'zarr') return storageUri.trim() ? '' : 'Zarr 경로를 입력하세요.';
@@ -177,7 +188,7 @@ export default function AddDataPage() {
         setJob(await generation.createGeeJob({
           name: name.trim(), collectionId, bands: choices.map((item) => item.source), startDate: gee.startDate, endDate: gee.endDate,
           maxCloudPercent: Number(gee.maxCloudPercent), scaleMeters: Number(gee.scaleMeters),
-          bounds: { west: Number(gee.west), south: Number(gee.south), east: Number(gee.east), north: Number(gee.north) },
+          bounds: bboxBounds(resolved.bbox!), area: resolved.request,
           bandStyles: choices.map((item) => ({ variable: item.source, colorBar: item.colorBar, valueMin: Number(item.min), valueMax: Number(item.max) })),
           rgbStyle,
         }));
@@ -300,15 +311,7 @@ export default function AddDataPage() {
                 <TextField label="최대 구름량 (%)" type="number" min={0} max={100} value={gee.maxCloudPercent} onChange={(event) => setGee({ ...gee, maxCloudPercent: event.target.value })} />
                 <TextField label="픽셀 크기 (m)" type="number" min={10} max={10000} value={gee.scaleMeters} onChange={(event) => setGee({ ...gee, scaleMeters: event.target.value })} />
               </div>
-              <fieldset className="bounds-fieldset">
-                <legend className="xc-label">생성 영역 (WGS84 경위도)</legend>
-                <div className="form-grid">
-                  <TextField label="좌하단 경도" type="number" step="any" placeholder="예: 126.50" value={gee.west} onChange={(event) => setGee({ ...gee, west: event.target.value })} />
-                  <TextField label="좌하단 위도" type="number" step="any" placeholder="예: 35.00" value={gee.south} onChange={(event) => setGee({ ...gee, south: event.target.value })} />
-                  <TextField label="우상단 경도" type="number" step="any" placeholder="예: 129.50" value={gee.east} onChange={(event) => setGee({ ...gee, east: event.target.value })} />
-                  <TextField label="우상단 위도" type="number" step="any" placeholder="예: 37.00" value={gee.north} onChange={(event) => setGee({ ...gee, north: event.target.value })} />
-                </div>
-              </fieldset>
+              <AreaStep area={area} onChange={setArea} resolved={resolved} estimate={estimate} estimateHint={estimateHint} showErrors={showErrors} />
             </div>
           )}
 
@@ -318,7 +321,7 @@ export default function AddDataPage() {
             </div>
           )}
 
-          {step === 2 && <InspectionSummary method={method!} rasterKind={rasterKind} inspection={inspection} collection={collection} gee={gee} storageUri={storageUri} fields={fields} />}
+          {step === 2 && <InspectionSummary method={method!} rasterKind={rasterKind} inspection={inspection} collection={collection} gee={gee} resolved={resolved} storageUri={storageUri} fields={fields} />}
 
           {step === 3 && (
             <div className="wizard-section">
@@ -394,6 +397,7 @@ export default function AddDataPage() {
               <dl className="meta-list summary-list">
                 <dt>방식</dt><dd>{METHODS.find((item) => item.id === method)?.title}{method === 'geotiff' ? ` · ${rasterKind === 'cas500' ? 'CAS500' : '일반 GeoTIFF'}` : ''}</dd>
                 <dt>원본</dt><dd>{method === 'gee' ? `${collection?.title || collection?.name || collectionId} · ${gee.startDate} ~ ${gee.endDate}` : method === 'zarr' ? storageUri : inspection?.fileName}</dd>
+                {method === 'gee' && <><dt>영역</dt><dd>{resolved.modeLabel} · {resolved.label}<br /><span className="xc-hint">{resolved.clipLabel}{resolved.request?.maskVariable ? ' · 경계선 표시 변수 저장' : ''}{resolved.request?.fullCoverOnly ? ' · 영역을 완전히 덮는 장면만' : ''}</span></dd></>}
                 <dt>이름</dt><dd>{name}</dd>
                 <dt>프로젝트</dt><dd>{editableProjects.find((item) => item.id === projectId)?.name ?? '프로젝트 없음'}</dd>
                 <dt>변수</dt>
@@ -414,6 +418,7 @@ export default function AddDataPage() {
                 {obsDate && <><dt>관측 날짜</dt><dd>{obsDate}</dd></>}
                 {nodata !== '' && <><dt>nodata</dt><dd>{nodata}</dd></>}
               </dl>
+              {method === 'gee' && <EstimatePanel estimate={estimate} compact />}
               {submitError && <Alert tone="danger">{submitError}</Alert>}
             </div>
           )}
@@ -424,9 +429,9 @@ export default function AddDataPage() {
           <Button variant="secondary" onClick={back} disabled={step === 0 || submitting}><ArrowLeft size={16} aria-hidden />이전</Button>
           <span className="xc-hint">{step + 1} / {STEPS.length}</span>
           {step < STEPS.length - 1 ? (
-            <Button onClick={next} disabled={inspecting}>다음<ArrowRight size={16} aria-hidden /></Button>
+            <Button onClick={next} disabled={inspecting || (step === 1 && blockers.length > 0)}>다음<ArrowRight size={16} aria-hidden /></Button>
           ) : (
-            <Button onClick={submit} disabled={submitting}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />요청 중…</> : method === 'zarr' ? '등록' : '생성 시작'}</Button>
+            <Button onClick={submit} disabled={submitting || blockers.length > 0}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />요청 중…</> : method === 'zarr' ? '등록' : '생성 시작'}</Button>
           )}
         </div>
       </Card>
@@ -450,20 +455,19 @@ function FileDrop({ accept, title, hint, busy, fileName, onFile }: { accept: str
   );
 }
 
-function InspectionSummary({ method, rasterKind, inspection, collection, gee, storageUri, fields }: { method: Method; rasterKind: RasterKind; inspection: SpatialInspection | null; collection?: GeeCollection; gee: GeeParams; storageUri: string; fields: InspectionField[] }) {
+function InspectionSummary({ method, rasterKind, inspection, collection, gee, resolved, storageUri, fields }: { method: Method; rasterKind: RasterKind; inspection: SpatialInspection | null; collection?: GeeCollection; gee: GeeParams; resolved: ResolvedArea; storageUri: string; fields: InspectionField[] }) {
   if (method === 'zarr') {
     return <div className="wizard-section"><Alert>등록하면 서버가 <strong>{storageUri}</strong>의 좌표계(EPSG:4326)·변수·시간 정보를 검사합니다. 문제가 있으면 데이터 목록에서 상태로 알려 드립니다.</Alert></div>;
   }
   if (method === 'gee') {
-    const bbox: [number, number, number, number] = [Number(gee.west), Number(gee.south), Number(gee.east), Number(gee.north)];
     return (
       <div className="wizard-section">
         <div className="inspect-grid">
-          <BBoxMap bbox={bbox} />
+          {resolved.bbox && <BBoxMap bbox={resolved.bbox} />}
           <dl className="meta-list">
             <dt>컬렉션</dt><dd>{collection?.title || collection?.name}<br /><span className="xc-hint">{collection?.id}</span></dd>
             <dt>기간</dt><dd className="tabular">{gee.startDate} ~ {gee.endDate}</dd>
-            <dt>영역</dt><dd className="tabular">{gee.west}, {gee.south} → {gee.east}, {gee.north}</dd>
+            <dt>영역</dt><dd>{resolved.modeLabel} · {resolved.label}<br /><span className="xc-hint">{resolved.clipLabel}</span></dd>
             <dt>픽셀 크기</dt><dd>{gee.scaleMeters} m · 구름 {gee.maxCloudPercent}% 이하</dd>
             <dt>band</dt><dd>{fields.length}개</dd>
             <dt>좌표계</dt><dd>EPSG:4326으로 저장</dd>
