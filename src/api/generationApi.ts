@@ -25,7 +25,85 @@ export type SpatialInspection = { sourceType: 'GEOTIFF' | 'SHAPEFILE' | 'CAS500'
 export type VariableSpec = { source: string; name: string; kind: 'continuous' | 'categorical'; style: { colorBar: string; min?: number; max?: number } };
 export type FileJobInput = { type: 'GEOTIFF_BANDS' | 'CAS500' | 'SHAPEFILE'; name: string; inputs: FileInput[]; variables: VariableSpec[]; params?: Record<string, unknown>; projectId?: string };
 
+
+/** GEE area of interest (AOI), Backend guide "GEE 관심 영역(AOI)". */
+export type Bbox = [number, number, number, number];
+export type AreaGeometry = { type: 'Polygon' | 'MultiPolygon'; coordinates: unknown };
+export type AreaRequest = {
+  mode: 'point' | 'box' | 'shape' | 'admin';
+  point?: { lon: number; lat: number; sizeKm: number };
+  box?: { west: number; south: number; east: number; north: number };
+  shape?: { areaId: string | number };
+  admin?: { code: string; level: 'sido' | 'sigungu' };
+  clip: 'bbox' | 'shape';
+  fullCoverOnly: boolean;
+  maskVariable: boolean;
+};
+export type SavedArea = { id: string | number; name: string; bbox: Bbox; areaKm2: number; geojson?: AreaGeometry; source?: 'upload' | 'shape_dataset' | 'drawn'; createdAt?: string };
+export type AdminLevel = 'sido' | 'sigungu';
+export type AdminArea = { code: string; level: AdminLevel; name: string; parentCode?: string | null; parentName?: string | null; bbox: Bbox; areaKm2: number; geojson?: AreaGeometry };
+export type AdminSearch = { items: AdminArea[]; attribution?: string };
+/** `POST /areas` answers either with the saved area or, when the Shapefile holds several polygons, with the choices to make. */
+export type AreaChoice = { polygonCount: number; attributes: Array<{ name: string; values?: Array<string | number> }> };
+export type AreaUpload = { area: SavedArea; choice?: undefined } | { area?: undefined; choice: AreaChoice };
+export type AreaPick = { dissolve?: boolean; attribute?: string; value?: string };
+export type EstimateBlocker = string | { code: string; message?: string };
+export type GeeEstimate = { bounds?: { west: number; south: number; east: number; north: number }; areaKm2: number; grid: { width: number; height: number }; scenes: number | null; estimatedBytes: number; requestTiles: number; warnings: string[]; blockers: EstimateBlocker[] };
+export type GeeJobBody = { name: string; collectionId: string; bands: string[]; startDate: string; endDate: string; maxCloudPercent: number; bounds: { west: number; south: number; east: number; north: number }; area?: AreaRequest; scaleMeters: number; bandStyles: BandStyle[]; rgbStyle?: RgbStyle };
+
+async function multipart<T>(path: string, data: FormData, fallback: string, accept: (status: number, body: any) => T | undefined): Promise<T> {
+  const token = session.getToken();
+  let response: Response;
+  try { response = await fetch(`${GENERATION_API_BASE_URL}${path}`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: data }); }
+  catch { throw new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.'); }
+  const body = await response.json().catch(() => ({}));
+  const accepted = accept(response.status, body);
+  if (accepted !== undefined) return accepted;
+  throw new ApiError(response.status, body.code ?? `HTTP_${response.status}`, body.message ?? fallback);
+}
+const areaResult = (status: number, body: any): AreaUpload | undefined => {
+  if (status >= 200 && status < 300) return { area: body as SavedArea };
+  if (Array.isArray(body?.attributes) || typeof body?.polygonCount === 'number') return { choice: { polygonCount: body.polygonCount ?? 0, attributes: body.attributes ?? [] } };
+  return undefined;
+};
+
 export const generationApi = {
+  estimateGee(input: GeeJobBody) {
+    return request<GeeEstimate>(GENERATION_API_BASE_URL, '/api/v1/generation-jobs/gee/estimate', { method: 'POST', body: JSON.stringify(input) });
+  },
+  async searchAdminAreas(query: string, level?: AdminLevel): Promise<AdminSearch> {
+    const params = new URLSearchParams({ q: query });
+    if (level) params.set('level', level);
+    const body = await request<AdminArea[] | AdminSearch>(GENERATION_API_BASE_URL, `/api/v1/admin-areas?${params}`);
+    return Array.isArray(body) ? { items: body } : { items: body.items ?? [], attribution: body.attribution };
+  },
+  getAdminArea(code: string) {
+    return request<AdminArea>(GENERATION_API_BASE_URL, `/api/v1/admin-areas/${encodeURIComponent(code)}`);
+  },
+  async listAreas(): Promise<SavedArea[]> {
+    const body = await request<SavedArea[] | { items: SavedArea[] }>(GENERATION_API_BASE_URL, '/api/v1/areas');
+    return Array.isArray(body) ? body : body.items ?? [];
+  },
+  getArea(id: string | number) {
+    return request<SavedArea>(GENERATION_API_BASE_URL, `/api/v1/areas/${encodeURIComponent(String(id))}`);
+  },
+  deleteArea(id: string | number) {
+    return request<unknown>(GENERATION_API_BASE_URL, `/api/v1/areas/${encodeURIComponent(String(id))}`, { method: 'DELETE' });
+  },
+  uploadArea(file: File, name: string, pick: AreaPick = {}): Promise<AreaUpload> {
+    const data = new FormData();
+    data.append('file', file); data.append('name', name);
+    if (pick.dissolve) data.append('dissolve', 'true');
+    if (pick.attribute) { data.append('attribute', pick.attribute); data.append('value', pick.value ?? ''); }
+    return multipart('/api/v1/areas', data, '영역을 저장하지 못했습니다.', areaResult);
+  },
+  areaFromJob(jobId: string | number, name: string, pick: AreaPick = {}): Promise<AreaUpload> {
+    const data = new FormData();
+    data.append('name', name);
+    if (pick.dissolve) data.append('dissolve', 'true');
+    if (pick.attribute) { data.append('attribute', pick.attribute); data.append('value', pick.value ?? ''); }
+    return multipart(`/api/v1/areas/from-job/${encodeURIComponent(String(jobId))}`, data, '영역을 가져오지 못했습니다.', areaResult);
+  },
   async getCollections(): Promise<GeeCollection[]> {
     const body = await request<GeeCollection[] | { collections: GeeCollection[] }>(GENERATION_API_BASE_URL, '/api/v1/gee/collections');
     return Array.isArray(body) ? body : body.collections ?? [];
@@ -39,7 +117,7 @@ export const generationApi = {
     const body = await request<{ items?: ColorBarOption[] } | ColorBarOption[]>(BACKOFFICE_API_BASE_URL, '/api/v2/xcube-capabilities/colorbars?target=user');
     return Array.isArray(body) ? body : body.items ?? [];
   },
-  createGeeJob(input: { name: string; collectionId: string; bands: string[]; startDate: string; endDate: string; maxCloudPercent: number; bounds: { west: number; south: number; east: number; north: number }; scaleMeters: number; bandStyles: BandStyle[]; rgbStyle?: RgbStyle }) {
+  createGeeJob(input: GeeJobBody) {
     return request<GenerationJob>(GENERATION_API_BASE_URL, '/api/v1/generation-jobs/gee', { method: 'POST', body: JSON.stringify(input) });
   },
   createFileJob(input: FileJobInput) {
