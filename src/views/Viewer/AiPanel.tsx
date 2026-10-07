@@ -308,7 +308,7 @@ export function AiRunForm({
           </div>
           {busy && (
             <span className="vx-run__bar" role="progressbar" aria-label="수체 추출 진행률" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentDone}>
-              <i style={{ width: `${percentDone}%` }} />
+              <i style={{ transform: `scaleX(${percentDone / 100})` }} />
             </span>
           )}
           <small>{run.name}</small>

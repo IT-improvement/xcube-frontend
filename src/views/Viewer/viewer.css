@@ -516,7 +516,7 @@
 .vx-run > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vx-ink-3); font-size: 12px; }
 .vx-run > .vx-btn { justify-self: start; }
 .vx-run__bar { display: block; height: 4px; border-radius: 2px; background: var(--vx-sunken); overflow: hidden; }
-.vx-run__bar i { display: block; height: 100%; background: var(--vx-result); transition: width 300ms ease-out; }
+.vx-run__bar i { display: block; width: 100%; height: 100%; background: var(--vx-result); transform-origin: left center; transition: transform 300ms ease-out; }
 .vx-results { display: grid; margin: 0; padding: 0; list-style: none; }
 .vx-result {
   display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 9px 0; border: 0; border-bottom: 1px solid var(--vx-rule);
