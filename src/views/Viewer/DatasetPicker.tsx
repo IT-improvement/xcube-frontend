@@ -1,28 +1,45 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Database, Search } from "lucide-react";
+import { Check, ChevronDown, Search } from "lucide-react";
 import { ZarrDataset } from "../../api/viewerAdapter";
 
-/** Searchable combobox for choosing the Zarr shown on the map (owned first, then shared). */
+/**
+ * Searchable combobox for choosing the Zarr shown on the map (owned first, then shared).
+ * With a project selected the list is narrowed to that project's data, and one button
+ * widens it to all data again.
+ */
 export default function DatasetPicker({
   datasets,
   value,
   onChange,
   tourId,
+  project,
+  onUnavailable,
+  openRequest = 0,
 }: {
   datasets: ZarrDataset[];
   value: string;
   onChange: (value: string) => void;
   tourId?: string;
+  /** The selected project and its data, if any. */
+  project?: { name: string; items: ZarrDataset[] };
+  /** A project item the catalog cannot open yet. */
+  onUnavailable?: (item: ZarrDataset) => void;
+  /** Increase to open the list from outside (the empty-map hint). */
+  openRequest?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  const [allScope, setAllScope] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const selected = datasets.find((item) => item.id === value);
+  const projectScope = !!project && !allScope;
+  const source = projectScope ? project!.items : datasets;
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return datasets
+    return source
       .filter(
         (item) =>
           !needle ||
@@ -35,7 +52,16 @@ export default function DatasetPicker({
           (a.accessType === "SHARED" ? 1 : 0) -
           (b.accessType === "SHARED" ? 1 : 0),
       );
-  }, [datasets, query]);
+  }, [source, query]);
+  useEffect(() => {
+    setAllScope(false);
+  }, [project?.name]);
+  useEffect(() => {
+    if (openRequest > 0) {
+      setOpen(true);
+      triggerRef.current?.focus();
+    }
+  }, [openRequest]);
   useEffect(() => {
     const close = (event: MouseEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
@@ -44,15 +70,23 @@ export default function DatasetPicker({
     return () => document.removeEventListener("mousedown", close);
   }, []);
   useEffect(() => {
-    itemRefs.current[active]?.scrollIntoView({ block: "nearest" });
+    itemRefs.current[active]?.scrollIntoView?.({ block: "nearest" });
   }, [active]);
-  const choose = (id: string) => {
-    onChange(id);
+  const choose = (item: ZarrDataset) => {
     setOpen(false);
     setQuery("");
+    if (!datasets.some((known) => known.id === item.id)) {
+      onUnavailable?.(item);
+      return;
+    }
+    onChange(item.id);
   };
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "Escape") {
+      if (open) {
+        event.stopPropagation();
+        triggerRef.current?.focus();
+      }
       setOpen(false);
       return;
     }
@@ -75,9 +109,11 @@ export default function DatasetPicker({
       );
     } else if (event.key === "Enter" && filtered[active]) {
       event.preventDefault();
-      choose(filtered[active].id);
+      choose(filtered[active]);
     }
   };
+  const ownership = (item: ZarrDataset) =>
+    item.accessType === "SHARED" ? "공유받음" : "내 데이터";
   return (
     <div
       className="dataset-picker"
@@ -85,22 +121,19 @@ export default function DatasetPicker({
       onKeyDown={onKeyDown}
       data-tour={tourId}
     >
-      <span className="picker-label">데이터</span>
       <button
+        ref={triggerRef}
         type="button"
-        className="dataset-trigger"
+        className={`dataset-trigger ${selected ? "" : "is-empty"}`}
         role="combobox"
         aria-label="데이터 또는 Zarr 선택"
         aria-expanded={open}
         aria-controls="zarr-listbox"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen((current) => !current)}
       >
-        <Database size={16} aria-hidden="true" className="dataset-trigger__icon" />
-        <span>{selected?.name ?? "데이터셋 선택"}</span>
-        {selected && (
-          <small className={selected.accessType === "SHARED" ? "shared" : ""}>
-            {selected.accessType === "SHARED" ? "공유" : "소유"}
-          </small>
+        <span className="dataset-trigger__name">{selected?.name ?? "데이터 고르기"}</span>
+        {selected?.accessType === "SHARED" && (
+          <small className="dataset-trigger__tag">공유받음</small>
         )}
         <ChevronDown size={16} aria-hidden="true" />
       </button>
@@ -115,15 +148,37 @@ export default function DatasetPicker({
                 setQuery(event.target.value);
                 setActive(0);
               }}
-              placeholder="Zarr 검색"
+              placeholder={projectScope ? `${project!.name}에서 검색` : "이름으로 검색"}
               aria-label="Zarr 검색"
             />
           </div>
+          {project && (
+            <div className="dataset-scope">
+              <span>
+                {projectScope ? (
+                  <>
+                    <strong>{project.name}</strong>의 데이터
+                  </>
+                ) : (
+                  "모든 데이터"
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setAllScope((current) => !current);
+                  setActive(0);
+                }}
+              >
+                {projectScope ? "모든 데이터 보기" : `${project.name}만 보기`}
+              </button>
+            </div>
+          )}
           <div
             id="zarr-listbox"
             className="dataset-list"
             role="listbox"
-            aria-label="Zarr 목록"
+            aria-label={projectScope ? `${project!.name}의 데이터` : "Zarr 목록"}
           >
             {filtered.length ? (
               filtered.map((item, index) => (
@@ -137,13 +192,13 @@ export default function DatasetPicker({
                   }}
                   className={index === active ? "active-option" : ""}
                   onMouseEnter={() => setActive(index)}
-                  onClick={() => choose(item.id)}
+                  onClick={() => choose(item)}
                 >
                   <span>
                     <strong>{item.name}</strong>
                     <small>
-                      {item.accessType === "SHARED" ? "공유" : "소유"} ·{" "}
-                      {item.projectName || "프로젝트 없음"}
+                      <span>{ownership(item)}</span>
+                      {!projectScope && <span>{item.projectName || "프로젝트 없음"}</span>}
                     </small>
                   </span>
                   {item.id === value && (
@@ -152,7 +207,11 @@ export default function DatasetPicker({
                 </button>
               ))
             ) : (
-              <p className="dataset-empty">검색 결과가 없습니다.</p>
+              <p className="dataset-empty">
+                {projectScope && !query
+                  ? "이 프로젝트에 등록된 데이터가 없습니다."
+                  : "검색 결과가 없습니다."}
+              </p>
             )}
           </div>
         </div>

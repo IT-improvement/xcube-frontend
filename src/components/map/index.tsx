@@ -28,7 +28,8 @@ const OlMap: React.FC<Props> = ({ onMapReady, onPixelSelect, baseVisible = true,
   useEffect(() => {
     if (!mapRef.current) return;
 
-    const baseLayer = new TileLayer({ source: new OSM(), visible: baseVisible });
+    // Own className = own canvas, so the Viewer can dim only the basemap in dark mode.
+    const baseLayer = new TileLayer({ source: new OSM(), visible: baseVisible, className: "ol-layer xc-basemap" });
     const map = new Map({
       target: mapRef.current,
       layers: [baseLayer],

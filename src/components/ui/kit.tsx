@@ -4,7 +4,7 @@ import { X } from 'lucide-react';
 import { KeyboardEvent, ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 import './kit.css';
 
-export type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'water';
+export type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'water' | 'result';
 
 export function Badge({ tone = 'neutral', children }: { tone?: BadgeTone; children: ReactNode }) {
   return <span className={`xc-badge xc-badge--${tone}`}>{children}</span>;

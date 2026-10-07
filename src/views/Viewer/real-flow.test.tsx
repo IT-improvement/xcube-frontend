@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom';
 jest.mock('../../components/map', () => ({ __esModule: true, default: function MockMap({ onMapReady, onPixelSelect }: any) { const React = require('react'); React.useEffect(() => onMapReady(mockMap), [onMapReady]); return <button onClick={() => onPixelSelect([126.5, 33.5])}>OpenLayers map</button>; } }));
 jest.mock('../../components/xcubeLayer', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('../../api/aiApi', () => ({ ...jest.requireActual('../../api/aiApi'), aiApi: { listModels: jest.fn(), check: jest.fn(), createJob: jest.fn(), listJobs: jest.fn(), getJob: jest.fn(), cancelJob: jest.fn(), retryJob: jest.fn() } }));
 jest.mock('../../api', () => ({ activeViewerAdapter: { getProjects: jest.fn(), getDatasets: jest.fn(), getProjectDatasets: jest.fn(), getJobs: jest.fn(), runWaterExtraction: jest.fn() }, useMockApi: false }));
 jest.mock('../../api/backofficeApi', () => ({ backofficeAdapter: { checkXcubeStatus: jest.fn(), getDatasetDetail: jest.fn(), tileUrl: jest.fn(), getTimeseries: jest.fn(), createProject: jest.fn(), updateProject: jest.fn(), deleteProject: jest.fn(), getProjectMembers: jest.fn(), addProjectMember: jest.fn(), updateProjectMember: jest.fn(), removeProjectMember: jest.fn(), getLinkableDatacubes: jest.fn(), linkProjectDataset: jest.fn(), unlinkProjectDataset: jest.fn() } }));
 jest.mock('ol/proj', () => ({ toLonLat: (coordinate: any) => coordinate }));
@@ -12,6 +13,7 @@ const Viewer = require('.').default;
 const mockAddLayer = require('../../components/xcubeLayer').default as jest.Mock;
 const mockAdapter = require('../../api').activeViewerAdapter as Record<string, jest.Mock>;
 const mockBackoffice = require('../../api/backofficeApi').backofficeAdapter as Record<string, jest.Mock>;
+const mockAi = require('../../api/aiApi').aiApi as Record<string, jest.Mock>;
 let mockCenter = [126.5, 33.5];
 let mockResolution = 100;
 const mockView = { getProjection: () => ({ getCode: () => 'EPSG:4326' }), getCenter: () => mockCenter, getResolution: () => mockResolution, getZoom: () => 9, fit: jest.fn(), animate: jest.fn(), setCenter: jest.fn(), setResolution: jest.fn(), setZoom: jest.fn() };
@@ -26,7 +28,7 @@ beforeEach(() => {
   mockView.setResolution.mockImplementation((resolution) => { mockResolution = resolution; });
   mockMap.getView.mockReturnValue(mockView);
   mockBackoffice.getLinkableDatacubes.mockResolvedValue([]);
-  jest.clearAllMocks(); mockAddLayer.mockResolvedValue(mockLayer); mockBackoffice.checkXcubeStatus.mockResolvedValue(true); mockBackoffice.getDatasetDetail.mockResolvedValue({ id: '77', projectId: '4', name: '서버 상세 이름', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: '77', defaultVariable: 'red', variables: ['red', 'green', 'blue', 'nir'], times: [{ iso: '2026-01-01T00:00:00Z', label: '2026. 1. 1.' }, { iso: '2026-02-01T00:00:00Z', label: '2026. 2. 1.' }], bbox: [126, 33, 127, 34] }); mockBackoffice.tileUrl.mockImplementation(tileUrl); mockBackoffice.getProjectMembers.mockResolvedValue([{ userId: '1', role: 'OWNER' }, { userId: '22', role: 'VIEWER' }]); mockAdapter.getProjects.mockResolvedValue([{ id: '4', name: '임의 프로젝트', accessRole: 'OWNER' }]); mockAdapter.getDatasets.mockResolvedValue([{ id: '77', projectId: '4', name: '임의 데이터셋', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: 'custom_cube_2026', defaultVariable: '', variables: [], times: [] }]); mockAdapter.getProjectDatasets.mockResolvedValue([]); mockAdapter.getJobs.mockResolvedValue([]);
+  jest.clearAllMocks(); mockAddLayer.mockResolvedValue(mockLayer); mockBackoffice.checkXcubeStatus.mockResolvedValue(true); mockBackoffice.getDatasetDetail.mockResolvedValue({ id: '77', projectId: '4', name: '서버 상세 이름', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: '77', defaultVariable: 'red', variables: ['red', 'green', 'blue', 'nir'], times: [{ iso: '2026-01-01T00:00:00Z', label: '2026. 1. 1.' }, { iso: '2026-02-01T00:00:00Z', label: '2026. 2. 1.' }], bbox: [126, 33, 127, 34] }); mockBackoffice.tileUrl.mockImplementation(tileUrl); mockBackoffice.getProjectMembers.mockResolvedValue([{ userId: '1', role: 'OWNER' }, { userId: '22', role: 'VIEWER' }]); mockAdapter.getProjects.mockResolvedValue([{ id: '4', name: '임의 프로젝트', accessRole: 'OWNER' }]); mockAdapter.getDatasets.mockResolvedValue([{ id: '77', projectId: '4', name: '임의 데이터셋', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: 'custom_cube_2026', defaultVariable: '', variables: [], times: [] }]); mockAdapter.getProjectDatasets.mockResolvedValue([]); mockAdapter.getJobs.mockResolvedValue([]); mockAi.listJobs.mockResolvedValue([]);
   Object.defineProperty(window, 'matchMedia', { writable: true, value: jest.fn().mockReturnValue({ matches: false, addEventListener: jest.fn(), removeEventListener: jest.fn() }) });
 });
 
@@ -85,6 +87,8 @@ test('M0 FR-VIEW-03: 첫/마지막/이전/다음, 재생, 반복과 속도를 �
   render(<Viewer />);
   await selectBaselineDataset();
   const slider = screen.getByRole('slider', { name: '관측 시점' });
+  // First/last, speed and loop sit behind the playback options button (progressive disclosure).
+  fireEvent.click(screen.getByRole('button', { name: /재생 옵션/ }));
   for (const [button, value] of [['마지막 시점', '1'], ['이전 시점', '0'], ['다음 시점', '1'], ['첫 시점', '0']]) {
     fireEvent.click(screen.getByRole('button', { name: button }));
     expect(slider).toHaveValue(value);
@@ -193,7 +197,10 @@ test('공유받은 프로젝트로만 연결된 Zarr는 아무 반응 없이 넘
   mockAdapter.getProjectDatasets.mockResolvedValue([{ id: '99', projectId: '4', name: '남의 Zarr', subtitle: 'READY', xcubeDatasetId: 'other', defaultVariable: 'red', variables: ['red'], times: [] }]);
   render(<Viewer />);
   fireEvent.change(await screen.findByRole('combobox', { name: '프로젝트 선택' }), { target: { value: '4' } });
-  fireEvent.click(await screen.findByRole('button', { name: /남의 Zarr/ }));
+  // The project's data is listed in the dataset picker, narrowed to that project.
+  await waitFor(() => expect(mockAdapter.getProjectDatasets).toHaveBeenCalledWith('4'));
+  fireEvent.click(screen.getByRole('combobox', { name: '데이터 또는 Zarr 선택' }));
+  fireEvent.click(await screen.findByRole('option', { name: /남의 Zarr/ }));
   expect(await screen.findByRole('alert')).toHaveTextContent('공유받은 프로젝트를 통해서만 연결된 데이터라 아직 열 수 없습니다');
   expect(screen.queryByRole('region', { name: '시계열 탐색기' })).not.toBeInTheDocument();
 });

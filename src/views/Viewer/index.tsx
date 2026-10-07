@@ -16,34 +16,23 @@ import {
   ChevronRight,
   ChevronsRight,
   CircleAlert,
+  CircleCheck,
+  CircleDashed,
   CircleHelp,
   Crosshair,
-  Database,
-  FolderKanban,
   Hand,
   Layers,
   Layers2,
   LoaderCircle,
-  LogOut,
-  Moon,
-  PanelLeftClose,
-  MousePointerClick,
   Pause,
   Play,
   Plus,
-  Repeat,
-  Satellite,
   Scan,
-  SkipBack,
-  SkipForward,
-  Sparkles,
-  Sun,
+  Waves,
   X,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import "./style.css";
-import "./v2.css";
 import "./viewer.css";
 import ViewerTour, { tourDismissed } from "./ViewerTour";
 import ProjectQuickMenu from "./ProjectQuickMenu";
@@ -51,17 +40,57 @@ import { BottomGraphPanel, PixelMarker } from "./PixelGraph";
 import DatasetPicker from "./DatasetPicker";
 import LayerControl from "./LayerControl";
 import {
-  CompareControl,
   CompareMap,
+  CompareModes,
+  CompareTarget,
+  CompareTargetSwitch,
+  CompareTime,
   DisplayMode,
   SwipeDivider,
   useCompareLayer,
 } from "./CompareView";
+import { ai } from "../../app/api";
+import type { AiJobRequest, AiResult, AiWaterJob } from "../../api/aiApi";
+import {
+  AiLegend,
+  AiResultList,
+  AiResultPanel,
+  AiRunForm,
+  isRunning,
+  matchTime,
+  ResultEntry,
+  WaterAreaRow,
+} from "./AiPanel";
+import { PlaybackOptions, TimeStaff } from "./TimeStaff";
+import UserMenu from "./UserMenu";
 
 type Drawer = "ai" | "result" | null;
-type Period = "현재 시점" | "선택 기간" | "전체 기간";
 type MapTool = "pan" | "pixel";
 const noop = () => undefined;
+/** water_mask (1 물, 0 물 아님, 255 값 없음) in result teal; the _alpha map keeps "물 아님" transparent. */
+// water_mask is 0/1: with vmax 1.6 a value of 1 lands mid-ramp (a clear teal) instead of the darkest green; 0 stays transparent.
+const AI_MASK_STYLE = { cmap: "GnBu_alpha", vmin: 0, vmax: 1.6 };
+/** Numeric catalog ids go to the services as numbers; demo ids stay strings. */
+const cubeId = (id: string) => (/^\d+$/.test(id) ? Number(id) : id);
+
+/** AI service jobs first; Backoffice links (older results) only when no job already points at them. */
+function resultEntries(aiJobs: AiWaterJob[], linked: AiJob[]): ResultEntry[] {
+  const entries: ResultEntry[] = aiJobs.map((job) => ({
+    key: job.id,
+    name: job.name,
+    status: job.status,
+    job,
+    datacubeId: job.registration?.datacubeId != null ? String(job.registration.datacubeId) : undefined,
+    xcubeDatasetId: job.registration?.xcubeDatasetId,
+    modelId: job.input?.modelId ? String(job.input.modelId) : undefined,
+    threshold: typeof job.input?.threshold === "number" ? job.input.threshold : job.result?.threshold,
+    createdAt: job.createdAt,
+  }));
+  for (const link of linked)
+    if (link.outputDatacubeId && !entries.some((entry) => entry.datacubeId === link.outputDatacubeId))
+      entries.push({ key: `link:${link.outputDatacubeId}`, name: `수체 추출 결과 #${link.id}`, status: link.status, datacubeId: link.outputDatacubeId });
+  return entries;
+}
 
 /** Viewer state kept in the address so a view can be reloaded or shared (M5). */
 type UrlState = {
@@ -71,6 +100,10 @@ type UrlState = {
   time?: string;
   mode?: DisplayMode;
   compare?: string;
+  /** Compare target "ai" (원본 ↔ AI 결과). */
+  target?: CompareTarget;
+  /** AI result to show: AI job id or result datacube id. */
+  ai?: string;
 };
 const VIEWER_PATH = "/app/viewer";
 function readUrlState(): UrlState {
@@ -83,6 +116,8 @@ function readUrlState(): UrlState {
     time: params.get("t") ?? undefined,
     mode: mode === "swipe" || mode === "split" ? mode : undefined,
     compare: params.get("b") ?? undefined,
+    target: params.get("cmp") === "ai" ? "ai" : undefined,
+    ai: params.get("ai") ?? undefined,
   };
 }
 /** Keys typed into fields, buttons and dialogs keep their own meaning. */
@@ -132,15 +167,21 @@ export default function Viewer({
   const [speed, setSpeed] = useState(1);
   const [loop, setLoop] = useState(true);
   const [pixel, setPixel] = useState<[number, number] | null>(null);
-  const [period, setPeriod] = useState<Period>("현재 시점");
-  const [threshold, setThreshold] = useState(65);
-  const [jobState, setJobState] = useState<"idle" | "running" | "completed">(
-    "idle",
-  );
   const [jobs, setJobs] = useState<AiJob[]>([]);
-  const [localInference, setLocalInference] = useState<Record<string, boolean>>(
-    {},
+  // M7: AI jobs of the shown dataset, the selected result and the latest run.
+  const [aiJobs, setAiJobs] = useState<AiWaterJob[]>([]);
+  const [aiTick, setAiTick] = useState(0);
+  const [resultKey, setResultKey] = useState("");
+  const wantedResultRef = useRef<string | undefined>(
+    new URLSearchParams(window.location.search).get("ai") ?? undefined,
   );
+  const [resultStats, setResultStats] = useState<AiResult | null>(null);
+  const [resultStatsLoading, setResultStatsLoading] = useState(false);
+  const [resultCube, setResultCube] = useState<ZarrDataset | null>(null);
+  const [aiRun, setAiRun] = useState<AiWaterJob | null>(null);
+  const [aiRunError, setAiRunError] = useState("");
+  const [compareTarget, setCompareTarget] = useState<CompareTarget>("time");
+  const [areaExpanded, setAreaExpanded] = useState(true);
   const [map, setMap] = useState<Map | null>(null);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState("");
@@ -157,6 +198,12 @@ export default function Viewer({
   const [pixelTip, setPixelTip] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [graphExpanded, setGraphExpanded] = useState(true);
+  const [pickerRequest, setPickerRequest] = useState(0);
+  // Keyboard pixel query: a reticle moved with the arrow keys, queried with Enter.
+  const mapBoxRef = useRef<HTMLElement>(null);
+  const probeRef = useRef<HTMLButtonElement>(null);
+  const focusProbeRef = useRef(false);
+  const [probe, setProbe] = useState<[number, number] | null>(null);
   const urlStateRef = useRef<UrlState>(readUrlState());
   const [displayMode, setDisplayMode] = useState<DisplayMode>("single");
   const [compareIndex, setCompareIndex] = useState(-1);
@@ -183,16 +230,32 @@ export default function Viewer({
     const [cmap, vmin, vmax] = styleKey.split("|");
     return { cmap: cmap && cmap !== "undefined" ? cmap : undefined, vmin: vmin === "undefined" ? undefined : Number(vmin), vmax: vmax === "undefined" ? undefined : Number(vmax) };
   }, [styleKey]);
-  const hasLinkedInference = jobs.some(
-    (job) =>
-      job.inputDatacubeId === selected?.id &&
-      job.status === "SUCCEEDED" &&
-      !!job.outputDatacubeId &&
-      (job.outputType === "AI_RESULT" || job.outputType === "INFER_ZARR"),
+  const entries = useMemo(
+    () =>
+      resultEntries(
+        aiJobs,
+        jobs.filter(
+          (job) =>
+            job.inputDatacubeId === selected?.id &&
+            job.status === "SUCCEEDED" &&
+            (job.outputType === "AI_RESULT" || job.outputType === "INFER_ZARR"),
+        ),
+      ),
+    [aiJobs, jobs, selected?.id],
   );
-  const hasInference =
-    !!selected && (hasLinkedInference || localInference[selected.id]);
+  const readyEntries = useMemo(
+    () => entries.filter((entry) => entry.status === "SUCCEEDED" && (!!entry.datacubeId || !!entry.job?.result)),
+    [entries],
+  );
+  const selectedResult = readyEntries.find((entry) => entry.key === resultKey) ?? null;
+  const hasInference = !!selected && readyEntries.length > 0;
   const times = useMemo(() => selected?.times ?? [], [selected]);
+  const aiRunHere = aiRun && String(aiRun.input?.datacubeId ?? "") === selected?.id ? aiRun : null;
+  // 원본 ↔ AI 결과 at the same time replaces time B while a result is chosen.
+  // Comparing with an AI result needs only one time; comparing times needs two.
+  const canCompare = times.length > 1 || !!selectedResult;
+  const aiCompare =
+    !!selected && displayMode !== "single" && compareTarget === "ai" && !!selectedResult;
   const hasRgb = useMemo(
     () =>
       selected?.rgbAvailable === true ||
@@ -348,7 +411,86 @@ export default function Viewer({
         setJobs([]);
         setJobsError(userMessage(cause));
       });
-  }, [datasetId, jobState]);
+  }, [datasetId, aiTick]);
+  // AI service jobs of this dataset. The service may not be up yet: then only Backoffice links show.
+  useEffect(() => {
+    setAiJobs([]);
+    if (!datasetId) return;
+    let cancelled = false;
+    ai.listJobs({ datacubeId: datasetId })
+      .then((items) => !cancelled && setAiJobs(items))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [datasetId, aiTick]);
+  // Keep the chosen result while it exists; otherwise the one asked for (address, finished run), else the newest.
+  useEffect(() => {
+    const wanted = wantedResultRef.current;
+    const match = wanted ? readyEntries.find((entry) => entry.key === wanted || entry.datacubeId === wanted) : undefined;
+    if (match) {
+      wantedResultRef.current = undefined;
+      setResultKey(match.key);
+      setResultVisible(true);
+      return;
+    }
+    setResultKey((current) =>
+      readyEntries.some((entry) => entry.key === current) ? current : readyEntries[0]?.key ?? "",
+    );
+  }, [readyEntries]);
+  const selectedResultKey = selectedResult?.key;
+  const selectedResultJob = selectedResult?.job;
+  useEffect(() => {
+    setResultStats(selectedResultJob?.result ?? null);
+    setResultStatsLoading(false);
+    if (!selectedResultKey || !selectedResultJob || selectedResultJob.result) return;
+    let cancelled = false;
+    setResultStatsLoading(true);
+    ai.getJob(selectedResultKey)
+      .then((job) => !cancelled && setResultStats(job.result ?? null))
+      .catch(() => undefined)
+      .finally(() => !cancelled && setResultStatsLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedResultKey, selectedResultJob]);
+  // The result dataset's own xcube id and server (owner pod) for its tiles, as for the main layer.
+  const resultCubeId = selectedResult?.datacubeId;
+  useEffect(() => {
+    setResultCube(null);
+    if (!resultCubeId || useMockApi) return;
+    let cancelled = false;
+    backofficeAdapter
+      .getDatasetDetail(resultCubeId)
+      .then((detail) => !cancelled && setResultCube(detail))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [resultCubeId]);
+  // Follow a run until it ends; a finished run becomes the shown result.
+  useEffect(() => {
+    if (!aiRun || !isRunning(aiRun)) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      ai.getJob(aiRun.id)
+        .then((job) => {
+          if (cancelled) return;
+          setAiRun(job);
+          if (isRunning(job)) return;
+          if (job.status === "SUCCEEDED") {
+            wantedResultRef.current = job.id;
+            setFlash("수체 추출이 끝났습니다. 결과를 원본 위에 겹쳐 보여 줍니다.");
+          }
+          setAiTick((value) => value + 1);
+        })
+        .catch((cause) => !cancelled && setAiRunError(userMessage(cause)));
+    }, useMockApi ? 700 : 3000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [aiRun]);
   useEffect(() => {
     // Preselect the dataset passed in the URL once, after the list arrives.
     if (initialAppliedRef.current || !initialDatasetId || !datasets.length) return;
@@ -385,11 +527,12 @@ export default function Viewer({
       const a = pending.time ? times.findIndex((time) => time.iso === pending.time) : -1;
       if (a >= 0) setTimeIndex(a);
       const b = pending.compare ? times.findIndex((time) => time.iso === pending.compare) : -1;
-      if (pending.mode && times.length > 1) {
+      if (pending.mode && (times.length > 1 || pending.target === "ai")) {
         setDisplayMode(pending.mode);
         setCompareIndex(b >= 0 ? b : a > 0 ? a - 1 : 1);
+        if (pending.target === "ai") setCompareTarget("ai");
       }
-      next.time = next.compare = next.mode = undefined;
+      next.time = next.compare = next.mode = next.target = undefined;
     }
     urlStateRef.current = next;
   }, [selected, times]);
@@ -403,13 +546,16 @@ export default function Viewer({
     if (datasetId && times[timeIndex]) params.set("t", times[timeIndex].iso);
     if (datasetId && displayMode !== "single") {
       params.set("mode", displayMode);
-      if (times[compareIndex]) params.set("b", times[compareIndex].iso);
+      if (aiCompare) params.set("cmp", "ai");
+      else if (times[compareIndex]) params.set("b", times[compareIndex].iso);
     }
+    if (datasetId && resultKey && !resultKey.startsWith("link:")) params.set("ai", resultKey);
+    else if (datasetId && selectedResult?.datacubeId) params.set("ai", selectedResult.datacubeId);
     const query = params.toString();
     const next = `${window.location.pathname}${query ? `?${query}` : ""}`;
     if (next !== `${window.location.pathname}${window.location.search}`)
       window.history.replaceState(window.history.state, "", next);
-  }, [loading, initialDatasetId, datasetId, projectId, activeVariable, times, timeIndex, displayMode, compareIndex]);
+  }, [loading, initialDatasetId, datasetId, projectId, activeVariable, times, timeIndex, displayMode, compareIndex, aiCompare, resultKey, selectedResult?.datacubeId]);
   // ←/→ step through times, Space plays or pauses, unless a field, button or dialog has focus.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -558,20 +704,52 @@ export default function Viewer({
           tileStyle,
         )
       : null;
+  // AI result: water_mask of the result dataset at the shown time, from its own xcube id and server.
+  const resultXcubeId = resultCube?.xcubeDatasetId || selectedResult?.xcubeDatasetId;
+  const resultIsos = useMemo(
+    () => (resultCube?.times.length ? resultCube.times.map((time) => time.iso) : resultStats?.times.map((stat) => stat.time) ?? []),
+    [resultCube, resultStats],
+  );
+  const resultTime = selectedResult ? matchTime(resultIsos, times[timeIndex]?.iso) : null;
+  const resultTileUrl =
+    !useMockApi && resultXcubeId && resultTime
+      ? backofficeAdapter.tileUrl(resultXcubeId, "water_mask", resultTime, resultCube?.tileBaseUrl, AI_MASK_STYLE)
+      : null;
+  const sourceTileUrlA =
+    !useMockApi && activeVariable && selectedXcubeDatasetId && times[timeIndex]
+      ? backofficeAdapter.tileUrl(selectedXcubeDatasetId, activeVariable, times[timeIndex].iso, selectedTileBase, tileStyle)
+      : null;
   useCompareLayer({
     map,
-    tileUrl: displayMode === "swipe" ? compareTileUrl : null,
+    tileUrl: resultVisible && !aiCompare ? resultTileUrl : null,
     bbox: selectedBbox,
-    visible: sourceVisible,
-    opacity: sourceOpacity,
+    visible: resultVisible,
+    opacity: resultOpacity,
+    zIndex: 6,
+  });
+  useCompareLayer({
+    map,
+    tileUrl: displayMode === "swipe" ? (aiCompare ? resultTileUrl : compareTileUrl) : null,
+    bbox: selectedBbox,
+    visible: aiCompare ? true : sourceVisible,
+    opacity: aiCompare ? resultOpacity : sourceOpacity,
     swipeRef,
+    zIndex: aiCompare ? 6 : 5,
   });
   useCompareLayer({
     map: compareMap,
-    tileUrl: displayMode === "split" ? compareTileUrl : null,
+    tileUrl: displayMode === "split" ? (aiCompare ? sourceTileUrlA : compareTileUrl) : null,
     bbox: selectedBbox,
     visible: sourceVisible,
     opacity: sourceOpacity,
+  });
+  useCompareLayer({
+    map: compareMap,
+    tileUrl: displayMode === "split" && aiCompare ? resultTileUrl : null,
+    bbox: selectedBbox,
+    visible: true,
+    opacity: resultOpacity,
+    zIndex: 6,
   });
   const changeSwipe = useCallback(
     (value: number) => {
@@ -595,10 +773,14 @@ export default function Viewer({
     },
     [times.length, timeIndex],
   );
-  const compareActive = !!selected && displayMode !== "single" && times.length > 1;
+  const compareActive = !!selected && displayMode !== "single" && canCompare;
   useEffect(() => {
-    if (selected && times.length < 2 && displayMode !== "single") setDisplayMode("single");
-  }, [selected, times.length, displayMode]);
+    if (selected && !canCompare && displayMode !== "single") setDisplayMode("single");
+  }, [selected, canCompare, displayMode]);
+  useEffect(() => {
+    // With a single time the only comparison is 원본 ↔ AI 결과.
+    if (times.length < 2 && selectedResult && compareTarget !== "ai") setCompareTarget("ai");
+  }, [times.length, selectedResult, compareTarget]);
   const onMapReady = useCallback((instance: Map) => setMap(instance), []);
   const openRightPanel = useCallback((type: Exclude<Drawer, null>) => {
     setDrawer(type);
@@ -654,10 +836,8 @@ export default function Viewer({
             maxValids: 1000,
           },
         );
-        if (!points.length) {
-          setViewerNotice("시계열 응답에 표시할 값이 없습니다.");
-          return;
-        }
+        // An empty series is explained once, inside the reading row (no extra toast).
+        if (!points.length) return;
         setSeriesPoints(points);
         setPixel(coordinate);
       } catch (cause) {
@@ -666,9 +846,53 @@ export default function Viewer({
     },
     [mapTool, selected, sourceVisible, resultVisible, times, activeVariable],
   );
-  const selectMapTool = (tool: MapTool) => {
+  const selectMapTool = (tool: MapTool, fromKeyboard = false) => {
     setMapTool(tool);
     setPixelTip(tool === "pixel");
+    if (tool !== "pixel") {
+      setProbe(null);
+      return;
+    }
+    focusProbeRef.current = fromKeyboard;
+    const box = mapBoxRef.current?.getBoundingClientRect();
+    const width = box?.width ?? 0;
+    const height = box?.height ?? 0;
+    const splitView = displayMode === "split" && canCompare;
+    setProbe((current) => current ?? [splitView ? width / 4 : width / 2, height / 2]);
+  };
+  useEffect(() => {
+    if (!probe || !focusProbeRef.current) return;
+    focusProbeRef.current = false;
+    probeRef.current?.focus();
+  }, [probe]);
+  const queryProbe = () => {
+    if (!probe || !map || typeof map.getCoordinateFromPixel !== "function") return;
+    const coordinate = map.getCoordinateFromPixel(probe);
+    if (coordinate) onPixelSelect(coordinate as [number, number]);
+  };
+  const moveProbe = (event: React.KeyboardEvent) => {
+    const step = event.shiftKey ? 40 : 8;
+    const delta: Record<string, [number, number]> = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    };
+    if (event.key === "Escape") {
+      event.preventDefault();
+      selectMapTool("pan");
+      return;
+    }
+    const move = delta[event.key];
+    if (!move || !probe) return;
+    event.preventDefault();
+    const box = mapBoxRef.current?.getBoundingClientRect();
+    const maxX = box?.width || Infinity;
+    const maxY = box?.height || Infinity;
+    setProbe([
+      Math.min(maxX, Math.max(0, probe[0] + move[0])),
+      Math.min(maxY, Math.max(0, probe[1] + move[1])),
+    ]);
   };
   const clearPixel = () => {
     setPixel(null);
@@ -754,18 +978,68 @@ export default function Viewer({
     }, 240);
     return () => window.clearTimeout(timer);
   }, [map, graphExpanded, pixel]);
-  const runAi = async () => {
-    if (!selected || !useMockApi) return;
-    setJobState("running");
-    const job = await activeViewerAdapter.runWaterExtraction(
-      selected.id,
-      period,
-    );
-    setJobs((current) => [job, ...current]);
-    setLocalInference((current) => ({ ...current, [selected.id]: true }));
-    setResultVisible(true);
-    setJobState("completed");
+  const startAi = async (request: AiJobRequest) => {
+    setAiRunError("");
+    try {
+      const job = await ai.createJob({
+        ...request,
+        datacubeId: cubeId(String(request.datacubeId)),
+        ...(projectId ? { projectId: cubeId(projectId) } : {}),
+      });
+      // The service answers with the job summary; keep the request so the run stays tied to this dataset.
+      setAiRun({ ...job, input: { ...request, ...(job.input ?? {}), datacubeId: String(request.datacubeId) } });
+      setAiTick((value) => value + 1);
+    } catch (cause) {
+      setAiRunError(userMessage(cause));
+    }
   };
+  const cancelAi = async () => {
+    if (!aiRun) return;
+    try {
+      await ai.cancelJob(aiRun.id);
+      setAiRun({ ...aiRun, status: "CANCELLED" });
+      setAiTick((value) => value + 1);
+    } catch (cause) {
+      setAiRunError(userMessage(cause));
+    }
+  };
+  const retryAi = async () => {
+    if (!aiRun) return;
+    setAiRunError("");
+    try {
+      const again = await ai.retryJob(aiRun.id);
+      setAiRun({ ...again, input: again.input ?? aiRun.input });
+      setAiTick((value) => value + 1);
+    } catch (cause) {
+      setAiRunError(userMessage(cause));
+    }
+  };
+  /** Same input as the shown result, another threshold (the estimate made real). */
+  const rerunAi = (threshold: number) => {
+    const input = selectedResult?.job?.input;
+    if (!selected || !input?.modelId) return;
+    setDrawer("ai");
+    startAi({
+      datacubeId: selected.id,
+      modelId: String(input.modelId),
+      threshold: Number(threshold.toFixed(2)),
+      ...(input.timeStart ? { timeStart: String(input.timeStart) } : {}),
+      ...(input.timeEnd ? { timeEnd: String(input.timeEnd) } : {}),
+      name: `${selectedResult?.name ?? selected.name} · 임계값 ${threshold.toFixed(2)}`,
+    });
+  };
+  const chooseResult = (entry: ResultEntry) => {
+    setResultKey(entry.key);
+    setResultVisible(true);
+    openRightPanel("result");
+  };
+  const labelOf = (iso: string) => {
+    const match = matchTime(times.map((time) => time.iso), iso);
+    return times.find((time) => time.iso === match)?.label ?? iso;
+  };
+  // AI results are reached through their source dataset, not picked as layers of their own.
+  const pickable = useMemo(() => datasets.filter((item) => item.kind !== "AI_RESULT"), [datasets]);
+  const pickableProject = useMemo(() => projectDatasets.filter((item) => item.kind !== "AI_RESULT"), [projectDatasets]);
   const projectName = projects.find((item) => item.id === projectId)?.name;
   // With personal pods on, the pill shows the user's own xcube; otherwise the main server.
   const podLabel: Record<string, string> = {
@@ -782,105 +1056,134 @@ export default function Viewer({
   // ABSENT: everything of this user is already merged into the main xcube, so show the main server.
   const showPod = !!podState && podState !== "ABSENT";
   const statusText = showPod ? podLabel[podState!] ?? podState! : `XCube Server ${connectionLabel}`;
-  const statusClass = showPod
+  // Status is said in words; the icon shape differs per state so colour is never the only cue.
+  const statusTone: "online" | "offline" | "starting" | "unknown" = showPod
     ? podState === "READY"
-      ? "is-online"
+      ? "online"
       : podState === "ERROR"
-        ? "is-offline"
+        ? "offline"
         : podState === "STARTING"
-          ? "is-starting"
-          : ""
+          ? "starting"
+          : "unknown"
     : xcubeConnected === false
-      ? "is-offline"
+      ? "offline"
       : xcubeConnected
-        ? "is-online"
-        : "";
-  // Entry with datasets shows the bare map; the tour explains the screen instead.
+        ? "online"
+        : "unknown";
+  const StatusIcon = {
+    online: CircleCheck,
+    offline: CircleAlert,
+    starting: LoaderCircle,
+    unknown: CircleDashed,
+  }[statusTone];
+  const userName = user?.name ?? "사용자";
+  const currentProject = projects.find((item) => item.id === projectId);
+  const splitActive = compareActive && displayMode === "split";
+  // Entry with datasets shows the map and one plain hint; the tour explains the rest.
   const emptyMessage = loading
     ? "데이터를 불러오는 중입니다…"
     : apiError ||
       (datasets.length || noDataHidden
         ? ""
         : "등록된 Zarr가 없습니다. 데이터를 추가해 시작하세요.");
+  const pickHint = !selected && !loading && !apiError && datasets.length > 0;
   return (
     <main className="viewer vx" aria-label="XCube 시계열 GIS Viewer">
       <header className="vx-top">
         <a className="vx-brand" href="/" aria-label="XCube 소개 홈">
-          <svg viewBox="0 0 28 28" aria-hidden="true">
-            <rect width="28" height="28" rx="7" fill="currentColor" />
+          <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
-              d="M14 6.5 21 10.5v7L14 21.5 7 17.5v-7L14 6.5Z"
+              d="M12 3.2 19.6 7.6v8.8L12 20.8 4.4 16.4V7.6L12 3.2Z"
               fill="none"
-              stroke="#fff"
-              strokeWidth="1.6"
+              stroke="currentColor"
+              strokeWidth="1.7"
               strokeLinejoin="round"
             />
             <path
-              d="M7 10.5 14 14.5l7-4M14 14.5v7"
+              d="M4.4 7.6 12 12l7.6-4.4M12 12v8.8"
               fill="none"
-              stroke="#fff"
-              strokeWidth="1.6"
+              stroke="currentColor"
+              strokeWidth="1.7"
               strokeLinejoin="round"
             />
           </svg>
           <span className="vx-brand__name">XCube</span>
-          <span className="vx-brand__product">Viewer</span>
         </a>
-        <div className="vx-pickers">
-          <label className="vx-select" data-tour="project">
-            <span className="vx-select__label">프로젝트</span>
-            <select
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              aria-label="프로젝트 선택"
-            >
-              <option value="">프로젝트 없음</option>
-              {projects.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={16} aria-hidden="true" />
-          </label>
+        <nav className="vx-crumbs" aria-label="보고 있는 프로젝트와 데이터">
+          <span className="vx-crumbs__project" data-tour="project">
+            {/* Quick project actions stay in the Viewer; long tasks open the app pages in a new tab. */}
+            <ProjectQuickMenu
+              project={currentProject}
+              dataset={selected}
+              inProject={projectDatasets.some((item) => item.id === selected?.id)}
+              onCreated={(created) => {
+                setProjects((items) => [created, ...items]);
+                setProjectId(created.id);
+                setFlash(`“${created.name}” 프로젝트를 만들었습니다.`);
+              }}
+              onLinked={(dataset, project) => {
+                setProjectDatasets((items) =>
+                  items.some((item) => item.id === dataset.id)
+                    ? items
+                    : [...items, dataset],
+                );
+                setFlash(`“${dataset.name}”을 “${project.name}”에 추가했습니다.`);
+              }}
+            />
+            <label className={`vx-crumb ${projectId ? "" : "is-none"}`}>
+              <span className="vx-sr">프로젝트</span>
+              <select
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                aria-label="프로젝트 선택"
+              >
+                <option value="">프로젝트 없음</option>
+                {projects.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} aria-hidden="true" />
+            </label>
+          </span>
+          <span className="vx-crumbs__sep" aria-hidden="true">
+            /
+          </span>
           <DatasetPicker
-            datasets={datasets}
+            datasets={pickable}
             value={datasetId}
             onChange={setDatasetId}
             tourId="dataset"
+            openRequest={pickerRequest}
+            project={
+              projectId
+                ? { name: projectName ?? "프로젝트", items: pickableProject }
+                : undefined
+            }
+            onUnavailable={(item) =>
+              // Datasets reached only through a shared project are not in
+              // the catalog list until the server grants project access.
+              setNotice(
+                `“${item.name}”은 공유받은 프로젝트를 통해서만 연결된 데이터라 아직 열 수 없습니다. 서버 권한 규칙이 반영되면 표시됩니다.`,
+              )
+            }
           />
-        </div>
+        </nav>
         <div className="vx-top__actions">
           <span
-            className={`vx-status ${statusClass}`}
+            className={`vx-status is-${statusTone}`}
             title={statusText}
             role="status"
           >
-            <i aria-hidden="true" />
-            <span>{statusText}</span>
+            <StatusIcon size={15} aria-hidden="true" />
+            <span className="vx-status__text">{statusText}</span>
+            <span className="vx-status__short" aria-hidden="true">
+              {{ online: "연결됨", offline: "연결 안 됨", starting: "준비 중", unknown: "확인 중" }[statusTone]}
+            </span>
           </span>
-          <span className="vx-divider" aria-hidden="true" />
-          {/* Quick project actions stay in the Viewer; long tasks open the app pages in a new tab. */}
-          <ProjectQuickMenu
-            project={projects.find((item) => item.id === projectId)}
-            dataset={selected}
-            inProject={projectDatasets.some((item) => item.id === selected?.id)}
-            onCreated={(created) => {
-              setProjects((items) => [created, ...items]);
-              setProjectId(created.id);
-              setFlash(`“${created.name}” 프로젝트를 만들었습니다.`);
-            }}
-            onLinked={(dataset, project) => {
-              setProjectDatasets((items) =>
-                items.some((item) => item.id === dataset.id)
-                  ? items
-                  : [...items, dataset],
-              );
-              setFlash(`“${dataset.name}”을 “${project.name}”에 추가했습니다.`);
-            }}
-          />
           <a
-            className="vx-btn vx-btn--secondary"
+            className="vx-btn vx-btn--quiet"
             data-tour="add"
             href="/app/data/new"
             target="_blank"
@@ -891,32 +1194,34 @@ export default function Viewer({
             <Plus size={16} aria-hidden="true" />
             <span className="vx-hide-md">데이터 추가</span>
           </a>
-          {selected && (
+          {selected && selected.kind !== "AI_RESULT" && (
             <button
               type="button"
-              className="vx-btn vx-btn--primary"
+              className="vx-btn vx-btn--line"
               aria-label="AI 수체 추출"
               title="AI 수체 추출"
               data-tour="ai"
               aria-pressed={drawer === "ai"}
               onClick={() => openRightPanel("ai")}
             >
-              <Sparkles size={16} aria-hidden="true" />
+              <Waves size={16} aria-hidden="true" />
               <span className="vx-hide-sm">AI 수체 추출</span>
             </button>
           )}
           {hasInference && (
             <button
               type="button"
-              className="vx-btn vx-btn--water"
+              className="vx-btn vx-btn--line"
               aria-pressed={drawer === "result"}
-              onClick={() => openRightPanel("result")}
+              onClick={() => {
+                setResultVisible(true);
+                openRightPanel("result");
+              }}
             >
               <Layers2 size={16} aria-hidden="true" />
               <span>결과</span>
             </button>
           )}
-          <span className="vx-divider" aria-hidden="true" />
           <button
             type="button"
             className="vx-icon-btn"
@@ -926,87 +1231,274 @@ export default function Viewer({
           >
             <CircleHelp size={18} aria-hidden="true" />
           </button>
-          <button
-            type="button"
-            className="vx-icon-btn"
-            onClick={toggleTheme}
-            aria-pressed={theme === "dark"}
-            aria-label={
-              theme === "dark" ? "라이트 모드로 전환" : "다크 모드로 전환"
-            }
-            title={theme === "dark" ? "라이트 모드" : "다크 모드"}
-          >
-            {theme === "dark" ? (
-              <Sun size={18} aria-hidden="true" />
-            ) : (
-              <Moon size={18} aria-hidden="true" />
-            )}
-          </button>
-          <div className="vx-user">
-            <span className="vx-user__avatar" aria-hidden="true">
-              {(user?.name ?? "사용자").slice(0, 1)}
-            </span>
-            <span className="vx-user__name vx-hide-md">
-              {user?.name ?? "사용자"}
-            </span>
-            <button
-              type="button"
-              className="vx-icon-btn"
-              onClick={onLogout}
-              aria-label={`${user?.name ?? "사용자"} 로그아웃`}
-              title="로그아웃"
-            >
-              <LogOut size={18} aria-hidden="true" />
-            </button>
-          </div>
+          <UserMenu
+            name={userName}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            onLogout={onLogout}
+          />
         </div>
       </header>
-      {projectId && (
-        <section
-          className="vx-project"
-          aria-label="현재 프로젝트의 Zarr 데이터큐브"
-        >
-          <div className="vx-project__title">
-            <FolderKanban size={16} aria-hidden="true" />
-            <strong>{`${projectName ?? "프로젝트"}의 데이터큐브`}</strong>
-            <span>프로젝트 내부 목록</span>
-          </div>
-          <div className="vx-project__list">
-            {projectDatasets.map((item) => (
-              <button
-                type="button"
-                key={item.id}
-                className={item.id === datasetId ? "active" : ""}
-                aria-pressed={item.id === datasetId}
-                onClick={() => {
-                  // Datasets reached only through a shared project are not in
-                  // the catalog list until the server grants project access.
-                  if (!datasets.some((known) => known.id === item.id)) {
-                    setNotice(
-                      `“${item.name}”은 공유받은 프로젝트를 통해서만 연결된 데이터라 아직 열 수 없습니다. 서버 권한 규칙이 반영되면 표시됩니다.`,
-                    );
-                    return;
-                  }
-                  setDatasetId(item.id);
-                }}
-              >
-                <Database size={14} aria-hidden="true" />
-                {item.name}
-                <small>{item.subtitle}</small>
-              </button>
-            ))}
-            {!projectDatasets.length && (
-              <span className="vx-project__empty">
-                이 프로젝트에 등록된 Zarr가 없습니다.
-              </span>
-            )}
-          </div>
-        </section>
-      )}
 
       <div
-        className={`vx-body ${panelOpen ? "panel-open" : ""} ${drawer ? "drawer-open" : ""}`}
+        className={`vx-body ${panelOpen ? "panel-open" : ""} ${drawer && !rightCollapsed ? "drawer-open" : ""} ${drawer && rightCollapsed ? "rail-open" : ""}`}
       >
+        <section
+          ref={mapBoxRef}
+          className={`vx-map ${splitActive ? "is-split" : ""} ${compareActive ? "is-comparing" : ""}`}
+          aria-label="시계열 위성 데이터 지도"
+        >
+          <OlMap
+            onMapReady={onMapReady}
+            onPixelSelect={onPixelSelect}
+            baseVisible={baseVisible}
+            interactionMode={mapTool}
+          />
+          {!panelOpen && (
+            <button
+              type="button"
+              className="vx-sheet-open"
+              onClick={() => setPanelOpen(true)}
+              data-tour="layers"
+              aria-label="레이어 및 AI 작업 패널 열기"
+              title="레이어 / AI 작업"
+            >
+              <Layers size={16} aria-hidden="true" />
+              <span>레이어</span>
+            </button>
+          )}
+          <div
+            className="vx-tools"
+            role="toolbar"
+            aria-label="지도 도구"
+            aria-orientation="vertical"
+            data-tour="tools"
+          >
+            <div className="vx-tools__group">
+              <button
+                type="button"
+                aria-label="이동"
+                title="이동"
+                aria-pressed={mapTool === "pan"}
+                onClick={() => selectMapTool("pan")}
+              >
+                <Hand size={18} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                aria-label="픽셀 값 조회"
+                title="픽셀 값 조회 (키보드: 방향키로 이동, Enter로 조회)"
+                aria-pressed={mapTool === "pixel"}
+                disabled={!selected}
+                onClick={(event) => selectMapTool("pixel", event.detail === 0)}
+              >
+                <Crosshair size={18} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="vx-tools__group">
+              <button
+                type="button"
+                aria-label="확대"
+                title="확대"
+                onClick={() => zoomMap(1)}
+              >
+                <ZoomIn size={18} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                aria-label="축소"
+                title="축소"
+                onClick={() => zoomMap(-1)}
+              >
+                <ZoomOut size={18} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                aria-label="데이터 영역 맞춤"
+                title="데이터 영역 맞춤"
+                disabled={!selectedBbox}
+                onClick={fitDataset}
+              >
+                <Scan size={18} aria-hidden="true" />
+              </button>
+            </div>
+            {pixel && (
+              <div className="vx-tools__group">
+                <button
+                  type="button"
+                  aria-label="픽셀 선택 지우기"
+                  title="픽셀 선택 지우기"
+                  onClick={clearPixel}
+                >
+                  <X size={18} aria-hidden="true" />
+                </button>
+              </div>
+            )}
+          </div>
+          {mapTool === "pixel" && selected && probe && (
+            <button
+              ref={probeRef}
+              type="button"
+              className="vx-probe"
+              style={{ left: probe[0], top: probe[1] }}
+              aria-label="키보드 픽셀 조회"
+              aria-describedby="vx-probe-hint"
+              onKeyDown={moveProbe}
+              onClick={queryProbe}
+            >
+              <span id="vx-probe-hint" className="vx-sr">
+                방향키로 십자선을 옮기고 Enter로 그 지점의 시계열을 조회합니다. Shift를
+                함께 누르면 크게 움직이고, Esc를 누르면 이동 도구로 돌아갑니다.
+              </span>
+            </button>
+          )}
+          {pixelTip && (
+            <div className="vx-toast" role="status">
+              지도를 클릭하면 그 지점의 시계열이 아래에 열립니다. 키보드는 방향키와 Enter.
+            </div>
+          )}
+          {!selected && emptyMessage && (
+            <div
+              className={`vx-empty ${apiError ? "is-error" : ""}`}
+              aria-live="polite"
+            >
+              {loading ? (
+                <LoaderCircle size={20} className="vx-spin" aria-hidden="true" />
+              ) : apiError ? (
+                <CircleAlert size={20} aria-hidden="true" />
+              ) : null}
+              <p>{emptyMessage}</p>
+              {!loading && !apiError && (
+                <a
+                  className="vx-btn vx-btn--ink"
+                  href="/app/data/new"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Plus size={16} aria-hidden="true" />
+                  데이터 추가
+                </a>
+              )}
+            </div>
+          )}
+          {pickHint && !tourOpen && (
+            <div className="vx-empty vx-empty--pick">
+              <p>
+                <strong>지도에 띄울 위성 데이터를 고르세요.</strong>
+                고르면 촬영 시점별 영상과 아래 타임라인이 나타납니다.
+              </p>
+              <button
+                type="button"
+                className="vx-btn vx-btn--ink"
+                onClick={() => setPickerRequest((value) => value + 1)}
+              >
+                데이터 고르기
+              </button>
+            </div>
+          )}
+          {notice && (
+            <div className="vx-toast vx-toast--notice" role="alert">
+              <CircleAlert size={16} aria-hidden="true" />
+              {notice}
+            </div>
+          )}
+          {flash && (
+            <div className="vx-toast vx-toast--done" role="status">
+              <CircleCheck size={16} aria-hidden="true" />
+              {flash}
+            </div>
+          )}
+          {selected && viewerNotice && (
+            <div className="vx-toast vx-toast--notice" role="status">
+              <CircleAlert size={16} aria-hidden="true" />
+              {viewerNotice}
+            </div>
+          )}
+          {/* Demo has no tiles: a hatched stand-in marks where the result layer would be. */}
+          {useMockApi && selected && selectedResult && resultTime && ((resultVisible && !aiCompare) || (aiCompare && displayMode === "swipe")) && (
+            <div
+              className="vx-result-clip"
+              style={aiCompare ? { clipPath: `inset(0 0 0 ${swipe}%)` } : undefined}
+              aria-hidden="true"
+            >
+              <div className="result-overlay" style={{ opacity: resultOpacity / 100 }} />
+            </div>
+          )}
+          {selected && selectedResult && (resultVisible || aiCompare) && !(aiCompare && displayMode === "swipe") && (
+            <AiLegend
+              entry={selectedResult}
+              timeLabel={times[timeIndex]?.label}
+              covered={!!resultTime}
+            />
+          )}
+          {compareActive && (
+            <CompareTargetSwitch
+              value={aiCompare ? "ai" : "time"}
+              onChange={(value) => {
+                setCompareTarget(value);
+                if (value === "ai") setResultVisible(true);
+              }}
+              aiAvailable={readyEntries.length > 0}
+            />
+          )}
+          {selected && !compareActive && (
+            <div className="vx-mapinfo" aria-hidden="true">
+              {activeVariable && (
+                <span className="vx-mapinfo__var">
+                  {activeVariable === "rgb" ? "RGB 합성" : activeVariable}
+                </span>
+              )}
+              {variableStyle?.colorBarMin != null && variableStyle?.colorBarMax != null && (
+                <span className="tabular">
+                  {variableStyle.colorBarMin} – {variableStyle.colorBarMax}
+                  {variableStyle.units && variableStyle.units !== "1" ? ` ${variableStyle.units}` : ""}
+                </span>
+              )}
+              <span>좌표계 EPSG:4326</span>
+            </div>
+          )}
+          {pixel && <PixelMarker map={map} coordinate={pixel} />}
+          {compareActive && displayMode === "swipe" && (
+            <SwipeDivider
+              value={swipe}
+              onChange={changeSwipe}
+              leftLabel={times[timeIndex]?.label ?? "—"}
+              rightLabel={(aiCompare ? times[timeIndex]?.label : times[compareIndex]?.label) ?? "—"}
+              target={aiCompare ? "ai" : "time"}
+            />
+          )}
+          {splitActive && (
+            <>
+              <span className="vx-maplabel vx-maplabel--a vx-split-label">
+                {aiCompare ? (
+                  <>
+                    <i className="vx-swatch vx-swatch--source" aria-hidden="true" />
+                    <span>원본 <span className="tabular">{times[timeIndex]?.label ?? "—"}</span></span>
+                  </>
+                ) : (
+                  <>
+                    <b className="vx-flag">A</b>
+                    <span className="tabular">{times[timeIndex]?.label ?? "—"}</span>
+                  </>
+                )}
+              </span>
+              <CompareMap
+                mainMap={map}
+                baseVisible={baseVisible}
+                onMapReady={setCompareMap}
+                label={(aiCompare ? times[timeIndex]?.label : times[compareIndex]?.label) ?? "—"}
+                target={aiCompare ? "ai" : "time"}
+              >
+                {useMockApi && aiCompare && resultTime && (
+                  <div className="vx-result-clip" aria-hidden="true">
+                    <div className="result-overlay" style={{ opacity: resultOpacity / 100 }} />
+                  </div>
+                )}
+              </CompareMap>
+            </>
+          )}
+        </section>
+
         {panelOpen && (
           <aside
             className="vx-panel"
@@ -1030,8 +1522,8 @@ export default function Viewer({
                   onClick={() => setTab("jobs")}
                 >
                   AI 작업
-                  {jobs.length > 0 && (
-                    <span className="vx-count">{jobs.length}</span>
+                  {entries.length > 0 && (
+                    <span className="vx-count tabular">{entries.length}</span>
                   )}
                 </button>
               </div>
@@ -1042,51 +1534,14 @@ export default function Viewer({
                 aria-label="패널 닫기"
                 title="패널 접기"
               >
-                <PanelLeftClose size={18} aria-hidden="true" />
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
             {tab === "layers" ? (
               <div className="vx-panel__body">
-                <section className="vx-section">
-                  <h2 className="vx-section__title">표시 레이어</h2>
-                  <p className="vx-section__hint">
-                    체크하면 지도에서 표시됩니다.
-                  </p>
-                  <div className="vx-layers">
-                    {hasInference && (
-                      <LayerControl
-                        label="AI 결과 Zarr"
-                        accent="result"
-                        checked={resultVisible}
-                        onChecked={setResultVisible}
-                        opacity={resultOpacity}
-                        onOpacity={setResultOpacity}
-                      />
-                    )}
-                    {selected && (
-                      <LayerControl
-                        label="원본 Zarr"
-                        accent="source"
-                        checked={sourceVisible}
-                        onChecked={setSourceVisible}
-                        opacity={sourceOpacity}
-                        onOpacity={setSourceOpacity}
-                      />
-                    )}
-                    <label className="vx-layer vx-layer--base">
-                      <input
-                        type="checkbox"
-                        checked={baseVisible}
-                        onChange={(e) => setBaseVisible(e.target.checked)}
-                      />
-                      <i className="vx-swatch vx-swatch--base" />
-                      <span>OpenLayers 배경지도</span>
-                    </label>
-                  </div>
-                </section>
                 {selected && (
                   <section className="vx-section">
-                    <h3 className="vx-section__title">활성 변수 / Band</h3>
+                    <h2 className="vx-section__title">표시할 밴드</h2>
                     <div className="vx-chips">
                       {hasRgb && (
                         <button
@@ -1112,8 +1567,49 @@ export default function Viewer({
                         </button>
                       ))}
                     </div>
+                    {activeVariable === "rgb" && (
+                      <p className="vx-section__hint">
+                        RGB는 눈으로 보는 색입니다. 픽셀 시계열은 개별 밴드에서 조회합니다.
+                      </p>
+                    )}
                   </section>
                 )}
+                <section className="vx-section">
+                  <h2 className="vx-section__title">레이어</h2>
+                  <div className="vx-layers">
+                    {hasInference && (
+                      <LayerControl
+                        label="AI 수체 결과"
+                        accent="result"
+                        checked={resultVisible}
+                        onChecked={setResultVisible}
+                        opacity={resultOpacity}
+                        onOpacity={setResultOpacity}
+                      />
+                    )}
+                    {selected && (
+                      <LayerControl
+                        label="원본 Zarr"
+                        accent="source"
+                        checked={sourceVisible}
+                        onChecked={setSourceVisible}
+                        opacity={sourceOpacity}
+                        onOpacity={setSourceOpacity}
+                      />
+                    )}
+                    <div className="vx-layer-row">
+                      <label className="vx-layer">
+                        <input
+                          type="checkbox"
+                          checked={baseVisible}
+                          onChange={(e) => setBaseVisible(e.target.checked)}
+                        />
+                        <i className="vx-swatch vx-swatch--base" aria-hidden="true" />
+                        <span>OpenLayers 배경지도</span>
+                      </label>
+                    </div>
+                  </div>
+                </section>
                 {selected && (
                   <section className="vx-section">
                     <h3 className="vx-section__title">데이터 정보</h3>
@@ -1123,8 +1619,8 @@ export default function Viewer({
                         <dd title={selected.name}>{selected.name}</dd>
                       </div>
                       <div>
-                        <dt>시점 수</dt>
-                        <dd className="tabular">{times.length}</dd>
+                        <dt>시점</dt>
+                        <dd className="tabular">{times.length}개</dd>
                       </div>
                       {times.length > 0 && (
                         <div>
@@ -1135,8 +1631,8 @@ export default function Viewer({
                         </div>
                       )}
                       <div>
-                        <dt>변수 수</dt>
-                        <dd className="tabular">{selected.variables.length}</dd>
+                        <dt>밴드</dt>
+                        <dd className="tabular">{selected.variables.length}개</dd>
                       </div>
                       <div>
                         <dt>좌표계</dt>
@@ -1149,236 +1645,22 @@ export default function Viewer({
             ) : (
               <div className="vx-panel__body">
                 <section className="vx-section">
-                  <h2 className="vx-section__title">최근 AI 작업</h2>
-                  {jobsError ? (
+                  <h2 className="vx-section__title">이 데이터의 AI 결과</h2>
+                  {jobsError && (
                     <p className="vx-section__hint" role="status">
-                      AI 작업 목록: {jobsError}
+                      연결된 결과 목록: {jobsError}
                     </p>
-                  ) : jobs.length ? (
-                    <div className="vx-jobs">
-                      {jobs.map((job) => (
-                        <button
-                          type="button"
-                          className="vx-job"
-                          key={job.id}
-                          onClick={() =>
-                            job.status === "SUCCEEDED" && job.outputDatacubeId
-                              ? setDrawer("result")
-                              : undefined
-                          }
-                        >
-                          <i
-                            className={`vx-job__dot is-${job.status.toLowerCase()}`}
-                            aria-hidden="true"
-                          />
-                          <span>
-                            수체 추출 #{job.id}
-                            <small>
-                              {job.status} · {job.period}
-                            </small>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
+                  )}
+                  {selected ? (
+                    <AiResultList entries={entries} selectedKey={resultKey} onSelect={chooseResult} />
                   ) : (
-                    <p className="vx-section__hint">
-                      선택한 Zarr의 작업이 없습니다.
-                    </p>
+                    <p className="vx-section__hint">데이터를 고르면 그 데이터의 AI 결과가 보입니다.</p>
                   )}
                 </section>
               </div>
             )}
           </aside>
         )}
-
-        <section
-          className={`vx-map ${compareActive && displayMode === "split" ? "is-split" : ""}`}
-          aria-label="시계열 위성 데이터 지도"
-        >
-          <div
-            className="vx-tools"
-            role="toolbar"
-            aria-label="지도 도구"
-            data-tour="tools"
-          >
-            {!panelOpen && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setPanelOpen(true)}
-                  data-tour="layers"
-                  aria-label="레이어 및 AI 작업 패널 열기"
-                  title="레이어 / AI 작업"
-                >
-                  <Layers size={18} aria-hidden="true" />
-                </button>
-                <span className="vx-tools__sep" aria-hidden="true" />
-              </>
-            )}
-            <button
-              type="button"
-              aria-label="이동"
-              title="이동"
-              aria-pressed={mapTool === "pan"}
-              onClick={() => selectMapTool("pan")}
-            >
-              <Hand size={18} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              aria-label="픽셀 값 조회"
-              title="픽셀 값 조회"
-              aria-pressed={mapTool === "pixel"}
-              disabled={!selected}
-              onClick={() => selectMapTool("pixel")}
-            >
-              <Crosshair size={18} aria-hidden="true" />
-            </button>
-            <span className="vx-tools__sep" aria-hidden="true" />
-            <button
-              type="button"
-              aria-label="확대"
-              title="확대"
-              onClick={() => zoomMap(1)}
-            >
-              <ZoomIn size={18} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              aria-label="축소"
-              title="축소"
-              onClick={() => zoomMap(-1)}
-            >
-              <ZoomOut size={18} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              aria-label="데이터 영역 맞춤"
-              title="데이터 영역 맞춤"
-              disabled={!selectedBbox}
-              onClick={fitDataset}
-            >
-              <Scan size={18} aria-hidden="true" />
-            </button>
-            {pixel && (
-              <>
-                <span className="vx-tools__sep" aria-hidden="true" />
-                <button
-                  type="button"
-                  aria-label="픽셀 선택 지우기"
-                  title="픽셀 선택 지우기"
-                  onClick={clearPixel}
-                >
-                  <X size={18} aria-hidden="true" />
-                </button>
-              </>
-            )}
-          </div>
-          <OlMap
-            onMapReady={onMapReady}
-            onPixelSelect={onPixelSelect}
-            baseVisible={baseVisible}
-            interactionMode={mapTool}
-          />
-          {pixelTip && (
-            <div className="vx-toast" role="status">
-              <MousePointerClick size={16} aria-hidden="true" />
-              지도를 클릭해 시계열을 조회하세요
-            </div>
-          )}
-          {!selected && emptyMessage && (
-            <div
-              className={`vx-empty ${apiError ? "is-error" : ""}`}
-              aria-live="polite"
-            >
-              <span className="vx-empty__icon" aria-hidden="true">
-                {loading ? (
-                  <LoaderCircle size={22} className="vx-spin" />
-                ) : apiError ? (
-                  <CircleAlert size={22} />
-                ) : (
-                  <Satellite size={22} />
-                )}
-              </span>
-              <p>{emptyMessage}</p>
-              {!loading && !apiError && (
-                <div className="vx-empty__actions">
-                  <a
-                    className="vx-btn vx-btn--secondary"
-                    href="/app/data/new"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Plus size={16} aria-hidden="true" />
-                    데이터 추가
-                  </a>
-                </div>
-              )}
-            </div>
-          )}
-          {notice && (
-            <div className="vx-toast vx-toast--notice" role="alert">
-              <CircleAlert size={16} aria-hidden="true" />
-              {notice}
-            </div>
-          )}
-          {flash && (
-            <div className="vx-toast vx-toast--done" role="status">
-              {flash}
-            </div>
-          )}
-          {selected && viewerNotice && (
-            <div className="vx-toast vx-toast--notice" role="status">
-              <CircleAlert size={16} aria-hidden="true" />
-              {viewerNotice}
-            </div>
-          )}
-          {selected && resultVisible && hasInference && (
-            <div
-              className="result-overlay"
-              style={{ opacity: resultOpacity / 100 }}
-              aria-label="AI 수체 추출 결과 레이어"
-            />
-          )}
-          {selected && (
-            <div className="vx-mapinfo" aria-hidden="true">
-              <span>좌표계 EPSG:4326</span>
-              {activeVariable && <span>{activeVariable.toUpperCase()}</span>}
-            </div>
-          )}
-          {pixel && <PixelMarker map={map} coordinate={pixel} />}
-          {selected && (
-            <CompareControl
-              mode={displayMode}
-              onMode={changeDisplayMode}
-              times={times}
-              compareIndex={compareIndex}
-              onCompareIndex={setCompareIndex}
-              disabled={times.length < 2}
-            />
-          )}
-          {compareActive && displayMode === "swipe" && (
-            <SwipeDivider
-              value={swipe}
-              onChange={changeSwipe}
-              leftLabel={times[timeIndex]?.label ?? "—"}
-              rightLabel={times[compareIndex]?.label ?? "—"}
-            />
-          )}
-          {compareActive && displayMode === "split" && (
-            <>
-              <span className="vx-swipe__label vx-swipe__label--a vx-split-label">
-                A · {times[timeIndex]?.label ?? "—"}
-              </span>
-              <CompareMap
-                mainMap={map}
-                baseVisible={baseVisible}
-                onMapReady={setCompareMap}
-                label={times[compareIndex]?.label ?? "—"}
-              />
-            </>
-          )}
-        </section>
 
         {drawer && rightCollapsed && (
           <aside className="vx-drawer-rail">
@@ -1388,7 +1670,7 @@ export default function Viewer({
               aria-label={`${drawer === "ai" ? "AI 작업" : "결과"} 열기`}
             >
               {drawer === "ai" ? (
-                <Sparkles size={18} aria-hidden="true" />
+                <Waves size={18} aria-hidden="true" />
               ) : (
                 <Layers2 size={18} aria-hidden="true" />
               )}
@@ -1402,13 +1684,13 @@ export default function Viewer({
           >
             <div className="vx-drawer__head">
               <div>
-                <h2>{drawer === "ai" ? "AI 수체 추출" : "결과 비교"}</h2>
-                <p title={selected?.name}>
+                <h2>{drawer === "ai" ? "AI 수체 추출" : "원본 대비 결과"}</h2>
+                <p title={drawer === "ai" ? selected?.name : selectedResult?.name}>
                   {drawer === "ai"
-                    ? jobState === "running"
-                      ? "분석 작업 실행 중"
-                      : "새 분석 작업"
-                    : "원본과 결과 레이어"}
+                    ? isRunning(aiRunHere)
+                      ? "수체 추출 실행 중"
+                      : selected?.name ?? "새 분석 작업"
+                    : selectedResult?.name ?? "원본과 결과 레이어"}
                 </p>
               </div>
               <span>
@@ -1440,7 +1722,7 @@ export default function Viewer({
                 onClick={() => openRightPanel("ai")}
               >
                 AI 작업
-                {jobState === "running" && (
+                {isRunning(aiRunHere) && (
                   <i className="vx-pulse" aria-hidden="true" />
                 )}
               </button>
@@ -1456,243 +1738,188 @@ export default function Viewer({
               )}
             </div>
             <div className="vx-drawer__body" role="tabpanel">
-              {drawer === "ai" ? (
-                <div className="vx-form">
-                  <label className="vx-field">
-                    <span>모델</span>
-                    <select>
-                      <option>WaterNet v2.1</option>
-                      <option>NDWI 기반</option>
-                    </select>
-                  </label>
-                  <fieldset className="vx-field">
-                    <legend>시간 범위</legend>
-                    <div className="vx-radios">
-                      {(["현재 시점", "선택 기간", "전체 기간"] as Period[]).map(
-                        (value) => (
-                          <label className="vx-radio" key={value}>
-                            <input
-                              type="radio"
-                              name="period"
-                              checked={period === value}
-                              onChange={() => setPeriod(value)}
-                            />
-                            {value}
-                          </label>
-                        ),
-                      )}
-                    </div>
-                  </fieldset>
-                  <label className="vx-field">
-                    <span className="vx-field__row">
-                      판단 임계값
-                      <small className="tabular">
-                        {(threshold / 100).toFixed(2)}
-                      </small>
-                    </span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={threshold}
-                      onChange={(e) => setThreshold(Number(e.target.value))}
-                    />
-                  </label>
-                  <label className="vx-field">
-                    <span>처리 영역</span>
-                    <select>
-                      <option>현재 지도 영역</option>
-                      <option>전체 데이터 영역</option>
-                      <option>선택한 영역</option>
-                    </select>
-                  </label>
-                  {jobState !== "idle" && (
-                    <div className="vx-note vx-note--info" aria-live="polite">
-                      {jobState === "running"
-                        ? "수체 추출 작업을 처리하고 있습니다…"
-                        : "수체 추출이 완료되었습니다."}
-                    </div>
+              {drawer === "ai" && selected ? (
+                <>
+                  <AiRunForm
+                    dataset={selected}
+                    times={times}
+                    run={aiRunHere}
+                    runError={aiRunError}
+                    onRun={startAi}
+                    onCancel={cancelAi}
+                    onRetry={retryAi}
+                  />
+                  <section className="vx-section vx-section--top">
+                    <h3 className="vx-section__title">이 데이터의 AI 결과</h3>
+                    <AiResultList entries={entries} selectedKey={resultKey} onSelect={chooseResult} />
+                  </section>
+                </>
+              ) : drawer === "result" && selected && selectedResult ? (
+                <>
+                  {readyEntries.length > 1 && (
+                    <label className="vx-field vx-form__pad">
+                      <span>결과 고르기</span>
+                      <select aria-label="비교할 AI 결과" value={resultKey} onChange={(event) => setResultKey(event.target.value)}>
+                        {readyEntries.map((entry) => (
+                          <option key={entry.key} value={entry.key}>{entry.name}</option>
+                        ))}
+                      </select>
+                    </label>
                   )}
-                  {!useMockApi && (
-                    <div className="vx-note">
-                      AI 실행 API는 아직 준비되지 않았습니다. 기존 완료 결과만
-                      조회할 수 있습니다.
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    className="vx-btn vx-btn--primary vx-btn--block"
-                    disabled={!useMockApi || jobState === "running"}
-                    onClick={runAi}
-                  >
-                    {!useMockApi
-                      ? "AI 실행 준비 중"
-                      : jobState === "running"
-                        ? "처리 중…"
-                        : jobState === "completed"
-                          ? "다시 실행"
-                          : "수체 추출 시작"}
-                  </button>
-                </div>
+                  <AiResultPanel
+                    entry={selectedResult}
+                    result={resultStats}
+                    loading={resultStatsLoading}
+                    currentTime={times[timeIndex]?.iso}
+                    currentLabel={times[timeIndex]?.label}
+                    labelOf={labelOf}
+                    source={selected}
+                    resultVisible={resultVisible}
+                    onResultVisible={setResultVisible}
+                    resultOpacity={resultOpacity}
+                    onResultOpacity={setResultOpacity}
+                    sourceVisible={sourceVisible}
+                    onSourceVisible={setSourceVisible}
+                    sourceOpacity={sourceOpacity}
+                    onSourceOpacity={setSourceOpacity}
+                    onRerun={selectedResult.job?.input?.modelId ? rerunAi : undefined}
+                    rerunBusy={isRunning(aiRun)}
+                    demo={useMockApi}
+                  />
+                </>
               ) : (
-                <div className="vx-form">
-                  <div className="vx-layers">
-                    <LayerControl
-                      label="원본 Zarr"
-                      accent="source"
-                      checked={sourceVisible}
-                      onChecked={setSourceVisible}
-                      opacity={sourceOpacity}
-                      onOpacity={setSourceOpacity}
-                    />
-                    <LayerControl
-                      label="수체 추출 결과"
-                      accent="result"
-                      checked={resultVisible}
-                      onChecked={setResultVisible}
-                      opacity={resultOpacity}
-                      onOpacity={setResultOpacity}
-                    />
-                  </div>
-                  <div className="vx-note vx-note--info">
-                    두 레이어를 중첩 비교할 수 있습니다.
-                  </div>
-                </div>
+                <p className="vx-section__hint vx-form__pad">아직 고를 수 있는 AI 결과가 없습니다.</p>
               )}
             </div>
           </aside>
         )}
       </div>
 
-      {pixel && selected && (
-        <BottomGraphPanel
-          expanded={graphExpanded}
-          onToggle={() => setGraphExpanded((value) => !value)}
-          dataset={selected}
-          variable={activeVariable}
-          points={seriesPoints}
-          coordinate={pixelLonLat}
-          currentTime={times[timeIndex]?.iso}
-        />
-      )}
-
       {selected && (
-        <section
-          className="vx-timeline"
-          aria-label="시계열 탐색기"
-          data-tour="timeline"
-        >
-          <div className="vx-player">
-            <button
-              type="button"
-              className="vx-icon-btn"
-              onClick={() => setTimeIndex(0)}
-              aria-label="첫 시점"
-              title="첫 시점"
-            >
-              <SkipBack size={16} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="vx-icon-btn"
-              onClick={() => setTimeIndex(Math.max(0, timeIndex - 1))}
-              aria-label="이전 시점"
-              title="이전 시점"
-            >
-              <ChevronLeft size={18} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="vx-play"
-              onClick={() => setPlaying(!playing)}
-              aria-label={playing ? "일시정지" : "재생"}
-              aria-pressed={playing}
-              title={playing ? "일시정지" : "재생"}
-            >
-              {playing ? (
-                <Pause size={18} aria-hidden="true" />
-              ) : (
-                <Play size={18} aria-hidden="true" />
-              )}
-            </button>
-            <button
-              type="button"
-              className="vx-icon-btn"
-              onClick={() =>
-                setTimeIndex(Math.min(times.length - 1, timeIndex + 1))
-              }
-              aria-label="다음 시점"
-              title="다음 시점"
-            >
-              <ChevronRight size={18} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="vx-icon-btn"
-              onClick={() => setTimeIndex(times.length - 1)}
-              aria-label="마지막 시점"
-              title="마지막 시점"
-            >
-              <SkipForward size={16} aria-hidden="true" />
-            </button>
-          </div>
-          <div className="vx-current">
-            <strong className="tabular">{times[timeIndex]?.label ?? "—"}</strong>
-            <small className="tabular">
-              {times.length ? `${timeIndex + 1} / ${times.length}` : "시점 없음"}
-            </small>
-          </div>
-          <div className="vx-track">
-            <input
-              className="vx-range"
-              type="range"
-              min="0"
-              max={Math.max(0, times.length - 1)}
-              value={timeIndex}
-              style={
-                {
-                  "--progress": `${times.length > 1 ? (timeIndex / (times.length - 1)) * 100 : 0}%`,
-                } as React.CSSProperties
-              }
-              onChange={(e) => {
-                setTimeIndex(Number(e.target.value));
+        <div className={`vx-dock ${compareActive ? "is-compare" : ""}`}>
+          {pixel && (
+            <BottomGraphPanel
+              expanded={graphExpanded}
+              onToggle={() => setGraphExpanded((value) => !value)}
+              dataset={selected}
+              variable={activeVariable}
+              points={seriesPoints}
+              coordinate={pixelLonLat}
+              currentTime={times[timeIndex]?.iso}
+              currentLabel={times[timeIndex]?.label}
+              timeCount={times.length}
+              compareTime={compareActive && !aiCompare ? times[compareIndex]?.iso : undefined}
+              compareLabel={compareActive && !aiCompare ? times[compareIndex]?.label : undefined}
+            />
+          )}
+          {selectedResult && resultStats && resultStats.times.length > 0 && (resultVisible || aiCompare) && (
+            <WaterAreaRow
+              result={resultStats}
+              times={times}
+              index={timeIndex}
+              onIndex={(value) => {
+                setTimeIndex(value);
                 setPlaying(false);
               }}
-              aria-label="관측 시점"
+              expanded={areaExpanded}
+              onToggle={() => setAreaExpanded((value) => !value)}
+              title={selectedResult.name}
             />
-            {times.length > 1 && times.length <= 60 && (
-              <div className="vx-ticks" aria-hidden="true">
-                {times.map((time, index) => (
-                  <i
-                    key={time.iso}
-                    className={index <= timeIndex ? "on" : ""}
-                  />
-                ))}
+          )}
+          <section
+            className="vx-timeline"
+            aria-label="시계열 탐색기"
+            data-tour="timeline"
+          >
+            <div className="vx-timeline__lead">
+              <div className="vx-player">
+                <button
+                  type="button"
+                  className="vx-icon-btn"
+                  onClick={() => setTimeIndex(Math.max(0, timeIndex - 1))}
+                  aria-label="이전 시점"
+                  title="이전 시점 (←)"
+                >
+                  <ChevronLeft size={18} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="vx-play"
+                  onClick={() => setPlaying(!playing)}
+                  aria-label={playing ? "일시정지" : "재생"}
+                  aria-pressed={playing}
+                  title={playing ? "일시정지 (Space)" : "재생 (Space)"}
+                >
+                  {playing ? (
+                    <Pause size={16} aria-hidden="true" />
+                  ) : (
+                    <Play size={16} aria-hidden="true" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="vx-icon-btn"
+                  onClick={() =>
+                    setTimeIndex(Math.min(times.length - 1, timeIndex + 1))
+                  }
+                  aria-label="다음 시점"
+                  title="다음 시점 (→)"
+                >
+                  <ChevronRight size={18} aria-hidden="true" />
+                </button>
               </div>
-            )}
-          </div>
-          <div className="vx-speed" role="group" aria-label="재생 속도">
-            {[0.5, 1, 2, 4].map((value) => (
-              <button
-                type="button"
-                key={value}
-                aria-pressed={speed === value}
-                onClick={() => setSpeed(value)}
-              >
-                {value}x
-              </button>
-            ))}
-          </div>
-          <label className={`vx-loop ${loop ? "on" : ""}`} title="반복 재생">
-            <input
-              type="checkbox"
-              checked={loop}
-              onChange={(e) => setLoop(e.target.checked)}
+              <div className="vx-current">
+                <strong className="tabular">
+                  {compareActive && !aiCompare && (
+                    <b className="vx-flag" aria-hidden="true">
+                      A
+                    </b>
+                  )}
+                  {times[timeIndex]?.label ?? "시점 없음"}
+                </strong>
+                {aiCompare ? (
+                  <span className="vx-btime vx-btime--ai">
+                    <i className="vx-hatch" aria-hidden="true" />
+                    원본 ↔ AI 결과
+                  </span>
+                ) : compareActive ? (
+                  <CompareTime
+                    times={times}
+                    compareIndex={compareIndex}
+                    onCompareIndex={setCompareIndex}
+                  />
+                ) : null}
+                <small className="tabular vx-current__count">
+                  {times.length ? `${timeIndex + 1} / ${times.length}` : "시점 없음"}
+                </small>
+              </div>
+            </div>
+            <TimeStaff
+              times={times}
+              index={timeIndex}
+              onIndex={(value) => {
+                setTimeIndex(value);
+                setPlaying(false);
+              }}
+              compareIndex={compareActive && !aiCompare ? compareIndex : -1}
             />
-            <Repeat size={16} aria-hidden="true" />
-            <span className="vx-hide-sm">반복</span>
-          </label>
-        </section>
+            <div className="vx-timeline__tail">
+              <CompareModes
+                mode={displayMode}
+                onMode={changeDisplayMode}
+                disabled={!canCompare}
+              />
+              <PlaybackOptions
+                speed={speed}
+                onSpeed={setSpeed}
+                loop={loop}
+                onLoop={setLoop}
+                onFirst={() => setTimeIndex(0)}
+                onLast={() => setTimeIndex(times.length - 1)}
+              />
+            </div>
+          </section>
+        </div>
       )}
       {tourOpen && <ViewerTour onClose={() => setTourOpen(false)} />}
     </main>

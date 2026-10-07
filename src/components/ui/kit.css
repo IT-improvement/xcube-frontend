@@ -16,6 +16,7 @@
 .xc-badge--warning { background: #fff7ed; color: var(--color-warning); }
 .xc-badge--danger { background: #fef2f2; color: var(--color-danger); }
 .xc-badge--water { background: #e0f2fe; color: #0369a1; }
+.xc-badge--result { background: #dcf1ee; color: #0b5e55; }
 
 .xc-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-6); }
 .xc-page-head__text { display: grid; gap: var(--space-1); min-width: 0; }

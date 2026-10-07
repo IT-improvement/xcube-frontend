@@ -14,40 +14,40 @@ export const VIEWER_TOUR_STEPS: TourStep[] = [
   {
     target: "dataset",
     title: "데이터셋 선택",
-    body: "Zarr 데이터셋을 검색해 고릅니다. 내 데이터와 공유받은 데이터가 함께 나옵니다.",
+    body: "지도에 띄울 위성 데이터(Zarr)를 이름으로 찾아 고릅니다. 내 데이터와 공유받은 데이터가 함께 나옵니다.",
   },
   {
     target: "project",
     title: "프로젝트",
-    body: "프로젝트를 고르면 그 프로젝트의 데이터만 모아 보여 줍니다. 오른쪽 위 폴더 버튼으로 새 프로젝트를 만들거나 지금 보는 데이터를 프로젝트에 추가합니다.",
+    body: "프로젝트를 고르면 데이터 목록이 그 프로젝트의 데이터로 좁혀집니다. 왼쪽 폴더 버튼으로 새 프로젝트를 만들거나 지금 보는 데이터를 프로젝트에 추가합니다.",
   },
   {
     target: "layers",
-    title: "레이어 패널",
-    body: "원본·AI 결과 레이어를 켜고 끄며 투명도를 조절합니다. 표시할 band도 여기서 고릅니다.",
+    title: "레이어",
+    body: "표시할 밴드(RGB, red, nir 등)를 고르고, 원본·AI 결과 레이어를 켜고 끄며 불투명도를 조절합니다. 닫아도 지도 왼쪽 위 '레이어' 버튼으로 다시 엽니다.",
   },
   {
     target: "tools",
     title: "지도 도구",
-    body: "픽셀 조회 도구를 켜고 지도를 클릭하면 그 지점의 전체 시계열 그래프가 아래에 열립니다.",
+    body: "십자선 도구를 켜고 지도를 클릭하면 그 지점의 전체 시계열 그래프가 타임라인 위에 열립니다. 키보드로는 방향키로 십자선을 옮기고 Enter로 조회합니다.",
   },
   {
     target: "timeline",
     title: "타임라인",
-    body: "시점을 넘기거나 재생합니다. 속도와 반복을 바꿀 수 있고, 그래프의 현재 시점 선도 함께 움직입니다. 키보드 ←/→로 시점을 넘기고 Space로 재생합니다.",
+    body: "눈금 하나가 촬영 시점 하나입니다. 재생하거나 ←/→로 시점을 넘기고 Space로 재생·정지합니다. 그래프의 점도 같은 눈금 위에 놓입니다. 속도와 반복은 오른쪽 '재생 옵션'에 있습니다.",
     fallback: "데이터셋을 고르면 화면 아래에 나타납니다.",
   },
   {
     target: "compare",
     title: "시점 비교",
-    body: "스와이프는 구분선을 끌어 A(현재 시점)와 B 시점을 겹쳐 보고, 나란히는 두 지도를 함께 움직이며 비교합니다. 화면 상태는 주소에 저장되어 새로고침하거나 링크로 공유해도 그대로 열립니다.",
-    fallback: "데이터셋을 고르면 지도 오른쪽 위에 나타납니다.",
+    body: "스와이프는 구분선을 끌어 A(지금 보는 시점)와 B 시점을 겹쳐 보고, 나란히는 두 지도를 함께 움직이며 비교합니다. A와 B는 타임라인 눈금 위에 표시됩니다. 화면 상태는 주소에 저장되어 링크로 공유해도 그대로 열립니다.",
+    fallback: "데이터셋을 고르면 타임라인 오른쪽에 나타납니다.",
   },
   {
     target: "ai",
     title: "AI 수체 추출",
     body: "선택한 데이터셋으로 수체 추출을 실행하고, 결과가 있으면 '결과'에서 원본과 겹쳐 비교합니다.",
-    fallback: "데이터셋을 고르면 상단에 버튼이 나타납니다.",
+    fallback: "데이터셋을 고르면 위쪽 막대에 버튼이 나타납니다.",
   },
   {
     target: "add",
@@ -240,9 +240,12 @@ export default function ViewerTour({
             <span className="vx-tour__fallback">{step.fallback}</span>
           )}
         </p>
-        <div className="vx-tour__dots" aria-hidden="true">
+        <div className="vx-tour__rule" aria-hidden="true">
           {steps.map((item, dot) => (
-            <i key={item.target} className={dot === index ? "on" : ""} />
+            <i
+              key={item.target}
+              className={dot === index ? "on" : dot < index ? "done" : ""}
+            />
           ))}
         </div>
         <div className="vx-tour__foot">
@@ -258,7 +261,7 @@ export default function ViewerTour({
             {index > 0 && (
               <button
                 type="button"
-                className="vx-btn vx-btn--secondary"
+                className="vx-btn vx-btn--line"
                 onClick={prev}
               >
                 이전
@@ -267,7 +270,7 @@ export default function ViewerTour({
             <button
               ref={primaryRef}
               type="button"
-              className="vx-btn vx-btn--primary"
+              className="vx-btn vx-btn--ink"
               onClick={next}
             >
               {last ? "시작하기" : "다음"}

@@ -13,6 +13,13 @@ export const JOB_TYPE_LABEL: Record<string, string> = {
   CAS500: 'CAS500',
   SHAPEFILE: 'Shapefile',
   FUSION: '수식 융합',
+  AI_WATER: 'AI 수체 추출',
+};
+/** Model names for job rows when the model list is not loaded (ids from the M7 contract). */
+export const AI_MODEL_LABEL: Record<string, string> = {
+  'ndwi-baseline': 'NDWI 기준선',
+  'unet-s1s2-10ch': 'U-Net (S1+S2 10채널)',
+  'deeplabv3plus-s1s2-10ch': 'DeepLabV3+ (S1+S2 10채널)',
 };
 const STATUS: Record<string, { label: string; tone: BadgeTone }> = {
   QUEUED: { label: '대기 중', tone: 'neutral' },
@@ -53,7 +60,7 @@ export function jobSteps(job: JobSummary): Array<{ label: string; state: StepSta
     registered ? 'done' : registrationFailed ? 'failed' : job.status === 'SUCCEEDED' ? 'current' : 'todo',
     registered ? 'done' : 'todo',
   ];
-  const labels = job.type === 'FUSION' ? ['입력 확인', '계산', '검증', '등록', 'XCube 반영'] : ['검사', '변환', '검증', '등록', 'XCube 반영'];
+  const labels = job.type === 'FUSION' ? ['입력 확인', '계산', '검증', '등록', 'XCube 반영'] : job.type === 'AI_WATER' ? ['입력 확인', '추론', '검증', '등록', 'XCube 반영'] : ['검사', '변환', '검증', '등록', 'XCube 반영'];
   return labels.map((label, index) => ({ label, state: states[index] }));
 }
 
@@ -114,6 +121,22 @@ export function JobInputSummary({ job }: { job: JobSummary }) {
   const fusionRequest = job.type === 'FUSION' ? asFusionRequest(job.input) : null;
   if (fusionRequest) return <FusionRequestSummary request={fusionRequest} />;
   const input = job.input ?? {};
+  if (job.type === 'AI_WATER') {
+    const modelId = String(input.modelId ?? '');
+    const rows: Array<[string, string]> = [
+      ['입력 데이터', input.datacubeId != null ? `#${input.datacubeId}` : '—'],
+      ['모델', AI_MODEL_LABEL[modelId] ?? (modelId || '—')],
+      ['임계값', input.threshold != null ? String(input.threshold) : '모델 기본값'],
+      ['기간', input.timeStart || input.timeEnd ? `${input.timeStart ?? '처음'} ~ ${input.timeEnd ?? '끝'}` : '전체 시점'],
+    ];
+    return (
+      <div className="job-input">
+        <dl className="meta-list" style={{ padding: 0 }}>
+          {rows.map(([label, value]) => (<Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>))}
+        </dl>
+      </div>
+    );
+  }
   const variables = ((input.variables as VariableIn[] | undefined) ?? (input.bandStyles as VariableIn[] | undefined) ?? []);
   const params = (input.params as Record<string, unknown> | undefined) ?? {};
   const rows: Array<[string, string]> = [];

@@ -4,7 +4,7 @@ import { session } from './httpClient';
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
 beforeEach(() => { sessionStorage.clear(); session.setToken('jwt'); jest.restoreAllMocks(); });
 
-test('카탈로그 목록 endpoint를 사용하고 프로젝트/원본만 선택한다', async () => {
+test('카탈로그 목록 endpoint를 사용하고 선택한 프로젝트의 데이터만 고른다', async () => {
   const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(json({ content: [
     { datacubeId: 1, xcubeDatasetId: 'custom_original', ownerUserId: 7, accessType: 'OWNED', projectId: 10, projectName: 'Project A', name: 'original', kind: 'ORIGINAL', integrationStatus: 'REGISTERED', availabilityStatus: 'AVAILABLE', variables: [{ name: 'red' }], defaultVariable: 'red', rgbAvailable: false },
     { datacubeId: 2, xcubeDatasetId: 'custom_infer', ownerUserId: 7, accessType: 'OWNED', projectId: 10, projectName: 'Project A', name: 'infer', kind: 'AI_RESULT', integrationStatus: 'REGISTERED', availabilityStatus: 'AVAILABLE' },
@@ -12,8 +12,9 @@ test('카탈로그 목록 endpoint를 사용하고 프로젝트/원본만 선택
   ], page: 0, size: 100, totalElements: 3, totalPages: 1 }));
   const items = await backofficeAdapter.getDatasets('10');
   expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8082/api/v1/datasets?scope=all&page=0&size=100&projectId=10');
-  expect(items.map((item) => item.name)).toEqual(['original']);
+  expect(items.map((item) => item.name)).toEqual(['original', 'infer']);
   expect(items[0]).toMatchObject({ id: '1', xcubeDatasetId: 'custom_original', accessType: 'OWNED', projectName: 'Project A', defaultVariable: 'red' });
+  expect(items[1]).toMatchObject({ kind: 'AI_RESULT' });
 });
 
 test('timeseries에 정확한 PointSeries DTO와 JWT를 전송한다', async () => {
@@ -104,19 +105,22 @@ test('Zarr 전역 등록과 프로젝트 연결·해제를 분리한다', async 
   expect((fetchMock.mock.calls[3][1] as RequestInit).method).toBe('DELETE');
 });
 
-test('Viewer 목록은 융합 결과(FUSION)도 포함하고 AI 결과는 제외한다', async () => {
+test('목록은 융합 결과(FUSION)와 AI 결과(M7, 원본 연결 포함)를 함께 담는다', async () => {
   const base = { ownerUserId: 7, accessType: 'OWNED', integrationStatus: 'REGISTERED', availabilityStatus: 'AVAILABLE', variables: [{ name: 'fusion' }] };
   jest.spyOn(global, 'fetch').mockResolvedValue(json({ content: [
     { ...base, datacubeId: 1, xcubeDatasetId: 'a', name: 'original', kind: 'ORIGINAL' },
     { ...base, datacubeId: 2, xcubeDatasetId: 'b', name: 'NDWI 융합', kind: 'FUSION', metadata: { fusion: { formula: 'A - B' } } },
-    { ...base, datacubeId: 3, xcubeDatasetId: 'c', name: 'infer', kind: 'AI_RESULT' },
-  ], page: 0, size: 100, totalElements: 3, totalPages: 1 }));
+    { ...base, datacubeId: 3, xcubeDatasetId: 'c', name: 'infer', kind: 'AI_RESULT', sourceDatacubeId: 1 },
+    { ...base, datacubeId: 4, xcubeDatasetId: 'd', name: 'infer2', kind: 'AI_RESULT', metadata: { sourceDatacubeIds: [1] } },
+  ], page: 0, size: 100, totalElements: 4, totalPages: 1 }));
   const items = await backofficeAdapter.getDatasets();
-  expect(items.map((item) => item.name)).toEqual(['original', 'NDWI 융합']);
+  expect(items.map((item) => item.name)).toEqual(['original', 'NDWI 융합', 'infer', 'infer2']);
   expect(items[1]).toMatchObject({ kind: 'FUSION', fusion: { formula: 'A - B' } });
+  expect(items[2]).toMatchObject({ kind: 'AI_RESULT', sourceDatacubeId: '1' });
+  expect(items[3]).toMatchObject({ kind: 'AI_RESULT', sourceDatacubeId: '1' });
   jest.spyOn(global, 'fetch').mockResolvedValue(json({ content: [
     { datacubeId: 2, name: 'NDWI 융합', kind: 'FUSION', status: 'READY', metadata: {} },
-    { datacubeId: 3, name: 'infer', kind: 'AI_RESULT', status: 'READY', metadata: {} },
+    { datacubeId: 3, name: 'infer', kind: 'AI_RESULT', status: 'READY', sourceDatacubeId: 1, metadata: {} },
   ], totalElements: 2, totalPages: 1, number: 0, size: 100 }));
-  expect((await backofficeAdapter.getProjectDatasets!('10')).map((item) => item.name)).toEqual(['NDWI 융합']);
+  expect((await backofficeAdapter.getProjectDatasets!('10')).map((item) => item.name)).toEqual(['NDWI 융합', 'infer']);
 });

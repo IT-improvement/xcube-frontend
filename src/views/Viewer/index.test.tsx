@@ -169,7 +169,10 @@ test('지금 보는 데이터를 선택한 프로젝트에 추가하고, 이미 
   fireEvent.click(await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' }));
   fireEvent.click(await screen.findByRole('option', { name: /Sentinel-2/ }));
   fireEvent.change(screen.getByRole('combobox', { name: '프로젝트 선택' }), { target: { value: 'nakdong-river' } });
-  await screen.findByRole('region', { name: '현재 프로젝트의 Zarr 데이터큐브' });
+  // The project's data now lives in the dataset picker, narrowed to the project.
+  fireEvent.click(screen.getByRole('combobox', { name: '데이터 또는 Zarr 선택' }));
+  expect(await screen.findByRole('listbox', { name: '낙동강 변화 분석의 데이터' })).toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Zarr 검색' }), { key: 'Escape' });
   fireEvent.click(screen.getByRole('button', { name: '프로젝트 관리' }));
   const add = within(screen.getByRole('dialog', { name: '프로젝트 작업' })).getByRole('button', { name: /지금 보는 데이터를 이 프로젝트에 추가/ });
   await waitFor(() => expect(add).toBeEnabled());

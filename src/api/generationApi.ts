@@ -10,7 +10,7 @@ export type JobSummary = {
   id: string; name: string; type: 'GEE_TO_ZARR' | 'GEOTIFF_BANDS' | 'CAS500' | 'SHAPEFILE' | string; status: JobStatus;
   progress?: number | null; stage?: string | null; createdAt?: string; startedAt?: string | null; finishedAt?: string | null;
   errorCode?: string | null; errorMessage?: string | null;
-  registration?: { datacubeId?: number; xcubeDatasetId?: string; error?: string } | null; zarrUri?: string | null;
+  registration?: { datacubeId?: number | string; xcubeDatasetId?: string; error?: string } | null; zarrUri?: string | null;
   input?: Record<string, unknown>;
 };
 export type BandStyle = { variable: string; colorBar: string; valueMin: number; valueMax: number };

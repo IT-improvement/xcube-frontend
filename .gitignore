@@ -21,3 +21,8 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Impeccable working files (screenshots, live sessions, critique archive)
+.impeccable/live/
+.impeccable/review/
+.impeccable/critique/
