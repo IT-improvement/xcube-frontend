@@ -1,11 +1,12 @@
 import { ArrowLeft, ExternalLink, FolderPlus, Lock, SearchX, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { ReactNode, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Button, ButtonAnchor, ButtonLink } from '../../components/ui';
 import { Badge, Card, EmptyState, PageHeader, Skeleton, Tabs, useToast } from '../../components/ui/kit';
-import { appApi, formatDate, fusion, generation, isOwned, periodLabel, viewerHref, ZarrDataset } from '../api';
+import { ai, aiViewerHref, appApi, formatDate, fusion, generation, isOwned, periodLabel, viewerHref, ZarrDataset } from '../api';
 import { asFusionRequest } from '../fusion';
-import { elapsed, FusionRequestSummary, JOB_TYPE_LABEL, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
+import { AI_MODEL_LABEL, elapsed, FusionRequestSummary, JOB_TYPE_LABEL, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
+import type { AiWaterJob } from '../../api/aiApi';
 import { useLoad } from '../useLoad';
 import { DatasetStatus, DeleteDatasetDialog, LinkProjectDialog } from './DataLibraryPage';
 
@@ -67,15 +68,17 @@ export default function DatasetDetailPage() {
 
   const item: ZarrDataset = dataset.data;
   const owned = isOwned(item);
+  const isAiResult = item.kind === 'AI_RESULT';
+  const viewerLink = isAiResult && item.sourceDatacubeId ? aiViewerHref(item.sourceDatacubeId, item.id) : viewerHref(item.id);
   return (
     <div className="page-stack">
       <PageHeader
         back={back}
         title={item.name}
-        description={<span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>{owned ? <Badge tone="primary">내 데이터</Badge> : <Badge tone="water">공유받음</Badge>}{item.kind === 'FUSION' ? <Badge tone="water">융합 결과</Badge> : <Badge>원본</Badge>}<DatasetStatus dataset={item} /><span className="xc-hint">{item.xcubeDatasetId}</span></span>}
+        description={<span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>{owned ? <Badge tone="primary">내 데이터</Badge> : <Badge tone="water">공유받음</Badge>}{item.kind === 'FUSION' ? <Badge tone="water">융합 결과</Badge> : item.kind === 'AI_RESULT' ? <Badge tone="result">AI 결과</Badge> : <Badge>원본</Badge>}<DatasetStatus dataset={item} /><span className="xc-hint">{item.xcubeDatasetId}</span>{isAiResult && item.sourceDatacubeId && <span>원본 데이터: <Link to={`/app/data/${encodeURIComponent(item.sourceDatacubeId)}`}>#{item.sourceDatacubeId} 보기</Link></span>}</span>}
         actions={
           <>
-            <ButtonAnchor href={viewerHref(item.id)} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} aria-hidden />Viewer에서 열기<span className="sr-only">(새 탭)</span></ButtonAnchor>
+            <ButtonAnchor href={viewerLink} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} aria-hidden />{isAiResult ? 'Viewer에서 원본과 비교' : 'Viewer에서 열기'}<span className="sr-only">(새 탭)</span></ButtonAnchor>
             <Button variant="secondary" onClick={() => setLinking(true)}><FolderPlus size={16} aria-hidden />프로젝트에 연결</Button>
             {owned && <Button variant="ghost" onClick={() => setDeleting(true)} aria-label="데이터 삭제"><Trash2 size={16} aria-hidden />삭제</Button>}
           </>
@@ -87,7 +90,7 @@ export default function DatasetDetailPage() {
             { id: 'overview', label: '개요' },
             { id: 'variables', label: '변수·Band', count: item.variables.length },
             { id: 'history', label: '생성 이력' },
-            { id: 'ai', label: 'AI 결과' },
+            ...(isAiResult ? [] : [{ id: 'ai' as Tab, label: 'AI 결과' }]),
             { id: 'projects', label: '프로젝트·공유' },
           ]} />
         </div>
@@ -123,7 +126,7 @@ export default function DatasetDetailPage() {
               </table>
             </div>
           ) : <EmptyState title="변수 정보가 없습니다" text="시각화 서버 동기화가 끝나면 표시됩니다." />)}
-          {tab === 'history' && (item.kind === 'FUSION' ? <FusionHistory dataset={item} /> : <GenerationHistory jobId={item.generationJobId} />)}
+          {tab === 'history' && (item.kind === 'FUSION' ? <FusionHistory dataset={item} /> : isAiResult ? <AiHistory dataset={item} /> : <GenerationHistory jobId={item.generationJobId} />)}
           {tab === 'ai' && <AiResults datasetId={item.id} />}
           {tab === 'projects' && (
             <div style={{ padding: 20, display: 'grid', gap: 12 }}>
@@ -187,23 +190,62 @@ function FusionHistory({ dataset }: { dataset: ZarrDataset }) {
   );
 }
 
+/** 생성 이력 of an AI result: model, threshold and period of the AI job that made it. */
+function AiHistory({ dataset }: { dataset: ZarrDataset }) {
+  const job = useLoad(() => (dataset.generationJobId ? ai.getJob(dataset.generationJobId).catch(() => null) : Promise.resolve(null)), [dataset.generationJobId]);
+  if (job.loading) return <Skeleton lines={4} label="생성 이력을 불러오는 중" />;
+  const data = job.data;
+  if (!data) return <EmptyState title="AI 작업 기록을 찾을 수 없습니다" text="원본 데이터의 AI 결과 탭이나 작업 센터에서 확인하세요." />;
+  return (
+    <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+      <dl className="meta-list" style={{ padding: 0 }}>
+        <dt>생성 방식</dt><dd>AI 수체 추출</dd>
+        <dt>상태</dt><dd><JobStatusBadge job={data} /></dd>
+        <dt>요청일</dt><dd>{formatDate(data.createdAt)}</dd>
+        <dt>소요 시간</dt><dd className="tabular">{elapsed(data)}</dd>
+      </dl>
+      <JobSteps job={data} />
+      <JobInputSummary job={data} />
+      <div><Link className="xc-btn xc-btn--ghost xc-btn--sm" to="/app/jobs">작업 센터에서 보기</Link></div>
+    </div>
+  );
+}
+
+type AiRow = { key: string; name: string; model: string; status: string; datacubeId?: string; createdAt?: string };
+const AI_STATUS: Record<string, ReactNode> = {
+  SUCCEEDED: <Badge tone="success">완료</Badge>, FAILED: <Badge tone="danger">실패</Badge>, CANCELLED: <Badge>취소됨</Badge>,
+};
+
+/** AI results of a source dataset: AI service jobs first, then Backoffice links the AI service does not know. */
 function AiResults({ datasetId }: { datasetId: string }) {
-  const results = useLoad(() => appApi.getAiResults(datasetId), [datasetId]);
+  const results = useLoad(async () => {
+    const [jobs, links] = await Promise.allSettled([ai.listJobs({ datacubeId: datasetId }), appApi.getAiResults(datasetId)]);
+    if (jobs.status === 'rejected' && links.status === 'rejected') throw links.reason;
+    const rows: AiRow[] = (jobs.status === 'fulfilled' ? jobs.value : []).map((job: AiWaterJob) => ({
+      key: job.id, name: job.name, model: AI_MODEL_LABEL[String(job.input?.modelId)] ?? String(job.input?.modelId ?? '—'),
+      status: job.status, datacubeId: job.registration?.datacubeId != null ? String(job.registration.datacubeId) : undefined, createdAt: job.createdAt,
+    }));
+    for (const link of links.status === 'fulfilled' ? links.value : [])
+      if (!rows.some((row) => row.datacubeId && row.datacubeId === link.outputDatacubeId))
+        rows.push({ key: `link:${link.id}`, name: `수체 추출 결과 #${link.id}`, model: '—', status: link.status, datacubeId: link.outputDatacubeId });
+    return rows;
+  }, [datasetId]);
   if (results.loading) return <Skeleton lines={3} label="AI 결과를 불러오는 중" />;
   if (results.error) return <div className="inline-error"><Alert tone="danger">AI 결과를 불러오지 못했습니다. {results.error}</Alert></div>;
   const items = results.data ?? [];
-  if (!items.length) return <EmptyState title="AI 결과가 없습니다" text="AI 수체 추출(M7)을 실행하면 결과가 이곳에 쌓입니다." />;
+  if (!items.length) return <EmptyState title="AI 결과가 없습니다" text="Viewer에서 AI 수체 추출을 실행하면 결과가 이곳에 쌓입니다." action={<ButtonAnchor href={viewerHref(datasetId)} target="_blank" rel="noopener noreferrer" variant="secondary">Viewer에서 실행<span className="sr-only">(새 탭)</span></ButtonAnchor>} />;
   return (
     <div className="xc-table-wrap">
       <table className="xc-table">
-        <thead><tr><th scope="col">결과</th><th scope="col">기간</th><th scope="col">상태</th><th scope="col"><span className="sr-only">동작</span></th></tr></thead>
+        <thead><tr><th scope="col">결과</th><th scope="col">모델</th><th scope="col" className="hide-sm">요청일</th><th scope="col">상태</th><th scope="col"><span className="sr-only">동작</span></th></tr></thead>
         <tbody>
-          {items.map((job) => (
-            <tr key={job.id}>
-              <td><strong>수체 추출 #{job.id}</strong></td>
-              <td>{job.period}</td>
-              <td>{job.status === 'SUCCEEDED' ? <Badge tone="success">완료</Badge> : job.status === 'FAILED' ? <Badge tone="danger">실패</Badge> : <Badge tone="warning">처리 중</Badge>}</td>
-              <td className="num"><a className="xc-btn xc-btn--ghost xc-btn--sm" href={viewerHref(datasetId)} target="_blank" rel="noopener noreferrer">Viewer</a></td>
+          {items.map((row) => (
+            <tr key={row.key}>
+              <td><span className="xc-cell-main"><strong>{row.datacubeId && row.status === 'SUCCEEDED' ? <Link to={`/app/data/${encodeURIComponent(row.datacubeId)}`}>{row.name}</Link> : row.name}</strong><small><Badge tone="result">AI 결과</Badge></small></span></td>
+              <td>{row.model}</td>
+              <td className="hide-sm">{formatDate(row.createdAt)}</td>
+              <td>{AI_STATUS[row.status] ?? <Badge tone="warning">처리 중</Badge>}</td>
+              <td className="num">{row.status === 'SUCCEEDED' && <a className="xc-btn xc-btn--ghost xc-btn--sm" href={aiViewerHref(datasetId, row.key.startsWith('link:') ? row.datacubeId ?? '' : row.key)} target="_blank" rel="noopener noreferrer" aria-label={`${row.name} Viewer에서 원본과 비교 (새 탭)`}>Viewer 비교</a>}</td>
             </tr>
           ))}
         </tbody>

@@ -1,4 +1,4 @@
-import { Database, ExternalLink, FolderKanban, LayoutDashboard, ListChecks, LogOut, Map, Menu, Sigma, X } from 'lucide-react';
+import { Database, ExternalLink, FolderKanban, LayoutDashboard, ListChecks, LogOut, Map, Menu, Sigma, Waves, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -48,7 +48,12 @@ export default function AppShell() {
           </a>
           <p className="app-nav__section">분석</p>
           <NavLink to="/app/analysis/fusion" className="app-nav__link"><Sigma size={18} aria-hidden />수식 융합</NavLink>
-          <span className="app-nav__link is-disabled" aria-disabled="true" title="M7에서 제공">AI 수체 추출<em>준비 중</em></span>
+          <a className="app-nav__link" href="/app/viewer" target="_blank" rel="noopener noreferrer" title="Viewer에서 데이터를 고르고 AI 수체 추출을 실행합니다">
+            <Waves size={18} aria-hidden />
+            AI 수체 추출
+            <ExternalLink size={14} aria-hidden className="app-nav__ext" />
+            <span className="sr-only">(Viewer, 새 탭)</span>
+          </a>
         </nav>
         <div className="app-nav__user">
           <span className="app-nav__avatar" aria-hidden>{name.slice(0, 1)}</span>

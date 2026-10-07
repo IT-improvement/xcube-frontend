@@ -7,12 +7,14 @@ jest.mock('../../api', () => ({ activeViewerAdapter: { getProjects: jest.fn(), g
 jest.mock('../../api/backofficeApi', () => ({ backofficeAdapter: { getProject: jest.fn(), createProject: jest.fn(), updateProject: jest.fn(), deleteProject: jest.fn(), getProjectMembers: jest.fn(), addProjectMember: jest.fn(), updateProjectMember: jest.fn(), removeProjectMember: jest.fn(), getProjectDatasets: jest.fn(), getLinkableDatacubes: jest.fn(), linkProjectDataset: jest.fn(), unlinkProjectDataset: jest.fn(), getDatasetDetail: jest.fn(), deleteDatacube: jest.fn(), registerDatacube: jest.fn() } }));
 jest.mock('../../api/generationApi', () => ({ generationApi: { getColorBarOptions: jest.fn(), getCollections: jest.fn(), inspectSpatialFile: jest.fn(), createGeeJob: jest.fn(), createFileJob: jest.fn(), getJob: jest.fn(), listJobs: jest.fn(), jobSummary: jest.fn(), retryJob: jest.fn(), cancelJob: jest.fn(), estimateGee: jest.fn(), searchAdminAreas: jest.fn(), getAdminArea: jest.fn(), listAreas: jest.fn(), getArea: jest.fn(), deleteArea: jest.fn(), uploadArea: jest.fn(), areaFromJob: jest.fn() } }));
 jest.mock('../../api/analysisApi', () => ({ ...jest.requireActual('../../api/analysisApi'), analysisApi: { validate: jest.fn(), dryRun: jest.fn(), createJob: jest.fn(), listJobs: jest.fn(), getJob: jest.fn(), cancelJob: jest.fn(), retryJob: jest.fn() } }));
+jest.mock('../../api/aiApi', () => ({ ...jest.requireActual('../../api/aiApi'), aiApi: { listModels: jest.fn(), check: jest.fn(), createJob: jest.fn(), listJobs: jest.fn(), getJob: jest.fn(), cancelJob: jest.fn(), retryJob: jest.fn() } }));
 jest.mock('../../auth/AuthProvider', () => ({ useAuth: () => ({ user: { id: 1, name: '홍길동' }, signOut: jest.fn() }) }));
 
 const adapter = require('../../api').activeViewerAdapter as Record<string, jest.Mock>;
 const backoffice = require('../../api/backofficeApi').backofficeAdapter as Record<string, jest.Mock>;
 const generation = require('../../api/generationApi').generationApi as Record<string, jest.Mock>;
 const analysis = require('../../api/analysisApi').analysisApi as Record<string, jest.Mock>;
+const aiService = require('../../api/aiApi').aiApi as Record<string, jest.Mock>;
 const { ApiError } = require('../../api/httpClient');
 const DashboardPage = require('./DashboardPage').default;
 const DataLibraryPage = require('./DataLibraryPage').default;
@@ -57,6 +59,7 @@ beforeEach(() => {
   generation.estimateGee.mockResolvedValue({ areaKm2: 3000, grid: { width: 1800, height: 1800 }, scenes: 6, estimatedBytes: 4e6, requestTiles: 1, warnings: [], blockers: [] });
   generation.listAreas.mockResolvedValue([]);
   analysis.listJobs.mockResolvedValue([]);
+  aiService.listJobs.mockResolvedValue([]);
   generation.getColorBarOptions.mockResolvedValue([{ id: 'viridis', category: 'Sequential' }, { id: 'tab10', category: 'Qualitative' }]);
   window.confirm = jest.fn(() => true);
 });
@@ -456,5 +459,81 @@ describe('M6 수식 융합 작업·데이터 표시', () => {
     expect(await screen.findByRole('heading', { name: '입력' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByLabelText('A 데이터')).toHaveValue('77'));
     expect(screen.getByLabelText('B 정규화')).toHaveValue('custom');
+  });
+});
+
+describe('M7 AI 수체 추출 작업·결과 표시', () => {
+  const aiRunning = { id: 'a1', name: '연결된 Zarr_수체_U-Net', type: 'AI_WATER', status: 'RUNNING', progress: 0.4, stage: 'infer', createdAt: '2026-10-07T03:00:00Z', input: { datacubeId: 77, modelId: 'unet-s1s2-10ch', threshold: 0.5 } };
+  const aiDone = { ...aiRunning, id: 'a2', name: '끝난 수체 추출', status: 'SUCCEEDED', progress: 1, createdAt: '2026-10-07T02:00:00Z', registration: { datacubeId: 95, xcubeDatasetId: 'u1-d95' } };
+  const generated = { id: 'g1', name: '제주 GeoTIFF', type: 'GEOTIFF_BANDS', status: 'SUCCEEDED', progress: 1, createdAt: '2026-10-07T01:00:00Z', input: {} };
+
+  test('작업 센터는 AI 작업을 “AI 수체 추출”로 합쳐 보여 주고, 취소는 AI 서비스로 간다', async () => {
+    generation.listJobs.mockResolvedValue([generated]);
+    aiService.listJobs.mockResolvedValue([aiRunning, aiDone]);
+    aiService.cancelJob.mockResolvedValue({});
+    renderAt('/app/jobs');
+    expect(await screen.findByText('연결된 Zarr_수체_U-Net')).toBeInTheDocument();
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows.map((row) => within(row).getByText(/수체|GeoTIFF/, { selector: 'strong' }).textContent)).toEqual(['연결된 Zarr_수체_U-Net', '끝난 수체 추출', '제주 GeoTIFF']);
+    expect(within(rows[0]).getByText('AI 수체 추출')).toBeInTheDocument();
+    expect(within(rows[1]).getByRole('link', { name: '데이터 보기' })).toHaveAttribute('href', '/app/data/95');
+    expect(within(rows[1]).getByRole('link', { name: /Viewer에서 원본과 비교/ })).toHaveAttribute('href', '/app/viewer?dataset=77&ai=a2');
+    fireEvent.click(screen.getByRole('button', { name: '연결된 Zarr_수체_U-Net 취소' }));
+    await waitFor(() => expect(aiService.cancelJob).toHaveBeenCalledWith('a1'));
+    expect(generation.cancelJob).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '끝난 수체 추출 상세 펼치기' }));
+    expect(screen.getByText('U-Net (S1+S2 10채널)')).toBeInTheDocument();
+    expect(screen.getByText('추론')).toBeInTheDocument();
+  });
+
+  test('종류 필터 “AI 수체 추출”은 AI 서비스만 조회하고, AI 서비스가 꺼져도 다른 작업은 보인다', async () => {
+    aiService.listJobs.mockResolvedValue([aiDone]);
+    renderAt('/app/jobs');
+    await screen.findByText('끝난 수체 추출');
+    generation.listJobs.mockClear();
+    analysis.listJobs.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'AI 수체 추출' }));
+    await waitFor(() => expect(aiService.listJobs).toHaveBeenLastCalledWith({ status: '' }));
+    expect(generation.listJobs).not.toHaveBeenCalled();
+    expect(analysis.listJobs).not.toHaveBeenCalled();
+  });
+
+  test('AI 서비스가 꺼져 있어도 생성 작업은 계속 보이고, 대시보드 처리 중 수에 AI 작업이 들어간다', async () => {
+    generation.listJobs.mockResolvedValue([{ ...generated, status: 'RUNNING' }]);
+    aiService.listJobs.mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.'));
+    const { unmount } = renderAt('/app/jobs');
+    expect(await screen.findByText('제주 GeoTIFF')).toBeInTheDocument();
+    unmount();
+    aiService.listJobs.mockResolvedValue([aiRunning]);
+    renderAt('/app');
+    expect(await screen.findByText('연결된 Zarr_수체_U-Net')).toBeInTheDocument();
+    expect(within(screen.getByRole('group', { name: '처리 중 작업' })).getByText('2')).toBeInTheDocument();
+  });
+
+  test('AI 결과 데이터는 목록·상세에 “AI 결과” badge와 원본 링크를 달고, Viewer는 원본에서 결과를 연다', async () => {
+    const aiData = { ...owned, id: '95', name: '수체 결과', kind: 'AI_RESULT', sourceDatacubeId: '77', variables: ['water_prob', 'water_mask'] };
+    adapter.getDatasets.mockResolvedValue([owned, aiData]);
+    const { unmount } = renderAt('/app/data');
+    await screen.findByText('수체 결과');
+    const row = screen.getAllByRole('row').find((item) => within(item).queryByText('수체 결과'))!;
+    expect(within(row).getByText('AI 결과')).toBeInTheDocument();
+    expect(within(row).getByRole('link', { name: '연결된 Zarr' })).toHaveAttribute('href', '/app/data/77');
+    expect(within(row).getByRole('link', { name: /Viewer에서 열기/ })).toHaveAttribute('href', '/app/viewer?dataset=77&ai=95');
+    unmount();
+    backoffice.getDatasetDetail.mockResolvedValue(aiData);
+    renderAt('/app/data/95');
+    expect(await screen.findByText('AI 결과')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '#77 보기' })).toHaveAttribute('href', '/app/data/77');
+    expect(screen.queryByRole('tab', { name: 'AI 결과' })).not.toBeInTheDocument();
+  });
+
+  test('원본 상세의 AI 결과 탭은 AI 작업과 결과 데이터 링크를 보여 준다', async () => {
+    backoffice.getDatasetDetail.mockResolvedValue(owned);
+    aiService.listJobs.mockResolvedValue([aiDone]);
+    renderAt('/app/data/77');
+    fireEvent.click(await screen.findByRole('tab', { name: 'AI 결과' }));
+    expect(await screen.findByRole('link', { name: '끝난 수체 추출' })).toHaveAttribute('href', '/app/data/95');
+    expect(aiService.listJobs).toHaveBeenCalledWith({ datacubeId: '77' });
+    expect(screen.getByRole('link', { name: /Viewer에서 원본과 비교/ })).toHaveAttribute('href', '/app/viewer?dataset=77&ai=a2');
   });
 });

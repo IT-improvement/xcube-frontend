@@ -7,6 +7,8 @@ import { analysisApi, DryRun, FusionRequest, ValidateResult } from '../api/analy
 import { dryRunDemo, fusionJobsDemo, validateFormula } from './fusionDemo';
 import { AdminArea, AdminLevel, AdminSearch, AreaPick, AreaUpload, ColorBarOption, FileJobInput, GeeCollection, GeeEstimate, GeeJobBody, generationApi, GenerationJob, JobSummary, SavedArea, SpatialInspection } from '../api/generationApi';
 import { areaDemo } from './areaDemo';
+import { aiApi, AiCheck, AiJobRequest, AiModel, AiWaterJob } from '../api/aiApi';
+import { createAiDemo } from './aiDemo';
 
 export type { Project, ZarrDataset, ProjectMember };
 export type MemberRole = 'EDITOR' | 'VIEWER';
@@ -121,28 +123,48 @@ export const fusion = {
   retryJob: (id: string): Promise<JobSummary> => (useMockApi ? fusionJobsDemo.retry(id) : analysisApi.retryJob(id)),
 };
 
+/** AI 수체 추출 (M7): the AI Processing API; demo mode answers locally. */
+const aiDemo = createAiDemo(() => demoAdapter.getDatasets());
+export const ai = {
+  models: (): Promise<AiModel[]> => (useMockApi ? aiDemo.models() : aiApi.listModels()),
+  check: (datacubeId: string, modelId: string): Promise<AiCheck> => (useMockApi ? aiDemo.check(datacubeId, modelId) : aiApi.check({ datacubeId, modelId })),
+  createJob: (input: AiJobRequest): Promise<AiWaterJob> => (useMockApi ? aiDemo.create(input) : aiApi.createJob(input)),
+  listJobs: (filter: { status?: string; datacubeId?: string } = {}): Promise<AiWaterJob[]> => (useMockApi ? aiDemo.list(filter) : aiApi.listJobs(filter)),
+  getJob: (id: string): Promise<AiWaterJob> => (useMockApi ? aiDemo.get(id) : aiApi.getJob(id)),
+  cancelJob: (id: string): Promise<unknown> => (useMockApi ? aiDemo.cancel(id) : aiApi.cancelJob(id)),
+  retryJob: (id: string): Promise<AiWaterJob> => (useMockApi ? aiDemo.retry(id) : aiApi.retryJob(id)),
+};
+
 export const isFusionJob = (job: Pick<JobSummary, 'type'>) => job.type === 'FUSION';
+export const isAiJob = (job: Pick<JobSummary, 'type'>) => job.type === 'AI_WATER';
+const SERVICE_TYPES = ['FUSION', 'AI_WATER'];
 const newestFirst = (a: JobSummary, b: JobSummary) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
 
-/** Job center view: generation and fusion jobs together, routed to the service that owns each job. */
+/** Job center view: generation, fusion and AI jobs together, routed to the service that owns each job. */
 export const jobs = {
-  /** A fusion-only type filter skips the generation service and vice versa. When both are asked for, a fusion outage does not hide generation jobs. */
+  /**
+   * A type filter skips the services it does not name. Generation is the base list: its failure is an error.
+   * A fusion or AI outage does not hide the other jobs, unless only those services were asked for.
+   */
   async list(filter: { status?: string; type?: string } = {}): Promise<JobSummary[]> {
     const types = filter.type ? filter.type.split(',') : [];
-    const wantsFusion = !types.length || types.includes('FUSION');
-    const wantsGeneration = !types.length || types.some((type) => type !== 'FUSION');
-    const generationFilter = { ...filter, type: types.filter((type) => type !== 'FUSION').join(',') };
-    const [generated, fused] = await Promise.allSettled([
-      wantsGeneration ? generation.listJobs(generationFilter) : Promise.resolve([] as JobSummary[]),
-      wantsFusion ? fusion.listJobs({ status: filter.status }) : Promise.resolve([] as JobSummary[]),
+    const wants = (type: string) => !types.length || types.includes(type);
+    const wantsGeneration = !types.length || types.some((type) => !SERVICE_TYPES.includes(type));
+    const generationFilter = { ...filter, type: types.filter((type) => !SERVICE_TYPES.includes(type)).join(',') };
+    const none = Promise.resolve([] as JobSummary[]);
+    const [generated, fused, inferred] = await Promise.allSettled([
+      wantsGeneration ? generation.listJobs(generationFilter) : none,
+      wants('FUSION') ? fusion.listJobs({ status: filter.status }) : none,
+      wants('AI_WATER') ? ai.listJobs({ status: filter.status }) : none,
     ]);
     if (generated.status === 'rejected') throw generated.reason;
-    if (fused.status === 'rejected' && !wantsGeneration) throw fused.reason;
-    const items = [...(generated.status === 'fulfilled' ? generated.value : []), ...(fused.status === 'fulfilled' ? fused.value : [])];
+    const requested = [wants('FUSION') ? fused : null, wants('AI_WATER') ? inferred : null].filter((outcome): outcome is PromiseSettledResult<JobSummary[]> => !!outcome);
+    if (!wantsGeneration && requested.every((outcome) => outcome.status === 'rejected')) throw (requested[0] as PromiseRejectedResult).reason;
+    const items = [generated, fused, inferred].flatMap((outcome) => (outcome.status === 'fulfilled' ? outcome.value : []));
     return items.sort(newestFirst);
   },
-  cancel: (job: JobSummary) => (isFusionJob(job) ? fusion.cancelJob(job.id) : generation.cancelJob(job.id)),
-  retry: (job: JobSummary) => (isFusionJob(job) ? fusion.retryJob(job.id) : generation.retryJob(job.id)),
+  cancel: (job: JobSummary) => (isFusionJob(job) ? fusion.cancelJob(job.id) : isAiJob(job) ? ai.cancelJob(job.id) : generation.cancelJob(job.id)),
+  retry: (job: JobSummary) => (isFusionJob(job) ? fusion.retryJob(job.id) : isAiJob(job) ? ai.retryJob(job.id) : generation.retryJob(job.id)),
 };
 
 export const roleLabel = (role?: string) => (role === 'OWNER' ? '소유자' : role === 'EDITOR' ? '편집' : '보기');
@@ -165,3 +187,5 @@ export function periodLabel(dataset: ZarrDataset) {
 /** Viewer opens in a new tab, preselecting the dataset. */
 export const viewerHref = (datasetId?: string) =>
   datasetId ? `/app/viewer?dataset=${encodeURIComponent(datasetId)}` : '/app/viewer';
+/** Viewer on the source dataset with one AI result selected (`ai` = AI job id or result datacube id). */
+export const aiViewerHref = (sourceId: string, resultKey: string) => `${viewerHref(sourceId)}&ai=${encodeURIComponent(resultKey)}`;

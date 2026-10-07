@@ -5,14 +5,14 @@ import { userMessage } from '../../api/httpClient';
 import { JobSummary } from '../../api/generationApi';
 import { Alert, Button, ButtonLink } from '../../components/ui';
 import { Card, EmptyState, PageHeader, Skeleton, useToast } from '../../components/ui/kit';
-import { formatDate, jobs as jobService } from '../api';
+import { aiViewerHref, formatDate, jobs as jobService } from '../api';
 import { elapsed, isActive, JOB_TYPE_LABEL, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
 import { useLoad } from '../useLoad';
 
-type TypeFilter = '' | 'GEE_TO_ZARR' | 'GEOTIFF_BANDS,CAS500' | 'SHAPEFILE' | 'FUSION';
+type TypeFilter = '' | 'GEE_TO_ZARR' | 'GEOTIFF_BANDS,CAS500' | 'SHAPEFILE' | 'FUSION' | 'AI_WATER';
 type StatusFilter = '' | 'QUEUED,RUNNING' | 'SUCCEEDED' | 'FAILED,CANCELLED';
 
-/** S10 작업 센터: the user's generation and fusion jobs with progress, steps, cancel and retry (FR-JOB-01·02). */
+/** S10 작업 센터: the user's generation, fusion and AI jobs with progress, steps, cancel and retry (FR-JOB-01·02). */
 export default function JobsPage() {
   const [type, setType] = useState<TypeFilter>('');
   const [status, setStatus] = useState<StatusFilter>('');
@@ -33,7 +33,7 @@ export default function JobsPage() {
   }, [anyActive, items]);
 
   // Ids are unique per service only, so rows are keyed by type too.
-  const keyOf = (job: JobSummary) => `${job.type === 'FUSION' ? 'FUSION' : 'GEN'}:${job.id}`;
+  const keyOf = (job: JobSummary) => `${job.type === 'FUSION' || job.type === 'AI_WATER' ? job.type : 'GEN'}:${job.id}`;
   const act = async (job: JobSummary, action: 'cancel' | 'retry') => {
     setBusy(keyOf(job));
     setError('');
@@ -46,11 +46,11 @@ export default function JobsPage() {
 
   return (
     <div className="page-stack">
-      <PageHeader title="작업" description="데이터 생성·수식 융합 작업의 진행 상황입니다. 처리 중인 작업이 있으면 10초마다 갱신합니다." actions={<><ButtonLink to="/app/analysis/fusion" variant="secondary">수식 융합</ButtonLink><ButtonLink to="/app/data/new">데이터 추가</ButtonLink></>} />
+      <PageHeader title="작업" description="데이터 생성·수식 융합·AI 수체 추출 작업의 진행 상황입니다. 처리 중인 작업이 있으면 10초마다 갱신합니다." actions={<><ButtonLink to="/app/analysis/fusion" variant="secondary">수식 융합</ButtonLink><ButtonLink to="/app/data/new">데이터 추가</ButtonLink></>} />
       <Card>
         <div className="toolbar">
           <div className="segmented" role="group" aria-label="작업 종류">
-            {([['', '전체'], ['GEE_TO_ZARR', 'GEE'], ['GEOTIFF_BANDS,CAS500', 'GeoTIFF·CAS500'], ['SHAPEFILE', 'Shapefile'], ['FUSION', '수식 융합']] as Array<[TypeFilter, string]>).map(([value, label]) => (
+            {([['', '전체'], ['GEE_TO_ZARR', 'GEE'], ['GEOTIFF_BANDS,CAS500', 'GeoTIFF·CAS500'], ['SHAPEFILE', 'Shapefile'], ['FUSION', '수식 융합'], ['AI_WATER', 'AI 수체 추출']] as Array<[TypeFilter, string]>).map(([value, label]) => (
               <button key={label} type="button" aria-pressed={type === value} onClick={() => setType(value)}>{label}</button>
             ))}
           </div>
@@ -71,7 +71,7 @@ export default function JobsPage() {
         ) : jobs.error ? (
           <div className="inline-error"><Alert tone="danger">작업 목록을 불러오지 못했습니다. {jobs.error}</Alert><Button variant="secondary" size="sm" onClick={jobs.reload} style={{ marginTop: 12 }}>다시 시도</Button></div>
         ) : !items.length ? (
-          <EmptyState icon={<ListChecks size={22} />} title={type || status ? '조건에 맞는 작업이 없습니다' : '아직 작업이 없습니다'} text="데이터 추가나 수식 융합을 실행하면 이곳에 진행 상황이 표시됩니다." />
+          <EmptyState icon={<ListChecks size={22} />} title={type || status ? '조건에 맞는 작업이 없습니다' : '아직 작업이 없습니다'} text="데이터 추가, 수식 융합, AI 수체 추출을 실행하면 이곳에 진행 상황이 표시됩니다." />
         ) : (
           <div className="xc-table-wrap">
             <table className="xc-table">
@@ -101,7 +101,7 @@ export default function JobsPage() {
                           </button>
                         </td>
                         <td><span className="xc-cell-main"><strong>{job.name || '이름 없음'}</strong>{job.errorMessage && <small className="job-error">{job.errorMessage}</small>}</span></td>
-                        <td>{JOB_TYPE_LABEL[job.type] ?? job.type}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{JOB_TYPE_LABEL[job.type] ?? job.type}</td>
                         <td><JobStatusBadge job={job} /></td>
                         <td className="hide-sm">
                           <span className="job-progress" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label={`${job.name} 진행률`}>
@@ -115,6 +115,9 @@ export default function JobsPage() {
                           <div className="row-actions">
                             {job.registration?.datacubeId != null && job.status === 'SUCCEEDED' && (
                               <Link className="xc-btn xc-btn--ghost xc-btn--sm" to={`/app/data/${job.registration.datacubeId}`}>데이터 보기</Link>
+                            )}
+                            {job.type === 'AI_WATER' && job.status === 'SUCCEEDED' && job.input?.datacubeId != null && (
+                              <a className="xc-btn xc-btn--ghost xc-btn--sm" href={aiViewerHref(String(job.input.datacubeId), job.id)} target="_blank" rel="noopener noreferrer" aria-label={`${job.name} Viewer에서 원본과 비교 (새 탭)`}>Viewer 비교</a>
                             )}
                             {isActive(job) && <Button size="sm" variant="ghost" disabled={busy === key} onClick={() => act(job, 'cancel')} aria-label={`${job.name} 취소`}><Square size={14} aria-hidden />취소</Button>}
                             {(job.status === 'FAILED' || job.status === 'CANCELLED') && <Button size="sm" variant="secondary" disabled={busy === key} onClick={() => act(job, 'retry')} aria-label={`${job.name} 다시 시도`}><RotateCcw size={14} aria-hidden />다시 시도</Button>}

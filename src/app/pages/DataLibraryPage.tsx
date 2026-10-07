@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Alert, Button, ButtonLink } from '../../components/ui';
 import { Badge, Card, Dialog, EmptyState, PageHeader, Skeleton, Tabs, useToast } from '../../components/ui/kit';
 import { userMessage } from '../../api/httpClient';
-import { appApi, canEditProject, isOwned, periodLabel, Project, viewerHref, ZarrDataset } from '../api';
+import { aiViewerHref, appApi, canEditProject, isOwned, periodLabel, Project, viewerHref, ZarrDataset } from '../api';
 import { useLoad } from '../useLoad';
 
 type Scope = 'all' | 'owned' | 'shared';
@@ -91,7 +91,7 @@ export default function DataLibraryPage() {
               <tbody>
                 {visible.map((item) => (
                   <tr key={item.id}>
-                    <td><span className="xc-cell-main"><Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link><small>{item.kind === 'FUSION' && <Badge tone="water">융합 결과</Badge>} {item.xcubeDatasetId}</small></span></td>
+                    <td><span className="xc-cell-main"><Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link><small>{item.kind === 'FUSION' && <Badge tone="water">융합 결과</Badge>}{item.kind === 'AI_RESULT' && <Badge tone="result">AI 결과</Badge>} {item.xcubeDatasetId}{item.kind === 'AI_RESULT' && item.sourceDatacubeId && <> · 원본 <Link to={`/app/data/${encodeURIComponent(item.sourceDatacubeId)}`}>{items.find((source) => source.id === item.sourceDatacubeId)?.name ?? `#${item.sourceDatacubeId}`}</Link></>}</small></span></td>
                     <td className="hide-sm tabular">{periodLabel(item)}</td>
                     <td className="num hide-sm">{item.times.length}</td>
                     <td className="num hide-sm">{item.variables.length}</td>
@@ -100,7 +100,7 @@ export default function DataLibraryPage() {
                     <td><DatasetStatus dataset={item} /></td>
                     <td>
                       <div className="row-actions">
-                        <a className="xc-icon-btn" href={viewerHref(item.id)} target="_blank" rel="noopener noreferrer" aria-label={`${item.name} Viewer에서 열기 (새 탭)`} title="Viewer에서 열기"><ExternalLink size={16} aria-hidden /></a>
+                        <a className="xc-icon-btn" href={item.kind === 'AI_RESULT' && item.sourceDatacubeId ? aiViewerHref(item.sourceDatacubeId, item.id) : viewerHref(item.id)} target="_blank" rel="noopener noreferrer" aria-label={`${item.name} Viewer에서 열기 (새 탭)`} title="Viewer에서 열기"><ExternalLink size={16} aria-hidden /></a>
                         <button type="button" className="xc-icon-btn" aria-label={`${item.name} 프로젝트에 연결`} title="프로젝트에 연결" onClick={() => setLinking(item)}><FolderPlus size={16} aria-hidden /></button>
                         <button type="button" className="xc-icon-btn" aria-label={`${item.name} 삭제`} title={isOwned(item) ? '삭제' : '공유받은 데이터는 삭제할 수 없습니다'} disabled={!isOwned(item)} onClick={() => setDeleting(item)}><Trash2 size={16} aria-hidden /></button>
                       </div>

@@ -42,18 +42,55 @@ import LayerControl from "./LayerControl";
 import {
   CompareMap,
   CompareModes,
+  CompareTarget,
+  CompareTargetSwitch,
   CompareTime,
   DisplayMode,
   SwipeDivider,
   useCompareLayer,
 } from "./CompareView";
+import { ai } from "../../app/api";
+import type { AiJobRequest, AiResult, AiWaterJob } from "../../api/aiApi";
+import {
+  AiLegend,
+  AiResultList,
+  AiResultPanel,
+  AiRunForm,
+  isRunning,
+  matchTime,
+  ResultEntry,
+  WaterAreaRow,
+} from "./AiPanel";
 import { PlaybackOptions, TimeStaff } from "./TimeStaff";
 import UserMenu from "./UserMenu";
 
 type Drawer = "ai" | "result" | null;
-type Period = "현재 시점" | "선택 기간" | "전체 기간";
 type MapTool = "pan" | "pixel";
 const noop = () => undefined;
+/** water_mask (1 물, 0 물 아님, 255 값 없음) in result teal; the _alpha map keeps "물 아님" transparent. */
+// water_mask is 0/1: with vmax 1.6 a value of 1 lands mid-ramp (a clear teal) instead of the darkest green; 0 stays transparent.
+const AI_MASK_STYLE = { cmap: "GnBu_alpha", vmin: 0, vmax: 1.6 };
+/** Numeric catalog ids go to the services as numbers; demo ids stay strings. */
+const cubeId = (id: string) => (/^\d+$/.test(id) ? Number(id) : id);
+
+/** AI service jobs first; Backoffice links (older results) only when no job already points at them. */
+function resultEntries(aiJobs: AiWaterJob[], linked: AiJob[]): ResultEntry[] {
+  const entries: ResultEntry[] = aiJobs.map((job) => ({
+    key: job.id,
+    name: job.name,
+    status: job.status,
+    job,
+    datacubeId: job.registration?.datacubeId != null ? String(job.registration.datacubeId) : undefined,
+    xcubeDatasetId: job.registration?.xcubeDatasetId,
+    modelId: job.input?.modelId ? String(job.input.modelId) : undefined,
+    threshold: typeof job.input?.threshold === "number" ? job.input.threshold : job.result?.threshold,
+    createdAt: job.createdAt,
+  }));
+  for (const link of linked)
+    if (link.outputDatacubeId && !entries.some((entry) => entry.datacubeId === link.outputDatacubeId))
+      entries.push({ key: `link:${link.outputDatacubeId}`, name: `수체 추출 결과 #${link.id}`, status: link.status, datacubeId: link.outputDatacubeId });
+  return entries;
+}
 
 /** Viewer state kept in the address so a view can be reloaded or shared (M5). */
 type UrlState = {
@@ -63,6 +100,10 @@ type UrlState = {
   time?: string;
   mode?: DisplayMode;
   compare?: string;
+  /** Compare target "ai" (원본 ↔ AI 결과). */
+  target?: CompareTarget;
+  /** AI result to show: AI job id or result datacube id. */
+  ai?: string;
 };
 const VIEWER_PATH = "/app/viewer";
 function readUrlState(): UrlState {
@@ -75,6 +116,8 @@ function readUrlState(): UrlState {
     time: params.get("t") ?? undefined,
     mode: mode === "swipe" || mode === "split" ? mode : undefined,
     compare: params.get("b") ?? undefined,
+    target: params.get("cmp") === "ai" ? "ai" : undefined,
+    ai: params.get("ai") ?? undefined,
   };
 }
 /** Keys typed into fields, buttons and dialogs keep their own meaning. */
@@ -124,15 +167,21 @@ export default function Viewer({
   const [speed, setSpeed] = useState(1);
   const [loop, setLoop] = useState(true);
   const [pixel, setPixel] = useState<[number, number] | null>(null);
-  const [period, setPeriod] = useState<Period>("현재 시점");
-  const [threshold, setThreshold] = useState(65);
-  const [jobState, setJobState] = useState<"idle" | "running" | "completed">(
-    "idle",
-  );
   const [jobs, setJobs] = useState<AiJob[]>([]);
-  const [localInference, setLocalInference] = useState<Record<string, boolean>>(
-    {},
+  // M7: AI jobs of the shown dataset, the selected result and the latest run.
+  const [aiJobs, setAiJobs] = useState<AiWaterJob[]>([]);
+  const [aiTick, setAiTick] = useState(0);
+  const [resultKey, setResultKey] = useState("");
+  const wantedResultRef = useRef<string | undefined>(
+    new URLSearchParams(window.location.search).get("ai") ?? undefined,
   );
+  const [resultStats, setResultStats] = useState<AiResult | null>(null);
+  const [resultStatsLoading, setResultStatsLoading] = useState(false);
+  const [resultCube, setResultCube] = useState<ZarrDataset | null>(null);
+  const [aiRun, setAiRun] = useState<AiWaterJob | null>(null);
+  const [aiRunError, setAiRunError] = useState("");
+  const [compareTarget, setCompareTarget] = useState<CompareTarget>("time");
+  const [areaExpanded, setAreaExpanded] = useState(true);
   const [map, setMap] = useState<Map | null>(null);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState("");
@@ -181,16 +230,32 @@ export default function Viewer({
     const [cmap, vmin, vmax] = styleKey.split("|");
     return { cmap: cmap && cmap !== "undefined" ? cmap : undefined, vmin: vmin === "undefined" ? undefined : Number(vmin), vmax: vmax === "undefined" ? undefined : Number(vmax) };
   }, [styleKey]);
-  const hasLinkedInference = jobs.some(
-    (job) =>
-      job.inputDatacubeId === selected?.id &&
-      job.status === "SUCCEEDED" &&
-      !!job.outputDatacubeId &&
-      (job.outputType === "AI_RESULT" || job.outputType === "INFER_ZARR"),
+  const entries = useMemo(
+    () =>
+      resultEntries(
+        aiJobs,
+        jobs.filter(
+          (job) =>
+            job.inputDatacubeId === selected?.id &&
+            job.status === "SUCCEEDED" &&
+            (job.outputType === "AI_RESULT" || job.outputType === "INFER_ZARR"),
+        ),
+      ),
+    [aiJobs, jobs, selected?.id],
   );
-  const hasInference =
-    !!selected && (hasLinkedInference || localInference[selected.id]);
+  const readyEntries = useMemo(
+    () => entries.filter((entry) => entry.status === "SUCCEEDED" && (!!entry.datacubeId || !!entry.job?.result)),
+    [entries],
+  );
+  const selectedResult = readyEntries.find((entry) => entry.key === resultKey) ?? null;
+  const hasInference = !!selected && readyEntries.length > 0;
   const times = useMemo(() => selected?.times ?? [], [selected]);
+  const aiRunHere = aiRun && String(aiRun.input?.datacubeId ?? "") === selected?.id ? aiRun : null;
+  // 원본 ↔ AI 결과 at the same time replaces time B while a result is chosen.
+  // Comparing with an AI result needs only one time; comparing times needs two.
+  const canCompare = times.length > 1 || !!selectedResult;
+  const aiCompare =
+    !!selected && displayMode !== "single" && compareTarget === "ai" && !!selectedResult;
   const hasRgb = useMemo(
     () =>
       selected?.rgbAvailable === true ||
@@ -346,7 +411,86 @@ export default function Viewer({
         setJobs([]);
         setJobsError(userMessage(cause));
       });
-  }, [datasetId, jobState]);
+  }, [datasetId, aiTick]);
+  // AI service jobs of this dataset. The service may not be up yet: then only Backoffice links show.
+  useEffect(() => {
+    setAiJobs([]);
+    if (!datasetId) return;
+    let cancelled = false;
+    ai.listJobs({ datacubeId: datasetId })
+      .then((items) => !cancelled && setAiJobs(items))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [datasetId, aiTick]);
+  // Keep the chosen result while it exists; otherwise the one asked for (address, finished run), else the newest.
+  useEffect(() => {
+    const wanted = wantedResultRef.current;
+    const match = wanted ? readyEntries.find((entry) => entry.key === wanted || entry.datacubeId === wanted) : undefined;
+    if (match) {
+      wantedResultRef.current = undefined;
+      setResultKey(match.key);
+      setResultVisible(true);
+      return;
+    }
+    setResultKey((current) =>
+      readyEntries.some((entry) => entry.key === current) ? current : readyEntries[0]?.key ?? "",
+    );
+  }, [readyEntries]);
+  const selectedResultKey = selectedResult?.key;
+  const selectedResultJob = selectedResult?.job;
+  useEffect(() => {
+    setResultStats(selectedResultJob?.result ?? null);
+    setResultStatsLoading(false);
+    if (!selectedResultKey || !selectedResultJob || selectedResultJob.result) return;
+    let cancelled = false;
+    setResultStatsLoading(true);
+    ai.getJob(selectedResultKey)
+      .then((job) => !cancelled && setResultStats(job.result ?? null))
+      .catch(() => undefined)
+      .finally(() => !cancelled && setResultStatsLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedResultKey, selectedResultJob]);
+  // The result dataset's own xcube id and server (owner pod) for its tiles, as for the main layer.
+  const resultCubeId = selectedResult?.datacubeId;
+  useEffect(() => {
+    setResultCube(null);
+    if (!resultCubeId || useMockApi) return;
+    let cancelled = false;
+    backofficeAdapter
+      .getDatasetDetail(resultCubeId)
+      .then((detail) => !cancelled && setResultCube(detail))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [resultCubeId]);
+  // Follow a run until it ends; a finished run becomes the shown result.
+  useEffect(() => {
+    if (!aiRun || !isRunning(aiRun)) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      ai.getJob(aiRun.id)
+        .then((job) => {
+          if (cancelled) return;
+          setAiRun(job);
+          if (isRunning(job)) return;
+          if (job.status === "SUCCEEDED") {
+            wantedResultRef.current = job.id;
+            setFlash("수체 추출이 끝났습니다. 결과를 원본 위에 겹쳐 보여 줍니다.");
+          }
+          setAiTick((value) => value + 1);
+        })
+        .catch((cause) => !cancelled && setAiRunError(userMessage(cause)));
+    }, useMockApi ? 700 : 3000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [aiRun]);
   useEffect(() => {
     // Preselect the dataset passed in the URL once, after the list arrives.
     if (initialAppliedRef.current || !initialDatasetId || !datasets.length) return;
@@ -383,11 +527,12 @@ export default function Viewer({
       const a = pending.time ? times.findIndex((time) => time.iso === pending.time) : -1;
       if (a >= 0) setTimeIndex(a);
       const b = pending.compare ? times.findIndex((time) => time.iso === pending.compare) : -1;
-      if (pending.mode && times.length > 1) {
+      if (pending.mode && (times.length > 1 || pending.target === "ai")) {
         setDisplayMode(pending.mode);
         setCompareIndex(b >= 0 ? b : a > 0 ? a - 1 : 1);
+        if (pending.target === "ai") setCompareTarget("ai");
       }
-      next.time = next.compare = next.mode = undefined;
+      next.time = next.compare = next.mode = next.target = undefined;
     }
     urlStateRef.current = next;
   }, [selected, times]);
@@ -401,13 +546,16 @@ export default function Viewer({
     if (datasetId && times[timeIndex]) params.set("t", times[timeIndex].iso);
     if (datasetId && displayMode !== "single") {
       params.set("mode", displayMode);
-      if (times[compareIndex]) params.set("b", times[compareIndex].iso);
+      if (aiCompare) params.set("cmp", "ai");
+      else if (times[compareIndex]) params.set("b", times[compareIndex].iso);
     }
+    if (datasetId && resultKey && !resultKey.startsWith("link:")) params.set("ai", resultKey);
+    else if (datasetId && selectedResult?.datacubeId) params.set("ai", selectedResult.datacubeId);
     const query = params.toString();
     const next = `${window.location.pathname}${query ? `?${query}` : ""}`;
     if (next !== `${window.location.pathname}${window.location.search}`)
       window.history.replaceState(window.history.state, "", next);
-  }, [loading, initialDatasetId, datasetId, projectId, activeVariable, times, timeIndex, displayMode, compareIndex]);
+  }, [loading, initialDatasetId, datasetId, projectId, activeVariable, times, timeIndex, displayMode, compareIndex, aiCompare, resultKey, selectedResult?.datacubeId]);
   // ←/→ step through times, Space plays or pauses, unless a field, button or dialog has focus.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -556,20 +704,52 @@ export default function Viewer({
           tileStyle,
         )
       : null;
+  // AI result: water_mask of the result dataset at the shown time, from its own xcube id and server.
+  const resultXcubeId = resultCube?.xcubeDatasetId || selectedResult?.xcubeDatasetId;
+  const resultIsos = useMemo(
+    () => (resultCube?.times.length ? resultCube.times.map((time) => time.iso) : resultStats?.times.map((stat) => stat.time) ?? []),
+    [resultCube, resultStats],
+  );
+  const resultTime = selectedResult ? matchTime(resultIsos, times[timeIndex]?.iso) : null;
+  const resultTileUrl =
+    !useMockApi && resultXcubeId && resultTime
+      ? backofficeAdapter.tileUrl(resultXcubeId, "water_mask", resultTime, resultCube?.tileBaseUrl, AI_MASK_STYLE)
+      : null;
+  const sourceTileUrlA =
+    !useMockApi && activeVariable && selectedXcubeDatasetId && times[timeIndex]
+      ? backofficeAdapter.tileUrl(selectedXcubeDatasetId, activeVariable, times[timeIndex].iso, selectedTileBase, tileStyle)
+      : null;
   useCompareLayer({
     map,
-    tileUrl: displayMode === "swipe" ? compareTileUrl : null,
+    tileUrl: resultVisible && !aiCompare ? resultTileUrl : null,
     bbox: selectedBbox,
-    visible: sourceVisible,
-    opacity: sourceOpacity,
+    visible: resultVisible,
+    opacity: resultOpacity,
+    zIndex: 6,
+  });
+  useCompareLayer({
+    map,
+    tileUrl: displayMode === "swipe" ? (aiCompare ? resultTileUrl : compareTileUrl) : null,
+    bbox: selectedBbox,
+    visible: aiCompare ? true : sourceVisible,
+    opacity: aiCompare ? resultOpacity : sourceOpacity,
     swipeRef,
+    zIndex: aiCompare ? 6 : 5,
   });
   useCompareLayer({
     map: compareMap,
-    tileUrl: displayMode === "split" ? compareTileUrl : null,
+    tileUrl: displayMode === "split" ? (aiCompare ? sourceTileUrlA : compareTileUrl) : null,
     bbox: selectedBbox,
     visible: sourceVisible,
     opacity: sourceOpacity,
+  });
+  useCompareLayer({
+    map: compareMap,
+    tileUrl: displayMode === "split" && aiCompare ? resultTileUrl : null,
+    bbox: selectedBbox,
+    visible: true,
+    opacity: resultOpacity,
+    zIndex: 6,
   });
   const changeSwipe = useCallback(
     (value: number) => {
@@ -593,10 +773,14 @@ export default function Viewer({
     },
     [times.length, timeIndex],
   );
-  const compareActive = !!selected && displayMode !== "single" && times.length > 1;
+  const compareActive = !!selected && displayMode !== "single" && canCompare;
   useEffect(() => {
-    if (selected && times.length < 2 && displayMode !== "single") setDisplayMode("single");
-  }, [selected, times.length, displayMode]);
+    if (selected && !canCompare && displayMode !== "single") setDisplayMode("single");
+  }, [selected, canCompare, displayMode]);
+  useEffect(() => {
+    // With a single time the only comparison is 원본 ↔ AI 결과.
+    if (times.length < 2 && selectedResult && compareTarget !== "ai") setCompareTarget("ai");
+  }, [times.length, selectedResult, compareTarget]);
   const onMapReady = useCallback((instance: Map) => setMap(instance), []);
   const openRightPanel = useCallback((type: Exclude<Drawer, null>) => {
     setDrawer(type);
@@ -673,7 +857,7 @@ export default function Viewer({
     const box = mapBoxRef.current?.getBoundingClientRect();
     const width = box?.width ?? 0;
     const height = box?.height ?? 0;
-    const splitView = displayMode === "split" && times.length > 1;
+    const splitView = displayMode === "split" && canCompare;
     setProbe((current) => current ?? [splitView ? width / 4 : width / 2, height / 2]);
   };
   useEffect(() => {
@@ -794,18 +978,68 @@ export default function Viewer({
     }, 240);
     return () => window.clearTimeout(timer);
   }, [map, graphExpanded, pixel]);
-  const runAi = async () => {
-    if (!selected || !useMockApi) return;
-    setJobState("running");
-    const job = await activeViewerAdapter.runWaterExtraction(
-      selected.id,
-      period,
-    );
-    setJobs((current) => [job, ...current]);
-    setLocalInference((current) => ({ ...current, [selected.id]: true }));
-    setResultVisible(true);
-    setJobState("completed");
+  const startAi = async (request: AiJobRequest) => {
+    setAiRunError("");
+    try {
+      const job = await ai.createJob({
+        ...request,
+        datacubeId: cubeId(String(request.datacubeId)),
+        ...(projectId ? { projectId: cubeId(projectId) } : {}),
+      });
+      // The service answers with the job summary; keep the request so the run stays tied to this dataset.
+      setAiRun({ ...job, input: { ...request, ...(job.input ?? {}), datacubeId: String(request.datacubeId) } });
+      setAiTick((value) => value + 1);
+    } catch (cause) {
+      setAiRunError(userMessage(cause));
+    }
   };
+  const cancelAi = async () => {
+    if (!aiRun) return;
+    try {
+      await ai.cancelJob(aiRun.id);
+      setAiRun({ ...aiRun, status: "CANCELLED" });
+      setAiTick((value) => value + 1);
+    } catch (cause) {
+      setAiRunError(userMessage(cause));
+    }
+  };
+  const retryAi = async () => {
+    if (!aiRun) return;
+    setAiRunError("");
+    try {
+      const again = await ai.retryJob(aiRun.id);
+      setAiRun({ ...again, input: again.input ?? aiRun.input });
+      setAiTick((value) => value + 1);
+    } catch (cause) {
+      setAiRunError(userMessage(cause));
+    }
+  };
+  /** Same input as the shown result, another threshold (the estimate made real). */
+  const rerunAi = (threshold: number) => {
+    const input = selectedResult?.job?.input;
+    if (!selected || !input?.modelId) return;
+    setDrawer("ai");
+    startAi({
+      datacubeId: selected.id,
+      modelId: String(input.modelId),
+      threshold: Number(threshold.toFixed(2)),
+      ...(input.timeStart ? { timeStart: String(input.timeStart) } : {}),
+      ...(input.timeEnd ? { timeEnd: String(input.timeEnd) } : {}),
+      name: `${selectedResult?.name ?? selected.name} · 임계값 ${threshold.toFixed(2)}`,
+    });
+  };
+  const chooseResult = (entry: ResultEntry) => {
+    setResultKey(entry.key);
+    setResultVisible(true);
+    openRightPanel("result");
+  };
+  const labelOf = (iso: string) => {
+    const match = matchTime(times.map((time) => time.iso), iso);
+    return times.find((time) => time.iso === match)?.label ?? iso;
+  };
+  // AI results are reached through their source dataset, not picked as layers of their own.
+  const pickable = useMemo(() => datasets.filter((item) => item.kind !== "AI_RESULT"), [datasets]);
+  const pickableProject = useMemo(() => projectDatasets.filter((item) => item.kind !== "AI_RESULT"), [projectDatasets]);
   const projectName = projects.find((item) => item.id === projectId)?.name;
   // With personal pods on, the pill shows the user's own xcube; otherwise the main server.
   const podLabel: Record<string, string> = {
@@ -917,14 +1151,14 @@ export default function Viewer({
             /
           </span>
           <DatasetPicker
-            datasets={datasets}
+            datasets={pickable}
             value={datasetId}
             onChange={setDatasetId}
             tourId="dataset"
             openRequest={pickerRequest}
             project={
               projectId
-                ? { name: projectName ?? "프로젝트", items: projectDatasets }
+                ? { name: projectName ?? "프로젝트", items: pickableProject }
                 : undefined
             }
             onUnavailable={(item) =>
@@ -960,7 +1194,7 @@ export default function Viewer({
             <Plus size={16} aria-hidden="true" />
             <span className="vx-hide-md">데이터 추가</span>
           </a>
-          {selected && (
+          {selected && selected.kind !== "AI_RESULT" && (
             <button
               type="button"
               className="vx-btn vx-btn--line"
@@ -979,7 +1213,10 @@ export default function Viewer({
               type="button"
               className="vx-btn vx-btn--line"
               aria-pressed={drawer === "result"}
-              onClick={() => openRightPanel("result")}
+              onClick={() => {
+                setResultVisible(true);
+                openRightPanel("result");
+              }}
             >
               <Layers2 size={16} aria-hidden="true" />
               <span>결과</span>
@@ -1008,7 +1245,7 @@ export default function Viewer({
       >
         <section
           ref={mapBoxRef}
-          className={`vx-map ${splitActive ? "is-split" : ""}`}
+          className={`vx-map ${splitActive ? "is-split" : ""} ${compareActive ? "is-comparing" : ""}`}
           aria-label="시계열 위성 데이터 지도"
         >
           <OlMap
@@ -1177,11 +1414,31 @@ export default function Viewer({
               {viewerNotice}
             </div>
           )}
-          {selected && resultVisible && hasInference && (
+          {/* Demo has no tiles: a hatched stand-in marks where the result layer would be. */}
+          {useMockApi && selected && selectedResult && resultTime && ((resultVisible && !aiCompare) || (aiCompare && displayMode === "swipe")) && (
             <div
-              className="result-overlay"
-              style={{ opacity: resultOpacity / 100 }}
-              aria-label="AI 수체 추출 결과 레이어"
+              className="vx-result-clip"
+              style={aiCompare ? { clipPath: `inset(0 0 0 ${swipe}%)` } : undefined}
+              aria-hidden="true"
+            >
+              <div className="result-overlay" style={{ opacity: resultOpacity / 100 }} />
+            </div>
+          )}
+          {selected && selectedResult && (resultVisible || aiCompare) && !(aiCompare && displayMode === "swipe") && (
+            <AiLegend
+              entry={selectedResult}
+              timeLabel={times[timeIndex]?.label}
+              covered={!!resultTime}
+            />
+          )}
+          {compareActive && (
+            <CompareTargetSwitch
+              value={aiCompare ? "ai" : "time"}
+              onChange={(value) => {
+                setCompareTarget(value);
+                if (value === "ai") setResultVisible(true);
+              }}
+              aiAvailable={readyEntries.length > 0}
             />
           )}
           {selected && !compareActive && (
@@ -1206,21 +1463,38 @@ export default function Viewer({
               value={swipe}
               onChange={changeSwipe}
               leftLabel={times[timeIndex]?.label ?? "—"}
-              rightLabel={times[compareIndex]?.label ?? "—"}
+              rightLabel={(aiCompare ? times[timeIndex]?.label : times[compareIndex]?.label) ?? "—"}
+              target={aiCompare ? "ai" : "time"}
             />
           )}
           {splitActive && (
             <>
               <span className="vx-maplabel vx-maplabel--a vx-split-label">
-                <b className="vx-flag">A</b>
-                <span className="tabular">{times[timeIndex]?.label ?? "—"}</span>
+                {aiCompare ? (
+                  <>
+                    <i className="vx-swatch vx-swatch--source" aria-hidden="true" />
+                    <span>원본 <span className="tabular">{times[timeIndex]?.label ?? "—"}</span></span>
+                  </>
+                ) : (
+                  <>
+                    <b className="vx-flag">A</b>
+                    <span className="tabular">{times[timeIndex]?.label ?? "—"}</span>
+                  </>
+                )}
               </span>
               <CompareMap
                 mainMap={map}
                 baseVisible={baseVisible}
                 onMapReady={setCompareMap}
-                label={times[compareIndex]?.label ?? "—"}
-              />
+                label={(aiCompare ? times[timeIndex]?.label : times[compareIndex]?.label) ?? "—"}
+                target={aiCompare ? "ai" : "time"}
+              >
+                {useMockApi && aiCompare && resultTime && (
+                  <div className="vx-result-clip" aria-hidden="true">
+                    <div className="result-overlay" style={{ opacity: resultOpacity / 100 }} />
+                  </div>
+                )}
+              </CompareMap>
             </>
           )}
         </section>
@@ -1248,8 +1522,8 @@ export default function Viewer({
                   onClick={() => setTab("jobs")}
                 >
                   AI 작업
-                  {jobs.length > 0 && (
-                    <span className="vx-count tabular">{jobs.length}</span>
+                  {entries.length > 0 && (
+                    <span className="vx-count tabular">{entries.length}</span>
                   )}
                 </button>
               </div>
@@ -1305,7 +1579,7 @@ export default function Viewer({
                   <div className="vx-layers">
                     {hasInference && (
                       <LayerControl
-                        label="AI 결과 Zarr"
+                        label="AI 수체 결과"
                         accent="result"
                         checked={resultVisible}
                         onChecked={setResultVisible}
@@ -1371,40 +1645,16 @@ export default function Viewer({
             ) : (
               <div className="vx-panel__body">
                 <section className="vx-section">
-                  <h2 className="vx-section__title">최근 AI 작업</h2>
-                  {jobsError ? (
+                  <h2 className="vx-section__title">이 데이터의 AI 결과</h2>
+                  {jobsError && (
                     <p className="vx-section__hint" role="status">
-                      AI 작업 목록: {jobsError}
+                      연결된 결과 목록: {jobsError}
                     </p>
-                  ) : jobs.length ? (
-                    <div className="vx-jobs">
-                      {jobs.map((job) => (
-                        <button
-                          type="button"
-                          className="vx-job"
-                          key={job.id}
-                          onClick={() =>
-                            job.status === "SUCCEEDED" && job.outputDatacubeId
-                              ? setDrawer("result")
-                              : undefined
-                          }
-                        >
-                          <span>
-                            수체 추출 #{job.id}
-                            <small>
-                              <span className={`vx-job__state is-${job.status.toLowerCase()}`}>
-                                {job.status}
-                              </span>
-                              <span>{job.period}</span>
-                            </small>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
+                  )}
+                  {selected ? (
+                    <AiResultList entries={entries} selectedKey={resultKey} onSelect={chooseResult} />
                   ) : (
-                    <p className="vx-section__hint">
-                      선택한 Zarr의 작업이 없습니다.
-                    </p>
+                    <p className="vx-section__hint">데이터를 고르면 그 데이터의 AI 결과가 보입니다.</p>
                   )}
                 </section>
               </div>
@@ -1434,13 +1684,13 @@ export default function Viewer({
           >
             <div className="vx-drawer__head">
               <div>
-                <h2>{drawer === "ai" ? "AI 수체 추출" : "결과 비교"}</h2>
-                <p title={selected?.name}>
+                <h2>{drawer === "ai" ? "AI 수체 추출" : "원본 대비 결과"}</h2>
+                <p title={drawer === "ai" ? selected?.name : selectedResult?.name}>
                   {drawer === "ai"
-                    ? jobState === "running"
-                      ? "분석 작업 실행 중"
-                      : "새 분석 작업"
-                    : "원본과 결과 레이어"}
+                    ? isRunning(aiRunHere)
+                      ? "수체 추출 실행 중"
+                      : selected?.name ?? "새 분석 작업"
+                    : selectedResult?.name ?? "원본과 결과 레이어"}
                 </p>
               </div>
               <span>
@@ -1472,7 +1722,7 @@ export default function Viewer({
                 onClick={() => openRightPanel("ai")}
               >
                 AI 작업
-                {jobState === "running" && (
+                {isRunning(aiRunHere) && (
                   <i className="vx-pulse" aria-hidden="true" />
                 )}
               </button>
@@ -1488,108 +1738,57 @@ export default function Viewer({
               )}
             </div>
             <div className="vx-drawer__body" role="tabpanel">
-              {drawer === "ai" ? (
-                <div className="vx-form">
-                  <label className="vx-field">
-                    <span>모델</span>
-                    <select>
-                      <option>WaterNet v2.1</option>
-                      <option>NDWI 기반</option>
-                    </select>
-                  </label>
-                  <fieldset className="vx-field">
-                    <legend>시간 범위</legend>
-                    <div className="vx-radios">
-                      {(["현재 시점", "선택 기간", "전체 기간"] as Period[]).map(
-                        (value) => (
-                          <label className="vx-radio" key={value}>
-                            <input
-                              type="radio"
-                              name="period"
-                              checked={period === value}
-                              onChange={() => setPeriod(value)}
-                            />
-                            {value}
-                          </label>
-                        ),
-                      )}
-                    </div>
-                  </fieldset>
-                  <label className="vx-field">
-                    <span className="vx-field__row">
-                      판단 임계값
-                      <small className="tabular">
-                        {(threshold / 100).toFixed(2)}
-                      </small>
-                    </span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={threshold}
-                      onChange={(e) => setThreshold(Number(e.target.value))}
-                    />
-                  </label>
-                  <label className="vx-field">
-                    <span>처리 영역</span>
-                    <select>
-                      <option>현재 지도 영역</option>
-                      <option>전체 데이터 영역</option>
-                      <option>선택한 영역</option>
-                    </select>
-                  </label>
-                  {jobState !== "idle" && (
-                    <div className="vx-note vx-note--info" aria-live="polite">
-                      {jobState === "running"
-                        ? "수체 추출 작업을 처리하고 있습니다…"
-                        : "수체 추출이 완료되었습니다."}
-                    </div>
+              {drawer === "ai" && selected ? (
+                <>
+                  <AiRunForm
+                    dataset={selected}
+                    times={times}
+                    run={aiRunHere}
+                    runError={aiRunError}
+                    onRun={startAi}
+                    onCancel={cancelAi}
+                    onRetry={retryAi}
+                  />
+                  <section className="vx-section vx-section--top">
+                    <h3 className="vx-section__title">이 데이터의 AI 결과</h3>
+                    <AiResultList entries={entries} selectedKey={resultKey} onSelect={chooseResult} />
+                  </section>
+                </>
+              ) : drawer === "result" && selected && selectedResult ? (
+                <>
+                  {readyEntries.length > 1 && (
+                    <label className="vx-field vx-form__pad">
+                      <span>결과 고르기</span>
+                      <select aria-label="비교할 AI 결과" value={resultKey} onChange={(event) => setResultKey(event.target.value)}>
+                        {readyEntries.map((entry) => (
+                          <option key={entry.key} value={entry.key}>{entry.name}</option>
+                        ))}
+                      </select>
+                    </label>
                   )}
-                  {!useMockApi && (
-                    <div className="vx-note">
-                      AI 실행 API는 아직 준비되지 않았습니다. 기존 완료 결과만
-                      조회할 수 있습니다.
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    className="vx-btn vx-btn--ink vx-btn--block"
-                    disabled={!useMockApi || jobState === "running"}
-                    onClick={runAi}
-                  >
-                    {!useMockApi
-                      ? "AI 실행 준비 중"
-                      : jobState === "running"
-                        ? "처리 중…"
-                        : jobState === "completed"
-                          ? "다시 실행"
-                          : "수체 추출 시작"}
-                  </button>
-                </div>
+                  <AiResultPanel
+                    entry={selectedResult}
+                    result={resultStats}
+                    loading={resultStatsLoading}
+                    currentTime={times[timeIndex]?.iso}
+                    currentLabel={times[timeIndex]?.label}
+                    labelOf={labelOf}
+                    source={selected}
+                    resultVisible={resultVisible}
+                    onResultVisible={setResultVisible}
+                    resultOpacity={resultOpacity}
+                    onResultOpacity={setResultOpacity}
+                    sourceVisible={sourceVisible}
+                    onSourceVisible={setSourceVisible}
+                    sourceOpacity={sourceOpacity}
+                    onSourceOpacity={setSourceOpacity}
+                    onRerun={selectedResult.job?.input?.modelId ? rerunAi : undefined}
+                    rerunBusy={isRunning(aiRun)}
+                    demo={useMockApi}
+                  />
+                </>
               ) : (
-                <div className="vx-form">
-                  <div className="vx-layers">
-                    <LayerControl
-                      label="원본 Zarr"
-                      accent="source"
-                      checked={sourceVisible}
-                      onChecked={setSourceVisible}
-                      opacity={sourceOpacity}
-                      onOpacity={setSourceOpacity}
-                    />
-                    <LayerControl
-                      label="수체 추출 결과"
-                      accent="result"
-                      checked={resultVisible}
-                      onChecked={setResultVisible}
-                      opacity={resultOpacity}
-                      onOpacity={setResultOpacity}
-                    />
-                  </div>
-                  <div className="vx-note vx-note--info">
-                    두 레이어를 겹쳐 놓고 불투명도를 바꿔 비교합니다.
-                  </div>
-                </div>
+                <p className="vx-section__hint vx-form__pad">아직 고를 수 있는 AI 결과가 없습니다.</p>
               )}
             </div>
           </aside>
@@ -1609,8 +1808,22 @@ export default function Viewer({
               currentTime={times[timeIndex]?.iso}
               currentLabel={times[timeIndex]?.label}
               timeCount={times.length}
-              compareTime={compareActive ? times[compareIndex]?.iso : undefined}
-              compareLabel={compareActive ? times[compareIndex]?.label : undefined}
+              compareTime={compareActive && !aiCompare ? times[compareIndex]?.iso : undefined}
+              compareLabel={compareActive && !aiCompare ? times[compareIndex]?.label : undefined}
+            />
+          )}
+          {selectedResult && resultStats && resultStats.times.length > 0 && (resultVisible || aiCompare) && (
+            <WaterAreaRow
+              result={resultStats}
+              times={times}
+              index={timeIndex}
+              onIndex={(value) => {
+                setTimeIndex(value);
+                setPlaying(false);
+              }}
+              expanded={areaExpanded}
+              onToggle={() => setAreaExpanded((value) => !value)}
+              title={selectedResult.name}
             />
           )}
           <section
@@ -1657,14 +1870,19 @@ export default function Viewer({
               </div>
               <div className="vx-current">
                 <strong className="tabular">
-                  {compareActive && (
+                  {compareActive && !aiCompare && (
                     <b className="vx-flag" aria-hidden="true">
                       A
                     </b>
                   )}
                   {times[timeIndex]?.label ?? "시점 없음"}
                 </strong>
-                {compareActive ? (
+                {aiCompare ? (
+                  <span className="vx-btime vx-btime--ai">
+                    <i className="vx-hatch" aria-hidden="true" />
+                    원본 ↔ AI 결과
+                  </span>
+                ) : compareActive ? (
                   <CompareTime
                     times={times}
                     compareIndex={compareIndex}
@@ -1683,13 +1901,13 @@ export default function Viewer({
                 setTimeIndex(value);
                 setPlaying(false);
               }}
-              compareIndex={compareActive ? compareIndex : -1}
+              compareIndex={compareActive && !aiCompare ? compareIndex : -1}
             />
             <div className="vx-timeline__tail">
               <CompareModes
                 mode={displayMode}
                 onMode={changeDisplayMode}
-                disabled={times.length < 2}
+                disabled={!canCompare}
               />
               <PlaybackOptions
                 speed={speed}

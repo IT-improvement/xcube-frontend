@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom';
 jest.mock('../../components/map', () => ({ __esModule: true, default: function MockMap({ onMapReady, onPixelSelect }: any) { const React = require('react'); React.useEffect(() => onMapReady(mockMap), [onMapReady]); return <button onClick={() => onPixelSelect([126.5, 33.5])}>OpenLayers map</button>; } }));
 jest.mock('../../components/xcubeLayer', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('../../api/aiApi', () => ({ ...jest.requireActual('../../api/aiApi'), aiApi: { listModels: jest.fn(), check: jest.fn(), createJob: jest.fn(), listJobs: jest.fn(), getJob: jest.fn(), cancelJob: jest.fn(), retryJob: jest.fn() } }));
 jest.mock('../../api', () => ({ activeViewerAdapter: { getProjects: jest.fn(), getDatasets: jest.fn(), getProjectDatasets: jest.fn(), getJobs: jest.fn(), runWaterExtraction: jest.fn() }, useMockApi: false }));
 jest.mock('../../api/backofficeApi', () => ({ backofficeAdapter: { checkXcubeStatus: jest.fn(), getDatasetDetail: jest.fn(), tileUrl: jest.fn(), getTimeseries: jest.fn(), createProject: jest.fn(), updateProject: jest.fn(), deleteProject: jest.fn(), getProjectMembers: jest.fn(), addProjectMember: jest.fn(), updateProjectMember: jest.fn(), removeProjectMember: jest.fn(), getLinkableDatacubes: jest.fn(), linkProjectDataset: jest.fn(), unlinkProjectDataset: jest.fn() } }));
 jest.mock('ol/proj', () => ({ toLonLat: (coordinate: any) => coordinate }));
@@ -12,6 +13,7 @@ const Viewer = require('.').default;
 const mockAddLayer = require('../../components/xcubeLayer').default as jest.Mock;
 const mockAdapter = require('../../api').activeViewerAdapter as Record<string, jest.Mock>;
 const mockBackoffice = require('../../api/backofficeApi').backofficeAdapter as Record<string, jest.Mock>;
+const mockAi = require('../../api/aiApi').aiApi as Record<string, jest.Mock>;
 let mockCenter = [126.5, 33.5];
 let mockResolution = 100;
 const mockView = { getProjection: () => ({ getCode: () => 'EPSG:4326' }), getCenter: () => mockCenter, getResolution: () => mockResolution, getZoom: () => 9, fit: jest.fn(), animate: jest.fn(), setCenter: jest.fn(), setResolution: jest.fn(), setZoom: jest.fn() };
@@ -26,7 +28,7 @@ beforeEach(() => {
   mockView.setResolution.mockImplementation((resolution) => { mockResolution = resolution; });
   mockMap.getView.mockReturnValue(mockView);
   mockBackoffice.getLinkableDatacubes.mockResolvedValue([]);
-  jest.clearAllMocks(); mockAddLayer.mockResolvedValue(mockLayer); mockBackoffice.checkXcubeStatus.mockResolvedValue(true); mockBackoffice.getDatasetDetail.mockResolvedValue({ id: '77', projectId: '4', name: '서버 상세 이름', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: '77', defaultVariable: 'red', variables: ['red', 'green', 'blue', 'nir'], times: [{ iso: '2026-01-01T00:00:00Z', label: '2026. 1. 1.' }, { iso: '2026-02-01T00:00:00Z', label: '2026. 2. 1.' }], bbox: [126, 33, 127, 34] }); mockBackoffice.tileUrl.mockImplementation(tileUrl); mockBackoffice.getProjectMembers.mockResolvedValue([{ userId: '1', role: 'OWNER' }, { userId: '22', role: 'VIEWER' }]); mockAdapter.getProjects.mockResolvedValue([{ id: '4', name: '임의 프로젝트', accessRole: 'OWNER' }]); mockAdapter.getDatasets.mockResolvedValue([{ id: '77', projectId: '4', name: '임의 데이터셋', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: 'custom_cube_2026', defaultVariable: '', variables: [], times: [] }]); mockAdapter.getProjectDatasets.mockResolvedValue([]); mockAdapter.getJobs.mockResolvedValue([]);
+  jest.clearAllMocks(); mockAddLayer.mockResolvedValue(mockLayer); mockBackoffice.checkXcubeStatus.mockResolvedValue(true); mockBackoffice.getDatasetDetail.mockResolvedValue({ id: '77', projectId: '4', name: '서버 상세 이름', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: '77', defaultVariable: 'red', variables: ['red', 'green', 'blue', 'nir'], times: [{ iso: '2026-01-01T00:00:00Z', label: '2026. 1. 1.' }, { iso: '2026-02-01T00:00:00Z', label: '2026. 2. 1.' }], bbox: [126, 33, 127, 34] }); mockBackoffice.tileUrl.mockImplementation(tileUrl); mockBackoffice.getProjectMembers.mockResolvedValue([{ userId: '1', role: 'OWNER' }, { userId: '22', role: 'VIEWER' }]); mockAdapter.getProjects.mockResolvedValue([{ id: '4', name: '임의 프로젝트', accessRole: 'OWNER' }]); mockAdapter.getDatasets.mockResolvedValue([{ id: '77', projectId: '4', name: '임의 데이터셋', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: 'custom_cube_2026', defaultVariable: '', variables: [], times: [] }]); mockAdapter.getProjectDatasets.mockResolvedValue([]); mockAdapter.getJobs.mockResolvedValue([]); mockAi.listJobs.mockResolvedValue([]);
   Object.defineProperty(window, 'matchMedia', { writable: true, value: jest.fn().mockReturnValue({ matches: false, addEventListener: jest.fn(), removeEventListener: jest.fn() }) });
 });
 

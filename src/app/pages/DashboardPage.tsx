@@ -2,7 +2,7 @@ import { ArrowRight, Database, ExternalLink, Map, Plus, Sigma, Sparkles } from '
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthProvider';
 import { Alert, Button, ButtonLink } from '../../components/ui';
-import { Badge, Card, EmptyState, PageHeader, Skeleton } from '../../components/ui/kit';
+import { Card, EmptyState, PageHeader, Skeleton } from '../../components/ui/kit';
 import { appApi, isOwned, jobs as jobService, periodLabel, viewerHref } from '../api';
 import { useLoad } from '../useLoad';
 import { elapsed, isActive, JOB_TYPE_LABEL, JobStatusBadge } from '../jobs';
@@ -43,12 +43,12 @@ export default function DashboardPage() {
           <strong>수식 융합</strong>
           <small>여러 Zarr를 수식으로 합칩니다.</small>
         </Link>
-        <div className="dash-quick__card is-disabled" aria-disabled="true">
-          <Badge>준비 중</Badge>
+        <a className="dash-quick__card" href={viewerHref(items.find((item) => item.kind !== 'AI_RESULT')?.id)} target="_blank" rel="noopener noreferrer">
           <span className="dash-quick__icon"><Sparkles size={20} aria-hidden /></span>
-          <strong>AI 수체 추출</strong>
-          <small>AI로 수체를 추출하고 비교합니다. (M7)</small>
-        </div>
+          <strong>AI 수체 추출 <ExternalLink size={14} aria-hidden /></strong>
+          <small>Viewer에서 데이터를 고르고 AI 수체 추출을 실행해 원본과 비교합니다.</small>
+          <span className="sr-only">(새 탭)</span>
+        </a>
       </section>
 
       {!empty && (
@@ -94,7 +94,7 @@ export default function DashboardPage() {
           {jobs.loading ? <Skeleton lines={3} label="최근 작업을 불러오는 중" /> : jobs.error ? (
             <div className="inline-error"><Alert tone="danger">작업 목록을 불러오지 못했습니다. {jobs.error}</Alert></div>
           ) : !jobItems.length ? (
-            <EmptyState title="아직 작업이 없습니다" text="데이터를 추가하거나 수식 융합을 실행하면 진행 상황이 이곳에 표시됩니다." />
+            <EmptyState title="아직 작업이 없습니다" text="데이터 추가, 수식 융합, AI 수체 추출을 실행하면 진행 상황이 이곳에 표시됩니다." />
           ) : (
             <ul className="recent-jobs">
               {jobItems.slice(0, 5).map((job) => (
