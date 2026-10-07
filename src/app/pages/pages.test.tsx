@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 jest.mock('../../api', () => ({ activeViewerAdapter: { getProjects: jest.fn(), getDatasets: jest.fn(), getProjectDatasets: jest.fn(), getJobs: jest.fn(), runWaterExtraction: jest.fn() }, useMockApi: false }));
 jest.mock('../../api/backofficeApi', () => ({ backofficeAdapter: { getProject: jest.fn(), createProject: jest.fn(), updateProject: jest.fn(), deleteProject: jest.fn(), getProjectMembers: jest.fn(), addProjectMember: jest.fn(), updateProjectMember: jest.fn(), removeProjectMember: jest.fn(), getProjectDatasets: jest.fn(), getLinkableDatacubes: jest.fn(), linkProjectDataset: jest.fn(), unlinkProjectDataset: jest.fn(), getDatasetDetail: jest.fn(), deleteDatacube: jest.fn(), registerDatacube: jest.fn() } }));
-jest.mock('../../api/generationApi', () => ({ generationApi: { getColorBarOptions: jest.fn(), getCollections: jest.fn(), inspectSpatialFile: jest.fn(), createGeeJob: jest.fn(), createFileJob: jest.fn(), getJob: jest.fn(), listJobs: jest.fn(), jobSummary: jest.fn(), retryJob: jest.fn(), cancelJob: jest.fn() } }));
+jest.mock('../../api/generationApi', () => ({ generationApi: { getColorBarOptions: jest.fn(), getCollections: jest.fn(), inspectSpatialFile: jest.fn(), createGeeJob: jest.fn(), createFileJob: jest.fn(), getJob: jest.fn(), listJobs: jest.fn(), jobSummary: jest.fn(), retryJob: jest.fn(), cancelJob: jest.fn(), estimateGee: jest.fn(), searchAdminAreas: jest.fn(), getAdminArea: jest.fn(), listAreas: jest.fn(), getArea: jest.fn(), deleteArea: jest.fn(), uploadArea: jest.fn(), areaFromJob: jest.fn() } }));
 jest.mock('../../api/analysisApi', () => ({ ...jest.requireActual('../../api/analysisApi'), analysisApi: { validate: jest.fn(), dryRun: jest.fn(), createJob: jest.fn(), listJobs: jest.fn(), getJob: jest.fn(), cancelJob: jest.fn(), retryJob: jest.fn() } }));
 jest.mock('../../auth/AuthProvider', () => ({ useAuth: () => ({ user: { id: 1, name: '홍길동' }, signOut: jest.fn() }) }));
 
@@ -54,6 +54,8 @@ beforeEach(() => {
   backoffice.unlinkProjectDataset.mockResolvedValue(undefined);
   backoffice.deleteDatacube.mockResolvedValue(undefined);
   generation.listJobs.mockResolvedValue([]);
+  generation.estimateGee.mockResolvedValue({ areaKm2: 3000, grid: { width: 1800, height: 1800 }, scenes: 6, estimatedBytes: 4e6, requestTiles: 1, warnings: [], blockers: [] });
+  generation.listAreas.mockResolvedValue([]);
   analysis.listJobs.mockResolvedValue([]);
   generation.getColorBarOptions.mockResolvedValue([{ id: 'viridis', category: 'Sequential' }, { id: 'tab10', category: 'Qualitative' }]);
   window.confirm = jest.fn(() => true);
@@ -267,6 +269,7 @@ describe('S4 데이터 추가 (FR-GEN-10·11)', () => {
     fireEvent.click(await screen.findByRole('radio', { name: /Sentinel-2/ }));
     fireEvent.change(screen.getByLabelText('시작 날짜'), { target: { value: '2026-05-01' } });
     fireEvent.change(screen.getByLabelText('끝 날짜'), { target: { value: '2026-05-31' } });
+    fireEvent.click(screen.getByRole('tab', { name: '사각형' }));
     fireEvent.change(screen.getByLabelText('좌하단 경도'), { target: { value: '126.5' } });
     fireEvent.change(screen.getByLabelText('좌하단 위도'), { target: { value: '35' } });
     fireEvent.change(screen.getByLabelText('우상단 경도'), { target: { value: '127' } });
@@ -283,6 +286,7 @@ describe('S4 데이터 추가 (FR-GEN-10·11)', () => {
     await waitFor(() => expect(generation.createGeeJob).toHaveBeenCalledWith(expect.objectContaining({
       collectionId: 'COPERNICUS/S2', bands: ['B8'], bandStyles: [{ variable: 'B8', colorBar: 'viridis', valueMin: 0, valueMax: 4000 }],
       bounds: { west: 126.5, south: 35, east: 127, north: 35.5 },
+      area: { mode: 'box', box: { west: 126.5, south: 35, east: 127, north: 35.5 }, clip: 'bbox', fullCoverOnly: false, maskVariable: false },
     })));
   });
 
