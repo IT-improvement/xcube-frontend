@@ -152,6 +152,7 @@ export default function Viewer({
   const [flash, setFlash] = useState("");
   const [notice, setNotice] = useState("");
   const [noDataHidden, setNoDataHidden] = useState(false);
+  const [pickHintHidden, setPickHintHidden] = useState(false);
   const [tourOpen, setTourOpen] = useState(
     () => onboarding && !tourDismissed(),
   );
@@ -335,6 +336,13 @@ export default function Viewer({
     const timer = window.setTimeout(() => setNoDataHidden(true), 3500);
     return () => window.clearTimeout(timer);
   }, [noData]);
+  // The "pick a dataset" card is a first-glance hint: it leaves after 5 s; the picker stays in the top bar.
+  const pickHintCandidate = !datasetId && !loading && !apiError && datasets.length > 0;
+  useEffect(() => {
+    if (!pickHintCandidate) return;
+    const timer = window.setTimeout(() => setPickHintHidden(true), 5000);
+    return () => window.clearTimeout(timer);
+  }, [pickHintCandidate]);
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(""), 6000);
@@ -1086,7 +1094,7 @@ export default function Viewer({
       (datasets.length || noDataHidden
         ? ""
         : "등록된 Zarr가 없습니다. 데이터를 추가해 시작하세요.");
-  const pickHint = !selected && !loading && !apiError && datasets.length > 0;
+  const pickHint = !selected && !loading && !apiError && datasets.length > 0 && !pickHintHidden;
   return (
     <main className="viewer vx" aria-label="XCube 시계열 GIS Viewer">
       <header className="vx-top">
