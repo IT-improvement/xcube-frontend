@@ -337,7 +337,8 @@ export default function Viewer({
     return () => window.clearTimeout(timer);
   }, [noData]);
   // The "pick a dataset" card is a first-glance hint: it leaves after 5 s; the picker stays in the top bar.
-  const pickHintCandidate = !datasetId && !loading && !apiError && datasets.length > 0;
+  // Count only while the card is actually on screen (not behind the entry tour).
+  const pickHintCandidate = !datasetId && !loading && !apiError && datasets.length > 0 && !tourOpen;
   useEffect(() => {
     if (!pickHintCandidate) return;
     const timer = window.setTimeout(() => setPickHintHidden(true), 5000);
