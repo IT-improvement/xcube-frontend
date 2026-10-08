@@ -8,6 +8,7 @@ import type TileLayer from "ol/layer/Tile";
 import type RenderEvent from "ol/render/Event";
 import OlMap from "../../components/map";
 import addDynamicXcubeLayer from "../../components/xcubeLayer";
+import { FRAME_SAFETY_MS, watchTileLayerReady } from "../../components/xcubeLayer/tileReady";
 import { ChevronDown, Columns2, GripVertical, Square, SplitSquareHorizontal } from "lucide-react";
 
 export type DisplayMode = "single" | "swipe" | "split";
@@ -49,10 +50,23 @@ export function useCompareLayer({
   zIndex?: number;
 }) {
   const layerRef = useRef<TileLayer<any> | null>(null);
+  // FR-VIEW-12: the previous (fully drawn) layer stays until the new one has loaded; at most one waits.
+  const retiringRef = useRef<(() => void) | null>(null);
   const bboxKey = bbox?.join(",");
+  const releaseRetiring = () => {
+    const release = retiringRef.current;
+    retiringRef.current = null;
+    release?.();
+  };
+  useEffect(() => releaseRetiring, []);
   useEffect(() => {
-    if (!map || !tileUrl) return;
+    if (!map || !tileUrl) {
+      releaseRetiring();
+      return;
+    }
     let cancelled = false;
+    let ready = false;
+    let stopWatch: (() => void) | undefined;
     let layer: TileLayer<any> | null = null;
     const clip = (event: RenderEvent) => {
       const ctx = event.context as CanvasRenderingContext2D | undefined;
@@ -74,6 +88,12 @@ export function useCompareLayer({
     };
     const restore = (event: RenderEvent) =>
       (event.context as CanvasRenderingContext2D | undefined)?.restore();
+    const remove = (target: TileLayer<any>) => {
+      target.un("prerender", clip);
+      target.un("postrender", restore);
+      target.get("cleanup")?.();
+      map.removeLayer(target);
+    };
     addDynamicXcubeLayer({
       map,
       tileUrl,
@@ -81,7 +101,7 @@ export function useCompareLayer({
       onError: () => undefined,
     })
       .then((created) => {
-        if (!created) return;
+        if (!created) return releaseRetiring();
         if (cancelled) {
           created.get("cleanup")?.();
           map.removeLayer(created);
@@ -95,17 +115,26 @@ export function useCompareLayer({
           created.on("prerender", clip);
           created.on("postrender", restore);
         }
+        stopWatch = watchTileLayerReady(map, created, () => {
+          ready = true;
+          releaseRetiring();
+        });
       })
-      .catch(() => undefined);
+      .catch(() => releaseRetiring());
     return () => {
       cancelled = true;
-      if (layer) {
-        layer.un("prerender", clip);
-        layer.un("postrender", restore);
-        layer.get("cleanup")?.();
-        map.removeLayer(layer);
-        if (layerRef.current === layer) layerRef.current = null;
-      }
+      stopWatch?.();
+      if (!layer) return;
+      const old = layer;
+      if (layerRef.current === old) layerRef.current = null;
+      if (!ready) return remove(old);
+      // Drawn: keep it on screen until the next layer is ready (or the safety timeout).
+      releaseRetiring();
+      const timer = setTimeout(releaseRetiring, FRAME_SAFETY_MS);
+      retiringRef.current = () => {
+        clearTimeout(timer);
+        remove(old);
+      };
     };
   }, [map, tileUrl, bboxKey, swipeRef, zIndex]);
   useEffect(() => {

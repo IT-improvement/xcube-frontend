@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Map from "ol/Map";
-import TileLayer from "ol/layer/Tile";
 import OlMap from "../../components/map";
 import addDynamicXcubeLayer from "../../components/xcubeLayer";
 import { AiJob, Project, ZarrDataset } from "../../api/viewerAdapter";
@@ -63,6 +62,7 @@ import {
 } from "./AiPanel";
 import { PlaybackOptions, TimeStaff } from "./TimeStaff";
 import UserMenu from "./UserMenu";
+import { FrameBuffer, playbackInterval } from "./frameBuffer";
 
 type Drawer = "ai" | "result" | null;
 type MapTool = "pan" | "pixel";
@@ -211,9 +211,14 @@ export default function Viewer({
   const [swipe, setSwipe] = useState(50);
   const swipeRef = useRef(50);
   const [compareMap, setCompareMap] = useState<Map | null>(null);
-  const sourceLayer = useRef<TileLayer<any> | null>(null);
+  const frameBuffer = useRef<FrameBuffer | null>(null);
+  const [shownTileUrl, setShownTileUrl] = useState<string | null>(null);
+  const [frameDue, setFrameDue] = useState(false);
+  const shownDatasetRef = useRef<string | undefined>(undefined);
   const sourceVisibleRef = useRef(sourceVisible);
   const sourceOpacityRef = useRef(sourceOpacity);
+  sourceVisibleRef.current = sourceVisible;
+  sourceOpacityRef.current = sourceOpacity;
   const detailLoadedRef = useRef("");
   const initialAppliedRef = useRef(false);
   const projectIdRef = useRef(projectId);
@@ -222,6 +227,8 @@ export default function Viewer({
   const selectedId = selected?.id;
   const selectedXcubeDatasetId = selected?.xcubeDatasetId;
   const selectedBbox = selected?.bbox;
+  const selectedBboxRef = useRef(selectedBbox);
+  selectedBboxRef.current = selectedBbox;
   const selectedTileBase = selected?.tileBaseUrl;
   // Colour bar and value range of the shown variable (raw values need their real range, M1/M2).
   const variableStyle = activeVariable && activeVariable !== "rgb" ? selected?.variableMetadata?.[activeVariable] : undefined;
@@ -271,6 +278,8 @@ export default function Viewer({
     },
     [],
   );
+  const failRef = useRef(fail);
+  failRef.current = fail;
   const loadProjects = useCallback(() => {
     setLoading(true);
     setApiError("");
@@ -613,91 +622,67 @@ export default function Viewer({
       })
       .catch((cause) => setViewerNotice(userMessage(cause)));
   }, [datasetId, selected]);
+  // Source tile url of a time index (null when there is no xcube layer to show).
+  const sourceTileUrlAt = useCallback(
+    (index: number) => {
+      if (!selectedId || useMockApi || !activeVariable || !selectedXcubeDatasetId) return null;
+      return selectedTileBase || tileStyle
+        ? backofficeAdapter.tileUrl(selectedXcubeDatasetId, activeVariable, times[index]?.iso, selectedTileBase, tileStyle)
+        : backofficeAdapter.tileUrl(selectedXcubeDatasetId, activeVariable, times[index]?.iso);
+    },
+    [selectedId, activeVariable, selectedXcubeDatasetId, selectedTileBase, tileStyle, times],
+  );
+  const sourceTileUrl = useMemo(() => sourceTileUrlAt(timeIndex), [sourceTileUrlAt, timeIndex]);
+  const nextIndex = times.length < 2 ? -1 : timeIndex < times.length - 1 ? timeIndex + 1 : loop ? 0 : -1;
+  const nextTileUrl = useMemo(
+    () => (playing && nextIndex >= 0 ? sourceTileUrlAt(nextIndex) : null),
+    [playing, nextIndex, sourceTileUrlAt],
+  );
+  // FR-VIEW-12: the shown frame counts as drawn once its visible tiles have loaded (or nothing to draw).
+  const frameReady = !sourceTileUrl || !sourceVisible || shownTileUrl === sourceTileUrl;
+  // Playback advances only when the minimum time per frame has passed AND the frame is drawn.
   useEffect(() => {
+    setFrameDue(false);
     if (!playing || times.length < 2) return;
-    const timer = window.setInterval(
-      () =>
-        setTimeIndex((current) =>
-          current === times.length - 1 ? (loop ? 0 : current) : current + 1,
-        ),
-      900 / speed,
-    );
-    return () => window.clearInterval(timer);
-  }, [playing, speed, loop, times.length]);
+    const timer = window.setTimeout(() => setFrameDue(true), playbackInterval(speed));
+    return () => window.clearTimeout(timer);
+  }, [playing, speed, timeIndex, times.length]);
+  useEffect(() => {
+    if (!playing || !frameDue || !frameReady || times.length < 2) return;
+    setFrameDue(false);
+    setTimeIndex((current) => (current === times.length - 1 ? (loop ? 0 : current) : current + 1));
+  }, [playing, frameDue, frameReady, loop, times.length]);
   useEffect(() => {
     if (!loop && playing && timeIndex === times.length - 1) setPlaying(false);
   }, [timeIndex, times.length, loop, playing]);
   useEffect(() => {
-    sourceVisibleRef.current = sourceVisible;
-    sourceOpacityRef.current = sourceOpacity;
-    sourceLayer.current?.setVisible(sourceVisible);
-    sourceLayer.current?.setOpacity(sourceOpacity / 100);
-  }, [sourceVisible, sourceOpacity]);
+    frameBuffer.current?.setStyle(sourceVisible, sourceOpacity / 100);
+  }, [sourceVisible, sourceOpacity, map]);
   useEffect(() => {
     if (!map) return;
-    if (sourceLayer.current) {
-      sourceLayer.current.get("cleanup")?.();
-      map.removeLayer(sourceLayer.current);
-      sourceLayer.current = null;
-    }
-    if (!selectedId) return;
-    let cancelled = false;
-    let effectLayer: TileLayer<any> | null = null;
-    if (useMockApi || !activeVariable || !selectedXcubeDatasetId) return;
-    addDynamicXcubeLayer({
-      map,
-      tileUrl:
-        selectedTileBase || tileStyle
-          ? backofficeAdapter.tileUrl(
-              selectedXcubeDatasetId,
-              activeVariable,
-              times[timeIndex]?.iso,
-              selectedTileBase,
-              tileStyle,
-            )
-          : backofficeAdapter.tileUrl(
-              selectedXcubeDatasetId,
-              activeVariable,
-              times[timeIndex]?.iso,
-            ),
-      bbox: selectedBbox,
-      onError: fail,
-    })
-      .then((layer) => {
-        if (!layer) return;
-        if (cancelled) {
-          layer.get("cleanup")?.();
-          map.removeLayer(layer);
-          return;
-        }
-        effectLayer = layer;
-        sourceLayer.current = layer;
-        layer.setVisible(sourceVisibleRef.current);
-        layer.setOpacity(sourceOpacityRef.current / 100);
-      })
-      .catch(() => {
-        /* Demo may run without XCube Server; OSM remains interactive. */
-      });
+    const buffer = new FrameBuffer(map, {
+      create: (url) => addDynamicXcubeLayer({ map, tileUrl: url, bbox: selectedBboxRef.current, onError: (error) => failRef.current(error) }),
+      onShown: setShownTileUrl,
+    });
+    buffer.setStyle(sourceVisibleRef.current, sourceOpacityRef.current / 100);
+    frameBuffer.current = buffer;
     return () => {
-      cancelled = true;
-      if (effectLayer) {
-        effectLayer.get("cleanup")?.();
-        map.removeLayer(effectLayer);
-        if (sourceLayer.current === effectLayer) sourceLayer.current = null;
-      }
+      buffer.destroy();
+      if (frameBuffer.current === buffer) frameBuffer.current = null;
     };
-  }, [
-    map,
-    selectedId,
-    selectedXcubeDatasetId,
-    selectedBbox,
-    selectedTileBase,
-    tileStyle,
-    activeVariable,
-    times,
-    timeIndex,
-    fail,
-  ]);
+  }, [map]);
+  useEffect(() => {
+    // Same dataset (time, variable or style change): keep the old frame until the new one is drawn.
+    // Another dataset covers another place, so its old frame goes at once.
+    const keepOld = shownDatasetRef.current === selectedXcubeDatasetId;
+    shownDatasetRef.current = selectedXcubeDatasetId;
+    frameBuffer.current?.show(sourceTileUrl, keepOld);
+  }, [map, sourceTileUrl, selectedXcubeDatasetId]);
+  useEffect(() => {
+    // Warm the next frame only while playing, after the current one is drawn.
+    frameBuffer.current?.preload(nextTileUrl && frameReady ? nextTileUrl : null);
+  }, [map, nextTileUrl, frameReady]);
+  const playbackWaiting = playing && frameDue && !frameReady;
 
   const compareTileUrl =
     displayMode !== "single" &&
@@ -1885,6 +1870,11 @@ export default function Viewer({
                     </b>
                   )}
                   {times[timeIndex]?.label ?? "시점 없음"}
+                  {playbackWaiting && (
+                    <span className="vx-current__wait" role="status">
+                      불러오는 중
+                    </span>
+                  )}
                 </strong>
                 {aiCompare ? (
                   <span className="vx-btime vx-btime--ai">
