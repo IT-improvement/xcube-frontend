@@ -654,6 +654,9 @@
 }
 .vx-current strong { grid-area: date; display: inline-flex; align-items: center; gap: 6px; font: 600 15px/1.2 var(--vx-font); white-space: nowrap; }
 .vx-current__count { grid-area: count; color: var(--vx-ink-3); font: 400 12px/1 var(--vx-font); white-space: nowrap; }
+/* FR-VIEW-12: playback is waiting for the frame's tiles; quiet text beside the date, never over the map. */
+.vx-current__wait { display: inline-flex; align-items: center; gap: 5px; color: var(--vx-ink-3); font: 400 12px/1 var(--vx-font); }
+.vx-current__wait::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .vx-dock.is-compare .vx-current { grid-template-columns: auto; grid-template-areas: 'date' 'b'; }
 .vx-dock.is-compare .vx-current__count { display: none; }
 .vx-btime { grid-area: b; position: relative; display: inline-flex; align-items: center; gap: 6px; }

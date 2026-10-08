@@ -17,7 +17,17 @@ const mockAi = require('../../api/aiApi').aiApi as Record<string, jest.Mock>;
 let mockCenter = [126.5, 33.5];
 let mockResolution = 100;
 const mockView = { getProjection: () => ({ getCode: () => 'EPSG:4326' }), getCenter: () => mockCenter, getResolution: () => mockResolution, getZoom: () => 9, fit: jest.fn(), animate: jest.fn(), setCenter: jest.fn(), setResolution: jest.fn(), setZoom: jest.fn() };
-const mockMap = { updateSize: jest.fn(), removeLayer: jest.fn(), getView: jest.fn(() => mockView) };
+function mockEmitter() {
+  const handlers: Record<string, Set<() => void>> = {};
+  return {
+    on: (type: string, handler: () => void) => { (handlers[type] ??= new Set()).add(handler); },
+    un: (type: string, handler: () => void) => { handlers[type]?.delete(handler); },
+    emit: (type: string) => Array.from(handlers[type] ?? []).forEach((handler) => handler()),
+  };
+}
+const mockMapEvents = mockEmitter();
+const mockAlive = new Set<any>();
+const mockMap = { updateSize: jest.fn(), removeLayer: jest.fn(), getView: jest.fn(() => mockView), on: mockMapEvents.on, un: mockMapEvents.un };
 const mockLayer = { set: jest.fn(), get: jest.fn(), setOpacity: jest.fn(), setVisible: jest.fn() };
 const tileUrl = (id: string, variable: string, time?: string) => `http://localhost:8080/tiles/${id}/${variable}/{z}/{y}/{x}${time ? `?time=${time}` : ''}`;
 
@@ -95,12 +105,12 @@ test('M0 FR-VIEW-03: 첫/마지막/이전/다음, 재생, 반복과 속도를 �
   }
   fireEvent.click(screen.getByRole('button', { name: '2x' }));
   fireEvent.click(screen.getByRole('button', { name: '재생' }));
-  await act(async () => { jest.advanceTimersByTime(450); });
+  await act(async () => { jest.advanceTimersByTime(750); });
   expect(slider).toHaveValue('1');
-  await act(async () => { jest.advanceTimersByTime(450); });
+  await act(async () => { jest.advanceTimersByTime(750); });
   expect(slider).toHaveValue('0');
   fireEvent.click(screen.getByRole('checkbox', { name: '반복' }));
-  await act(async () => { jest.advanceTimersByTime(450); });
+  await act(async () => { jest.advanceTimersByTime(750); });
   expect(slider).toHaveValue('1');
   expect(screen.getByRole('button', { name: '재생' })).toBeInTheDocument();
 });
@@ -226,4 +236,108 @@ test('M2: 내 시각화 서버가 준비 중이면 알리고, 준비되면 연�
   expect(instance).toHaveBeenCalledTimes(2);
   delete (mockBackoffice as any).getMyXcubeInstance;
   jest.useRealTimers();
+});
+
+// FR-VIEW-12: frame-gated playback, double-buffered time layers and the prefetched next frame.
+type FakeLayer = { url: string; source: ReturnType<typeof mockEmitter>; getSource: () => any; set: jest.Mock; get: jest.Mock; setOpacity: jest.Mock; setVisible: jest.Mock };
+function useFakeTileLayers() {
+  const made: FakeLayer[] = [];
+  mockAlive.clear();
+  // CRA resets mock implementations before each test.
+  mockMap.removeLayer.mockImplementation((layer: any) => mockAlive.delete(layer));
+  mockAddLayer.mockImplementation(async ({ tileUrl: url }: { tileUrl: string }) => {
+    const source = mockEmitter();
+    const layer: FakeLayer = { url, source, getSource: () => source, set: jest.fn(), get: jest.fn(), setOpacity: jest.fn(), setVisible: jest.fn() };
+    made.push(layer); mockAlive.add(layer);
+    return layer;
+  });
+  const at = (time: string) => made.filter((layer) => layer.url.includes(`time=${time}`));
+  /** Loads one tile of the layer; the frame counts as drawn after the settle time. */
+  const load = async (layer: FakeLayer) => {
+    await act(async () => { layer.source.emit('tileloadstart'); layer.source.emit('tileloadend'); jest.advanceTimersByTime(80); });
+  };
+  return { made, at, load };
+}
+const T1 = '2026-01-01T00:00:00Z';
+const T2 = '2026-02-01T00:00:00Z';
+
+test('FR-VIEW-12: 1x는 시점당 1.5초, 속도별 최소 간격은 3000/1500/750/375ms', async () => {
+  const { playbackInterval } = require('./frameBuffer');
+  expect([0.5, 1, 2, 4].map(playbackInterval)).toEqual([3000, 1500, 750, 375]);
+  jest.useFakeTimers();
+  render(<Viewer />);
+  await selectBaselineDataset();
+  const slider = screen.getByRole('slider', { name: '관측 시점' });
+  fireEvent.click(screen.getByRole('button', { name: '재생' }));
+  await act(async () => { jest.advanceTimersByTime(1400); });
+  expect(slider).toHaveValue('0');
+  await act(async () => { jest.advanceTimersByTime(100); });
+  expect(slider).toHaveValue('1');
+});
+
+test('FR-VIEW-12: 재생은 tile이 다 그려질 때까지 기다리고, 이전 시점은 새 시점이 그려진 뒤에 지운다', async () => {
+  jest.useFakeTimers();
+  const tiles = useFakeTileLayers();
+  render(<Viewer />);
+  await selectBaselineDataset();
+  const slider = screen.getByRole('slider', { name: '관측 시점' });
+  const [first] = tiles.at(T1);
+  // Frame 1 still loading: playback waits beyond the interval and says so.
+  fireEvent.click(screen.getByRole('button', { name: '재생' }));
+  await act(async () => { first.source.emit('tileloadstart'); jest.advanceTimersByTime(2000); });
+  expect(slider).toHaveValue('0');
+  expect(screen.getByText('불러오는 중')).toHaveAttribute('role', 'status');
+  await act(async () => { first.source.emit('tileloadend'); jest.advanceTimersByTime(80); });
+  expect(slider).toHaveValue('1');
+  expect(screen.queryByText('불러오는 중')).not.toBeInTheDocument();
+  // No blank frame: the old layer stays until the new one has loaded (errors count as loaded).
+  const [second] = tiles.at(T2);
+  await act(async () => { second.source.emit('tileloadstart'); jest.advanceTimersByTime(300); });
+  expect(mockAlive.has(first)).toBe(true);
+  await act(async () => { second.source.emit('tileloaderror'); jest.advanceTimersByTime(80); });
+  expect(mockAlive.has(first)).toBe(false);
+  // Drawn before the interval: the next frame is prefetched hidden, then reused when playback advances.
+  const prefetch = tiles.at(T1)[1];
+  expect(prefetch.setOpacity).toHaveBeenLastCalledWith(0);
+  await act(async () => { jest.advanceTimersByTime(1000); });
+  expect(slider).toHaveValue('1');
+  await act(async () => { jest.advanceTimersByTime(200); });
+  expect(slider).toHaveValue('0');
+  expect(tiles.at(T1)).toHaveLength(2);
+  expect(prefetch.setOpacity).toHaveBeenLastCalledWith(1);
+  expect(mockAlive.has(second)).toBe(true);
+});
+
+test('FR-VIEW-12: 빠르게 시점을 넘겨도 layer는 현재와 대기 중 하나씩만 남는다', async () => {
+  jest.useFakeTimers();
+  const tiles = useFakeTileLayers();
+  render(<Viewer />);
+  await selectBaselineDataset();
+  await tiles.load(tiles.at(T1)[0]);
+  for (let step = 0; step < 6; step += 1) {
+    fireEvent.click(screen.getByRole('button', { name: step % 2 ? '이전 시점' : '다음 시점' }));
+    await act(async () => { await Promise.resolve(); });
+    expect(mockAlive.size).toBeLessThanOrEqual(2);
+  }
+  // The last step went back to the shown frame: only it remains.
+  expect(screen.getByRole('slider', { name: '관측 시점' })).toHaveValue('0');
+  expect(Array.from(mockAlive)).toEqual([tiles.at(T1)[0]]);
+  expect(tiles.made.length).toBeGreaterThan(2);
+});
+
+test('FR-VIEW-12: 재생 중에만 다음 시점을 미리 불러오고, 일시정지하면 버린다', async () => {
+  jest.useFakeTimers();
+  const tiles = useFakeTileLayers();
+  render(<Viewer />);
+  await selectBaselineDataset();
+  await tiles.load(tiles.at(T1)[0]);
+  expect(tiles.at(T2)).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: '재생' }));
+  await act(async () => { await Promise.resolve(); });
+  const [prefetch] = tiles.at(T2);
+  expect(mockAlive.has(prefetch)).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: '일시정지' }));
+  await act(async () => { await Promise.resolve(); });
+  expect(mockAlive.has(prefetch)).toBe(false);
+  expect(Array.from(mockAlive)).toEqual([tiles.at(T1)[0]]);
 });
