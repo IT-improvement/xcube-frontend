@@ -50,9 +50,16 @@ export function sarRequest(collectionId: string, sar: SarState): { sarPairing?: 
   };
 }
 
+/** Pairs read from the UR-43 `dates[].s1` when the server sends dates but no `pairs`. */
+function datePairs(data?: GeeEstimate): SarPair[] | null {
+  const dates = Array.isArray(data?.dates) ? data!.dates! : null;
+  if (!dates || !dates.some((item) => item.s1 !== undefined)) return null;
+  return dates.map((item) => ({ s2Date: item.date, s1Date: item.s1?.date ?? null, daysApart: item.s1?.daysApart ?? null, orbitPass: item.s1?.orbitPass ?? null, coverage: item.s1?.coverage ?? null }));
+}
+
 /** Pairing summary of an estimate; `pairs` is null when the server did not send them (older server). */
 export function pairSummary(data?: GeeEstimate): { pairs: SarPair[] | null; paired: number; unpaired: number; noMatch: boolean } {
-  const pairs = Array.isArray(data?.pairs) ? data!.pairs : null;
+  const pairs = Array.isArray(data?.pairs) ? data!.pairs : datePairs(data);
   const paired = data?.pairedCount ?? pairs?.filter((pair) => !!pair.s1Date).length ?? 0;
   const unpaired = data?.unpairedCount ?? pairs?.filter((pair) => !pair.s1Date).length ?? 0;
   const blocked = (data?.blockers ?? []).some((blocker) => (typeof blocker === 'string' ? blocker : blocker.code) === 'NO_S1_MATCH');

@@ -64,13 +64,15 @@ describe('GEE 영역 단계', () => {
   test('기본은 지점 + 크기 탭이고, 탭을 바꿔도 지도 미리보기가 현재 탭의 영역과 맞는다', async () => {
     await toAreaStep();
     expect(screen.getByRole('tab', { name: '지점 + 크기' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText(/20~40 km를 자주 씁니다/)).toBeInTheDocument();
+    expect(screen.getByText(/연구 기본값 30 km\(중심에서 15 km\)/)).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '30 km' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getAllByRole('radio').map((chip) => chip.textContent)).toEqual(expect.arrayContaining(['10 km', '20 km', '30 km', '40 km', '직접 입력']));
     expect(preview()).toHaveTextContent('지도를 눌러 중심을 고르세요.');
     setPoint('127.502', '36.454');
-    expect(preview()).toHaveTextContent('중심 127.5020, 36.4540 · 한 변 20 km');
-    expect(preview()).toHaveTextContent('400 km²');
-    fireEvent.click(screen.getByRole('radio', { name: '5 km' }));
-    expect(preview()).toHaveTextContent('한 변 5 km');
+    expect(preview()).toHaveTextContent('중심 127.5020, 36.4540 · 한 변 30 km');
+    expect(preview()).toHaveTextContent('900 km²');
+    fireEvent.click(screen.getByRole('radio', { name: '10 km' }));
+    expect(preview()).toHaveTextContent('한 변 10 km');
 
     fireEvent.click(screen.getByRole('tab', { name: '사각형' }));
     expect(preview()).toHaveTextContent('지도를 끌어 사각형을 그리세요.');
@@ -81,7 +83,7 @@ describe('GEE 영역 단계', () => {
     expect(preview()).toHaveTextContent('경도 126.5000 ~ 127.0000, 위도 35.0000 ~ 35.5000');
 
     fireEvent.click(screen.getByRole('tab', { name: '지점 + 크기' }));
-    expect(preview()).toHaveTextContent('중심 127.5020, 36.4540 · 한 변 5 km');
+    expect(preview()).toHaveTextContent('중심 127.5020, 36.4540 · 한 변 10 km');
     expect(screen.getByLabelText('중심 경도')).toHaveValue(127.502);
   });
 
@@ -159,7 +161,7 @@ describe('GEE 영역 단계', () => {
     expect(screen.getByRole('button', { name: /다음/ })).toBeDisabled();
     // Changing the area drops the stale estimate and re-enables the button until the new one arrives.
     jest.spyOn(generation, 'estimateGee').mockResolvedValue({ areaKm2: 400, grid: { width: 100, height: 100 }, scenes: 6, estimatedBytes: 1e6, requestTiles: 1, warnings: [], blockers: [] });
-    fireEvent.click(screen.getByRole('radio', { name: '5 km' }));
+    fireEvent.click(screen.getByRole('radio', { name: '10 km' }));
     await waitFor(() => expect(screen.getByRole('button', { name: /다음/ })).toBeEnabled(), { timeout: T });
   });
 
@@ -168,7 +170,7 @@ describe('GEE 영역 단계', () => {
     setPoint('127.5', '36.4');
     const panel = screen.getByRole('region', { name: '예상 크기' });
     await waitFor(() => expect(panel).toHaveTextContent('예상 장면 수'), { timeout: T });
-    expect(panel).toHaveTextContent('400 km²');
+    expect(panel).toHaveTextContent('900 km²');
     expect(panel).toHaveTextContent('px');
     expect(panel).toHaveTextContent(/KB|MB|GB/);
   });
@@ -186,11 +188,11 @@ describe('GEE 영역 단계', () => {
     fireEvent.change(screen.getByLabelText('B8 표시 최솟값'), { target: { value: '0' } });
     fireEvent.change(screen.getByLabelText('B8 표시 최댓값'), { target: { value: '4000' } });
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-    expect(await screen.findByText(/지점 \+ 크기 · 중심 127.5020, 36.4540 · 한 변 20 km/)).toBeInTheDocument();
+    expect(await screen.findByText(/지점 \+ 크기 · 중심 127.5020, 36.4540 · 한 변 30 km/)).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '생성 시작' }));
     await waitFor(() => expect(create).toHaveBeenCalled(), { timeout: T });
     const body = create.mock.calls[0][0] as any;
-    expect(body.area).toEqual({ mode: 'point', point: { lon: 127.502, lat: 36.454, sizeKm: 20 }, clip: 'bbox', fullCoverOnly: true, maskVariable: false });
-    expect(body.bounds).toEqual({ west: pointBbox(127.502, 36.454, 20)[0], south: pointBbox(127.502, 36.454, 20)[1], east: pointBbox(127.502, 36.454, 20)[2], north: pointBbox(127.502, 36.454, 20)[3] });
+    expect(body.area).toEqual({ mode: 'point', point: { lon: 127.502, lat: 36.454, sizeKm: 30 }, clip: 'bbox', fullCoverOnly: true, maskVariable: false });
+    expect(body.bounds).toEqual({ west: pointBbox(127.502, 36.454, 30)[0], south: pointBbox(127.502, 36.454, 30)[1], east: pointBbox(127.502, 36.454, 30)[2], north: pointBbox(127.502, 36.454, 30)[3] });
   });
 });

@@ -75,8 +75,10 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
     expect(sarCheckbox()).toBeChecked();
     expect(screen.getByRole('checkbox', { name: /참조 수체\(JRC\) 함께 저장 — 비교용, 정답 아님/ })).toBeChecked();
     fillPeriodAndPoint();
-    const table = await screen.findByRole('table', { name: '광학·레이더 날짜 짝' }, { timeout: T });
-    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['광학 날짜', '레이더 날짜', '차이(일)', '궤도', '영역 덮음 %']);
+    // The demo server sends `dates`, so the pair columns join the date table (UR-43).
+    const table = await screen.findByRole('table', { name: '날짜 고르기 · 광학·레이더 날짜 짝' }, { timeout: T });
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '날짜', '장면', '구름 %', '영역 덮음 %', '레이더 날짜', '차이(일)']);
+    expect(screen.queryByRole('table', { name: '광학·레이더 날짜 짝' })).toBeNull();
     expect((estimate.mock.calls.at(-1)![0] as any).sarPairing).toEqual({ enabled: true, maxDaysApart: 15, orbitPass: 'ANY', minCoverage: 0.99, dropUnpaired: true });
     expect(estimate.mock.calls.at(-1)![0]).toMatchObject({ scaleMeters: 10, maxCloudPercent: 40 });
 
@@ -101,6 +103,8 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
     expect(body.sarPairing).toEqual({ enabled: true, maxDaysApart: 15, orbitPass: 'ANY', minCoverage: 0.99, dropUnpaired: true });
     expect(body.waterReference).toEqual({ enabled: true, occurrenceThreshold: 50 });
     expect(body.rgbStyle.red.variable).toBe('B4');
+    // Every date stayed checked (one demo date has no S1 pass and is dropped by the server), so no selectedDates.
+    expect(body).not.toHaveProperty('selectedDates');
   });
 
   test('S2를 직접 고르면 체크가 기본으로 켜지고, 다른 컬렉션에서는 숨기고 보내지 않는다', async () => {
@@ -177,7 +181,7 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
     expect(screen.getByRole('button', { name: /다음/ })).toBeDisabled();
     // Older server: no pairs, no blocker → a note, and the wizard goes on.
     estimate.mockResolvedValue({ ...base });
-    fireEvent.click(screen.getByRole('radio', { name: '5 km' }));
+    fireEvent.click(screen.getByRole('radio', { name: '10 km' }));
     expect(await screen.findByText(/서버가 짝 목록을 보내지 않아/, undefined, { timeout: T })).toBeInTheDocument();
     expect(screen.queryByRole('table', { name: '광학·레이더 날짜 짝' })).toBeNull();
     expect(screen.getByRole('button', { name: /다음/ })).toBeEnabled();
