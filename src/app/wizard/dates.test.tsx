@@ -100,10 +100,12 @@ describe('GEE 날짜 고르기', () => {
     const estimate = jest.spyOn(generation, 'estimateGee').mockResolvedValue(ESTIMATE);
     await toAreaStep();
     const table = await dateTable();
-    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '날짜', '장면', '구름 %']);
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '구름 순위', '날짜', '구름 %', '장면']);
     expect(within(table).getAllByRole('checkbox').every((box) => (box as HTMLInputElement).checked)).toBe(true);
     expect(count()).toHaveTextContent('선택 5 / 전체 5개 날짜');
-    expect(within(table).getAllByRole('row')[4]).toHaveTextContent('—'); // no cloud value
+    // Ranked from the least cloud; no cloud value last.
+    expect(within(table).getAllByRole('row').slice(1).map((row) => row.textContent?.slice(1, 11))).toEqual(['2024-08-24', '2024-08-09', '2024-08-04', '2024-08-14', '2024-08-19']);
+    expect(within(table).getAllByRole('row')[5]).toHaveTextContent('—');
     expect(screen.getByTestId('estimate-times')).toHaveTextContent('5개');
     expect(screen.getByTestId('estimate-bytes')).toHaveTextContent('5.0 GB');
     expect(screen.getByTestId('estimate-time')).toHaveTextContent('약 25분');
@@ -116,8 +118,8 @@ describe('GEE 날짜 고르기', () => {
     expect(screen.getByTestId('estimate-bytes')).toHaveTextContent('4.0 GB');
     expect(screen.getByTestId('estimate-time')).toHaveTextContent('약 20분');
 
-    fireEvent.change(screen.getByLabelText('구름 적은 순'), { target: { value: '2' } });
-    fireEvent.click(screen.getByRole('button', { name: '구름 적은 순 2개 고르기' }));
+    // Writing how many dates to make checks the least cloudy ones at once (UR-47).
+    fireEvent.change(screen.getByLabelText('만들 날짜 수'), { target: { value: '2' } });
     expect(count()).toHaveTextContent('선택 2 / 전체 5개 날짜');
     expect(screen.getByRole('checkbox', { name: '2024-08-09 선택' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: '2024-08-24 선택' })).toBeChecked();
@@ -197,7 +199,8 @@ describe('GEE 날짜 고르기', () => {
     jest.spyOn(generation, 'estimateGee').mockResolvedValue({ ...ESTIMATE, dates: withS1 });
     await toAreaStep(/Sentinel-2 L2A/);
     const table = await screen.findByRole('table', { name: '날짜 고르기 · 광학·레이더 날짜 짝' }, { timeout: T });
-    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '날짜', '장면', '구름 %', '레이더 날짜', '차이(일)']);
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '구름 순위', '날짜', '구름 %', '장면', '레이더 날짜', '차이(일)']);
+    fireEvent.click(screen.getByRole('button', { name: '날짜순' }));
     const rows = within(table).getAllByRole('row').slice(1);
     expect(rows[0]).toHaveTextContent('하강');
     expect(rows[2]).toHaveTextContent('주의');
@@ -246,4 +249,40 @@ test('100% 덮는 날짜가 없으면 레이더 없음 대신 그 문구 하나�
 test('날짜 목록을 못 받으면 이유와 함께 막는다 (UR-46)', () => {
   const { blockerText } = require('./areaModel');
   expect(blockerText('DATE_LIST_UNAVAILABLE')).toMatch(/날짜 목록을 받지 못했습니다/);
+});
+
+describe('영역 안 구름으로 고르기 (UR-47)', () => {
+  const DateTable = require('./DateTable').default;
+  const NOISY = [
+    { date: '2025-04-11', sceneCount: 2, cloudPercent: 0.1, noisePercent: 1.1, coverage: 1 },
+    { date: '2025-07-10', sceneCount: 2, cloudPercent: 1.3, noisePercent: 0, coverage: 1 },
+    { date: '2025-11-07', sceneCount: 1, cloudPercent: 13.3, noisePercent: 1.0, coverage: 1 },
+    { date: '2025-05-21', sceneCount: 2, cloudPercent: 98.6, noisePercent: 100, coverage: 1 },
+  ];
+
+  test('영역 안 구름·그림자 %로 순위를 매기고, 개수를 적으면 그만큼 바로 고른다', () => {
+    const onChange = jest.fn();
+    render(<DateTable data={{ ...ESTIMATE, dates: NOISY }} picked={NOISY.map((item) => item.date)} onChange={onChange} />);
+    const table = screen.getByRole('table', { name: '날짜 고르기' });
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '구름 순위', '날짜', '영역 구름·그림자 %', '타일 구름 %', '장면']);
+    // Tile cloud 13.3 % but 1.0 % over the area ranks second.
+    expect(within(table).getAllByRole('row').slice(1).map((row) => row.textContent?.slice(1, 11))).toEqual(['2025-07-10', '2025-11-07', '2025-04-11', '2025-05-21']);
+    fireEvent.change(screen.getByLabelText('만들 날짜 수'), { target: { value: '1' } });
+    expect(onChange).toHaveBeenLastCalledWith(['2025-07-10']);
+    fireEvent.change(screen.getByLabelText('만들 날짜 수'), { target: { value: '3' } });
+    expect(onChange).toHaveBeenLastCalledWith(['2025-04-11', '2025-07-10', '2025-11-07']);
+    fireEvent.change(screen.getByLabelText('만들 날짜 수'), { target: { value: '9' } });
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+});
+
+test('경고는 한국어로, 용량 경고는 고른 날짜 기준으로 다시 판단한다', () => {
+  const { estimateWarnings, warningText } = require('./areaModel');
+  const GB = 1024 ** 3;
+  expect(estimateWarnings(['ESTIMATED_SIZE_EXCEEDS_5_GIB'], { bytes: 0.6 * GB }, false)).toEqual([]);
+  expect(estimateWarnings([], { bytes: 6 * GB }, false)).toEqual(['ESTIMATED_SIZE_EXCEEDS_5_GIB']);
+  expect(estimateWarnings(['ESTIMATED_SIZE_EXCEEDS_5_GIB'], null, false)).toEqual(['ESTIMATED_SIZE_EXCEEDS_5_GIB']);
+  expect(estimateWarnings(['GEE_SCENE_COUNT_UNAVAILABLE'], null, true)).toEqual([]);
+  expect(warningText('ESTIMATED_SIZE_EXCEEDS_5_GIB')).toMatch(/5 GB를 넘습니다/);
+  expect(warningText('SOMETHING_NEW')).toBe('SOMETHING_NEW');
 });

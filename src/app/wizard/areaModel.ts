@@ -122,6 +122,26 @@ const BLOCKER_TEXT: Record<string, string> = {
   INVALID_AREA: '영역이 올바르지 않습니다. 영역을 다시 지정하세요.',
 };
 /** Blockers in plain Korean; unknown codes keep the server's message. */
+/** Estimate warnings in words. Size and the date list are judged again from the picked dates (`estimateWarnings`). */
+const WARNING_TEXT: Record<string, string> = {
+  SIDE_EXCEEDS_100_KM: '영역 한 변이 100 km를 넘습니다. 받는 데 오래 걸릴 수 있습니다.',
+  ESTIMATED_SIZE_EXCEEDS_5_GIB: '예상 용량이 5 GB를 넘습니다. 날짜나 영역을 줄이면 빨라집니다.',
+  MAX_SCENES_LIMIT: '날짜가 많아 앞쪽 날짜까지만 만듭니다(최대 시점 수 제한).',
+  ESTIMATE_USES_MAX_SCENES: '장면 수를 몰라 최대 시점 수로 어림했습니다.',
+  STORAGE_USAGE_UNAVAILABLE: '지금 쓰고 있는 저장 용량을 확인하지 못했습니다.',
+  NOISE_UNAVAILABLE: '영역 안 구름·그림자를 계산하지 못해 장면 전체의 구름 값으로 정렬합니다.',
+  DATE_LIST_TRUNCATED: '날짜가 366개를 넘어 앞쪽 366개만 보여 줍니다.',
+};
+export const warningText = (code: string) => WARNING_TEXT[code] ?? code;
+
+/** Warnings worth showing now: with a date list, size and the scene-count fallbacks follow the picked dates. */
+export function estimateWarnings(warnings: string[], picked: { bytes: number } | null, blocked: boolean): string[] {
+  const shown = warnings.filter((code) => !(picked && (code === 'ESTIMATED_SIZE_EXCEEDS_5_GIB' || code === 'MAX_SCENES_LIMIT'))
+    && !(blocked && (code === 'GEE_SCENE_COUNT_UNAVAILABLE' || code === 'ESTIMATE_USES_MAX_SCENES')));
+  if (picked && picked.bytes > 5 * 1024 ** 3) shown.push('ESTIMATED_SIZE_EXCEEDS_5_GIB');
+  return shown;
+}
+
 export const blockerText = (blocker: EstimateBlocker) => {
   const code = typeof blocker === 'string' ? blocker : blocker.code;
   const message = typeof blocker === 'string' ? '' : blocker.message ?? '';

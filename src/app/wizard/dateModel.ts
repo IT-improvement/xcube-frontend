@@ -4,8 +4,6 @@ import { EstimateDate, GeeEstimate } from '../../api/generationApi';
 
 /** Above this many minutes the estimate suggests picking fewer dates. */
 export const LONG_MINUTES = 10;
-/** Default N of the "구름 적은 순 N개" quick pick. */
-export const DEFAULT_CLEAR_COUNT = 10;
 
 /** The estimate's date list, or null when the server sends none (older backend: no table, wizard works as before). */
 export const estimateDates = (data?: GeeEstimate): EstimateDate[] | null => (Array.isArray(data?.dates) ? data!.dates! : null);
@@ -27,10 +25,17 @@ export function selectedDatesField(selection: DateSelection | null): { selectedD
   return { selectedDates: [...selection.picked].sort() };
 }
 
+/** How cloudy a date is for ranking (UR-47): the share of the area its mask drops (cloud, shadow, snow…),
+ *  else the scene's cloud property, which is for the whole ~110 km tile. No value ranks last. */
+export const cloudRank = (item: EstimateDate) => item.noisePercent ?? item.cloudPercent ?? Infinity;
+
+/** Dates from the least cloudy to the most (ties by date). */
+export const byLeastCloud = (dates: EstimateDate[]) => [...dates].sort((a, b) => cloudRank(a) - cloudRank(b) || a.date.localeCompare(b.date));
+
 /** The `n` dates with the least cloud (no cloud value last, ties by date), in the list's order. */
 export function leastCloudy(dates: EstimateDate[], n: number): string[] {
   const count = Math.max(0, Math.min(Math.floor(n), dates.length));
-  const ranked = [...dates].sort((a, b) => (a.cloudPercent ?? Infinity) - (b.cloudPercent ?? Infinity) || a.date.localeCompare(b.date));
+  const ranked = byLeastCloud(dates);
   const keep = new Set(ranked.slice(0, count).map((item) => item.date));
   return dates.filter((item) => keep.has(item.date)).map((item) => item.date);
 }

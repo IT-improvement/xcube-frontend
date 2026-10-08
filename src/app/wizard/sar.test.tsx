@@ -77,7 +77,7 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
     fillPeriodAndPoint();
     // The demo server sends `dates`, so the pair columns join the date table (UR-43).
     const table = await screen.findByRole('table', { name: '날짜 고르기 · 광학·레이더 날짜 짝' }, { timeout: T });
-    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '날짜', '장면', '구름 %', '레이더 날짜', '차이(일)']);
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '구름 순위', '날짜', '구름 %', '장면', '레이더 날짜', '차이(일)']);
     expect(screen.queryByRole('table', { name: '광학·레이더 날짜 짝' })).toBeNull();
     expect((estimate.mock.calls.at(-1)![0] as any).sarPairing).toEqual({ enabled: true, maxDaysApart: 15, orbitPass: 'ANY', minCoverage: 0.998, dropUnpaired: true });
     expect(estimate.mock.calls.at(-1)![0]).toMatchObject({ scaleMeters: 10, maxCloudPercent: 40 });

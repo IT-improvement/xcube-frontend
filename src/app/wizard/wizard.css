@@ -183,3 +183,5 @@
 .date-pick__table input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--color-primary); }
 .summary-dates summary { cursor: pointer; color: var(--color-text-secondary); font-size: 13px; }
 .summary-dates ul { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 13px; }
+.date-pick__order { display: inline-flex; gap: 2px; margin-left: auto; }
+.date-pick__table tr.is-picked td { background: var(--color-primary-subtle, transparent); }

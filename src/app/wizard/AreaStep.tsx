@@ -9,7 +9,7 @@ import { generation } from '../api';
 import { formatBytes } from '../fusion';
 import { useLoad } from '../useLoad';
 import AreaMap, { AreaSketch } from './AreaMap';
-import { ADMIN_ATTRIBUTION, AREA_TABS, AreaState, AreaTab, bboxText, blockerText, hasPolygonOptions, km2Text, ResolvedArea, SIZE_CHIPS, SIZE_LIMITS } from './areaModel';
+import { ADMIN_ATTRIBUTION, AREA_TABS, AreaState, AreaTab, bboxText, blockerText, estimateWarnings, hasPolygonOptions, km2Text, ResolvedArea, SIZE_CHIPS, SIZE_LIMITS, warningText } from './areaModel';
 import { PairTable } from './SarPairing';
 import DateTable from './DateTable';
 import { estimateDates, isLong, minutesText, selectionTotals } from './dateModel';
@@ -373,6 +373,8 @@ export function EstimatePanel({ estimate, hint, compact, pairing, picked }: { es
   // With a date list the totals follow the checked dates at once; older servers keep the plain estimate.
   const totals = data && dates ? selectionTotals(data, picked ?? dates.map((item) => item.date)) : null;
   const seconds = totals ? totals.seconds : data?.estimatedSeconds ?? null;
+  // Requests scale with the picked dates like bytes and time do.
+  const requests = data ? (totals && totals.total ? Math.ceil((data.requestTiles * totals.count) / totals.total) : data.requestTiles) : 0;
   const blockers = !data ? [] : pairing && dates ? withPairingBlockers(data, true) : data.blockers.filter((blocker) => !pairing || !isNoMatch(blocker));
   return (
     <section className={`area-estimate ${compact ? 'is-compact' : ''}`} aria-label="예상 크기">
@@ -404,8 +406,8 @@ export function EstimatePanel({ estimate, hint, compact, pairing, picked }: { es
             {seconds != null && <><dt>예상 시간</dt><dd className="tabular" data-testid="estimate-time">{minutesText(seconds)}</dd></>}
           </dl>
           {isLong(seconds) && <p className="xc-hint">{dates ? '날짜를 줄이면 빨라집니다.' : '기간이나 영역을 줄이면 빨라집니다.'}</p>}
-          {data.requestTiles > 1 && <p className="xc-hint">서버가 {data.requestTiles}개로 나눠 받습니다.</p>}
-          {data.warnings.map((warning) => <Alert key={warning} tone="warning">{warning}</Alert>)}
+          {requests > 1 && <p className="xc-hint">서버가 {requests.toLocaleString('ko-KR')}개로 나눠 받습니다.</p>}
+          {estimateWarnings(data.warnings, totals, blockers.length > 0).map((warning) => <Alert key={warning} tone="warning">{warningText(warning)}</Alert>)}
           {blockers.map((blocker, index) => <Alert key={index} tone="danger" role="alert">{blockerText(blocker)}</Alert>)}
           {pairing && !dates && <PairTable data={data} keepUnpaired={pairing.keepUnpaired} />}
         </>
