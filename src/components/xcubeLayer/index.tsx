@@ -1,5 +1,6 @@
 import TileLayer from "ol/layer/Tile";
 import XYZ from "ol/source/XYZ";
+import TileState from "ol/TileState";
 import Map from "ol/Map";
 import { session } from "../../api/httpClient";
 import { ApiError } from "../../api/httpClient";
@@ -38,7 +39,13 @@ export default async function addDynamicXcubeLayer({
         fetch(src, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal })
           .then(async (response) => { if (!response.ok) { let body: any = {}; try { body = await response.json(); } catch { /* binary error */ } if (response.status === 401) session.clearIfCurrent(token); throw new ApiError(response.status, body.code ?? `HTTP_${response.status}`, body.message ?? response.statusText, body.traceId); } return response.blob(); })
           .then((blob) => { const objectUrl = URL.createObjectURL(blob); objectUrls.add(objectUrl); const release = () => { URL.revokeObjectURL(objectUrl); objectUrls.delete(objectUrl); }; image.onload = release; image.onerror = release; image.src = objectUrl; })
-          .catch((error) => { if (error?.name !== 'AbortError') onError?.(error instanceof ApiError ? error : new ApiError(0, 'NETWORK_ERROR', 'Tile request failed')); image.removeAttribute('src'); })
+          .catch((error) => {
+            if (error?.name !== 'AbortError') onError?.(error instanceof ApiError ? error : new ApiError(0, 'NETWORK_ERROR', 'Tile request failed'));
+            image.removeAttribute('src');
+            // Without a load or error event the tile stays LOADING and keeps one of the map's
+            // few tile-queue slots forever; enough failed tiles (e.g. a 404 RGB) stop every layer.
+            (tile as any).setState(TileState.ERROR);
+          })
           .finally(() => controllers.delete(controller));
       },
     }),
