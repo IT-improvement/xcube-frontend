@@ -42,9 +42,9 @@ describe('sarModel', () => {
     expect(sarRequest('LANDSAT/LC09/C02/T1_L2', defaultSar())).toEqual({});
     expect(sarRequest(S2, { ...defaultSar(), enabled: false })).toEqual({});
     expect(sarRequest(S2, { ...defaultSar(), maxDaysApart: '31' })).toEqual({});
-    expect(sarRequest(S2, defaultSar())).toEqual({ sarPairing: { enabled: true, maxDaysApart: 15, orbitPass: 'ANY', minCoverage: 0.99, dropUnpaired: true } });
+    expect(sarRequest(S2, defaultSar())).toEqual({ sarPairing: { enabled: true, maxDaysApart: 15, orbitPass: 'ANY', minCoverage: 0.998, dropUnpaired: true } });
     expect(sarRequest(S2, { ...defaultSar(true), orbitPass: 'DESCENDING', keepUnpaired: true, maxDaysApart: '7' })).toEqual({
-      sarPairing: { enabled: true, maxDaysApart: 7, orbitPass: 'DESCENDING', minCoverage: 0.99, dropUnpaired: false },
+      sarPairing: { enabled: true, maxDaysApart: 7, orbitPass: 'DESCENDING', minCoverage: 0.998, dropUnpaired: false },
       waterReference: { enabled: true, occurrenceThreshold: 50 },
     });
   });
@@ -77,9 +77,9 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
     fillPeriodAndPoint();
     // The demo server sends `dates`, so the pair columns join the date table (UR-43).
     const table = await screen.findByRole('table', { name: '날짜 고르기 · 광학·레이더 날짜 짝' }, { timeout: T });
-    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '날짜', '장면', '구름 %', '영역 덮음 %', '레이더 날짜', '차이(일)']);
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '날짜', '장면', '구름 %', '레이더 날짜', '차이(일)']);
     expect(screen.queryByRole('table', { name: '광학·레이더 날짜 짝' })).toBeNull();
-    expect((estimate.mock.calls.at(-1)![0] as any).sarPairing).toEqual({ enabled: true, maxDaysApart: 15, orbitPass: 'ANY', minCoverage: 0.99, dropUnpaired: true });
+    expect((estimate.mock.calls.at(-1)![0] as any).sarPairing).toEqual({ enabled: true, maxDaysApart: 15, orbitPass: 'ANY', minCoverage: 0.998, dropUnpaired: true });
     expect(estimate.mock.calls.at(-1)![0]).toMatchObject({ scaleMeters: 10, maxCloudPercent: 40 });
 
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
@@ -100,7 +100,7 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
     expect(body.collectionId).toBe(S2);
     expect(body.bands).toEqual(['B2', 'B3', 'B4', 'B8', 'B11']);
     expect(body.variables.map((item: any) => [item.source, item.name])).toEqual([['B2', 'blue'], ['B3', 'green'], ['B4', 'red'], ['B8', 'nir'], ['B11', 'swir']]);
-    expect(body.sarPairing).toEqual({ enabled: true, maxDaysApart: 15, orbitPass: 'ANY', minCoverage: 0.99, dropUnpaired: true });
+    expect(body.sarPairing).toEqual({ enabled: true, maxDaysApart: 15, orbitPass: 'ANY', minCoverage: 0.998, dropUnpaired: true });
     expect(body.waterReference).toEqual({ enabled: true, occurrenceThreshold: 50 });
     expect(body.rgbStyle.red.variable).toBe('B4');
     // Every date stayed checked (one demo date has no S1 pass and is dropped by the server), so no selectedDates.
@@ -120,7 +120,7 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
     fireEvent.click(screen.getByRole('button', { name: '레이더 없이 남기기' }));
     fillPeriodAndPoint();
     await waitFor(() => expect(estimate).toHaveBeenCalled(), { timeout: T });
-    expect((estimate.mock.calls.at(-1)![0] as any).sarPairing).toEqual({ enabled: true, maxDaysApart: 10, orbitPass: 'DESCENDING', minCoverage: 0.99, dropUnpaired: false });
+    expect((estimate.mock.calls.at(-1)![0] as any).sarPairing).toEqual({ enabled: true, maxDaysApart: 10, orbitPass: 'DESCENDING', minCoverage: 0.998, dropUnpaired: false });
     expect((estimate.mock.calls.at(-1)![0] as any).waterReference).toBeUndefined();
 
     fireEvent.click(screen.getByRole('radio', { name: /Landsat 9/ }));

@@ -179,7 +179,6 @@ describe('GEE 영역 단계', () => {
     const create = jest.spyOn(generation, 'createGeeJob');
     await toAreaStep();
     setPoint('127.502', '36.454');
-    fireEvent.click(screen.getByRole('checkbox', { name: /영역을 완전히 덮는 장면만/ }));
     await waitFor(() => expect(screen.getByRole('region', { name: '예상 크기' })).toHaveTextContent('예상 장면 수'), { timeout: T });
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
     fireEvent.click(await screen.findByRole('button', { name: /다음/ }));
@@ -192,7 +191,7 @@ describe('GEE 영역 단계', () => {
     fireEvent.click(await screen.findByRole('button', { name: '생성 시작' }));
     await waitFor(() => expect(create).toHaveBeenCalled(), { timeout: T });
     const body = create.mock.calls[0][0] as any;
-    expect(body.area).toEqual({ mode: 'point', point: { lon: 127.502, lat: 36.454, sizeKm: 30 }, clip: 'bbox', fullCoverOnly: true, maskVariable: false });
+    expect(body.area).toEqual({ mode: 'point', point: { lon: 127.502, lat: 36.454, sizeKm: 30 }, clip: 'bbox', fullCoverOnly: false, maskVariable: false });
     expect(body.bounds).toEqual({ west: pointBbox(127.502, 36.454, 30)[0], south: pointBbox(127.502, 36.454, 30)[1], east: pointBbox(127.502, 36.454, 30)[2], north: pointBbox(127.502, 36.454, 30)[3] });
   });
 });

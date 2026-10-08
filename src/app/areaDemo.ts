@@ -1,6 +1,7 @@
 // Demo mode (REACT_APP_USE_MOCK_API=true) for the GEE area step: admin boundaries, saved areas, estimate.
 import { AdminArea, AdminLevel, AdminSearch, AreaChoice, AreaGeometry, AreaPick, AreaUpload, Bbox, EstimateDate, GeeEstimate, GeeJobBody, SavedArea } from '../api/generationApi';
 import { ADMIN_ATTRIBUTION, bboxAreaKm2, KM_PER_DEGREE } from './wizard/areaModel';
+import { FULL_COVER } from './wizard/sarModel';
 
 const pause = (ms = 200) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -84,7 +85,9 @@ export const areaDemo = {
     const days = Math.max(0, Math.round((Date.parse(body.endDate) - Date.parse(body.startDate)) / 86_400_000));
     const bands = Math.max(body.bands.length, 1);
     const pairing = !!body.sarPairing?.enabled;
-    const dates = demoDates(body, Math.min(366, Math.floor(days / 5) + 1));
+    const all = demoDates(body, Math.min(366, Math.floor(days / 5) + 1));
+    const dates = all.filter((item) => item.coverage >= FULL_COVER);
+    const excludedDates = all.filter((item) => item.coverage < FULL_COVER).map((item) => ({ date: item.date, coverage: item.coverage }));
     const scenes = dates.reduce((sum, item) => sum + item.sceneCount, 0);
     // S1 VV·VH ride along with each paired date (stored as float32).
     const bytesPerDate = width * height * (bands * 2 + (pairing ? 2 * 4 : 0));
@@ -96,8 +99,8 @@ export const areaDemo = {
     const warnings: string[] = [];
     if (Math.max(east - west, north - south) * KM_PER_DEGREE > 100) warnings.push('영역 한 변이 100 km를 넘어 시간이 오래 걸릴 수 있습니다.');
     if (estimatedBytes > 5 * 1024 ** 3) warnings.push('예상 용량이 5 GB를 넘습니다.');
-    const blockers = estimatedBytes > 50 * 1024 ** 3 ? ['QUOTA_EXCEEDED'] : [];
-    const base = { bounds: body.bounds, areaKm2, grid: { width, height }, scenes, estimatedBytes, requestTiles, warnings, blockers, dates, bytesPerDate, estimatedSeconds };
+    const blockers = [...(estimatedBytes > 50 * 1024 ** 3 ? ['QUOTA_EXCEEDED'] : []), ...(dates.length ? [] : ['NO_FULL_COVER_DATE'])];
+    const base = { bounds: body.bounds, areaKm2, grid: { width, height }, scenes, estimatedBytes, requestTiles, warnings, blockers, dates, excludedDates, bytesPerDate, estimatedSeconds };
     return pairing ? { ...base, ...demoPairs(dates) } : base;
   },
 };
