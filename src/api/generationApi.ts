@@ -57,6 +57,8 @@ export type SarPair = { s2Date: string; s1Date: string | null; daysApart?: numbe
 /** One UTC date of the estimate (Backend guide "GEE 날짜 고르기", UR-43): scenes of that date are merged into one time. `s1` only with pairing (null = no pass). */
 export type EstimateDate = {
   date: string; time?: string; sceneCount: number; cloudPercent: number | null; coverage: number;
+  /** Share of the area the mask drops on that date (cloud, shadow, snow…), percent; null/absent when unknown (UR-47). */
+  noisePercent?: number | null;
   s1?: { date: string; daysApart: number; orbitPass?: string | null; coverage?: number | null } | null;
 };
 export type GeeEstimate = { excludedDates?: { date: string; coverage: number }[];
