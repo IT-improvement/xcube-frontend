@@ -190,12 +190,14 @@ test('주소로 받은 데이터셋을 목록을 불러온 뒤 한 번 선택한
   expect(screen.getByRole('combobox', { name: '데이터 또는 Zarr 선택' })).toHaveTextContent('Landsat-8');
 });
 
-test('데이터 고르기 안내는 5초 뒤 사라진다', async () => {
+test('데이터 고르기 안내는 3초 뒤 사라진다', async () => {
   jest.useFakeTimers();
   try {
     render(<Viewer />);
     expect(await screen.findByText('지도에 띄울 위성 데이터를 고르세요.')).toBeInTheDocument();
-    act(() => { jest.advanceTimersByTime(5100); });
+    act(() => { jest.advanceTimersByTime(2900); });
+    expect(screen.getByText('지도에 띄울 위성 데이터를 고르세요.')).toBeInTheDocument();
+    act(() => { jest.advanceTimersByTime(200); });
     expect(screen.queryByText('지도에 띄울 위성 데이터를 고르세요.')).not.toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: '데이터 또는 Zarr 선택' })).toBeInTheDocument();
   } finally {

@@ -341,7 +341,7 @@ export default function Viewer({
   const pickHintCandidate = !datasetId && !loading && !apiError && datasets.length > 0 && !tourOpen;
   useEffect(() => {
     if (!pickHintCandidate) return;
-    const timer = window.setTimeout(() => setPickHintHidden(true), 5000);
+    const timer = window.setTimeout(() => setPickHintHidden(true), 3000);
     return () => window.clearTimeout(timer);
   }, [pickHintCandidate]);
   useEffect(() => {
