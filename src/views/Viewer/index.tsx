@@ -278,8 +278,7 @@ export default function Viewer({
     },
     [],
   );
-  const failRef = useRef(fail);
-  failRef.current = fail;
+  const tileFailRef = useRef((cause: unknown) => setViewerNotice(`지도 이미지를 받지 못했습니다. ${userMessage(cause)}`));
   const loadProjects = useCallback(() => {
     setLoading(true);
     setApiError("");
@@ -633,6 +632,9 @@ export default function Viewer({
     [selectedId, activeVariable, selectedXcubeDatasetId, selectedTileBase, tileStyle, times],
   );
   const sourceTileUrl = useMemo(() => sourceTileUrlAt(timeIndex), [sourceTileUrlAt, timeIndex]);
+  // A tile failure notice belongs to the band/dataset it came from; a different layer starts clean.
+  const tileLayerKey = `${selectedXcubeDatasetId}|${activeVariable}`;
+  useEffect(() => setViewerNotice((notice) => (notice.startsWith("지도 이미지를 받지 못했습니다") ? "" : notice)), [tileLayerKey]);
   const nextIndex = times.length < 2 ? -1 : timeIndex < times.length - 1 ? timeIndex + 1 : loop ? 0 : -1;
   const nextTileUrl = useMemo(
     () => (playing && nextIndex >= 0 ? sourceTileUrlAt(nextIndex) : null),
@@ -661,7 +663,9 @@ export default function Viewer({
   useEffect(() => {
     if (!map) return;
     const buffer = new FrameBuffer(map, {
-      create: (url) => addDynamicXcubeLayer({ map, tileUrl: url, bbox: selectedBboxRef.current, onError: (error) => failRef.current(error) }),
+      // A failed tile (e.g. one band or RGB this server cannot draw) is a passing notice, not a Viewer error:
+      // the Viewer stays usable for other bands and datasets.
+      create: (url) => addDynamicXcubeLayer({ map, tileUrl: url, bbox: selectedBboxRef.current, onError: (error) => tileFailRef.current(error) }),
       onShown: setShownTileUrl,
     });
     buffer.setStyle(sourceVisibleRef.current, sourceOpacityRef.current / 100);
