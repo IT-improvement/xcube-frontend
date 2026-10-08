@@ -128,6 +128,10 @@ function ownsKeys(target: EventTarget | null, key: string) {
   return !!target.closest(key === " " ? `${fields}, button, a, summary` : fields);
 }
 
+/** How often and how long the Viewer asks whether a new AI result is on the map yet (pod restart, FR-AI). */
+const RESULT_PUBLISH_POLL_MS = 3000;
+const RESULT_PUBLISH_WAIT_MS = 4 * 60 * 1000;
+
 export default function Viewer({
   user,
   onLogout = noop,
@@ -473,18 +477,34 @@ export default function Viewer({
   }, [selectedResultKey, selectedResultJob]);
   // The result dataset's own xcube id and server (owner pod) for its tiles, as for the main layer.
   const resultCubeId = selectedResult?.datacubeId;
+  // A finished AI result is registered, then the owner's xcube pod restarts to serve it (10–60 s measured).
+  // Until the catalogue says AVAILABLE no tile is requested; the legend says it is being put on the map.
   useEffect(() => {
     setResultCube(null);
     if (!resultCubeId || useMockApi) return;
     let cancelled = false;
-    backofficeAdapter
-      .getDatasetDetail(resultCubeId)
-      .then((detail) => !cancelled && setResultCube(detail))
-      .catch(() => undefined);
+    let timer: number | undefined;
+    const started = Date.now();
+    const load = () =>
+      backofficeAdapter
+        .getDatasetDetail(resultCubeId)
+        .then((detail) => {
+          if (cancelled) return;
+          setResultCube(detail);
+          if (detail.availability && detail.availability !== "AVAILABLE" && Date.now() - started < RESULT_PUBLISH_WAIT_MS)
+            timer = window.setTimeout(load, RESULT_PUBLISH_POLL_MS);
+        })
+        .catch(() => undefined);
+    load();
     return () => {
       cancelled = true;
+      if (timer) window.clearTimeout(timer);
     };
   }, [resultCubeId]);
+  // Shown as "지도에 올리는 중" once the catalogue says not yet; tiles also wait while the detail loads, so a new
+  // result is never asked from a server that does not have it (the main 8080 before the owner's pod is known).
+  const resultPublishing = !useMockApi && !!resultCube && !!resultCube.availability && resultCube.availability !== "AVAILABLE";
+  const resultTilesWait = resultPublishing || (!useMockApi && !!resultCubeId && !resultCube);
   // Follow a run until it ends; a finished run becomes the shown result.
   useEffect(() => {
     if (!aiRun || !isRunning(aiRun)) return;
@@ -710,7 +730,7 @@ export default function Viewer({
   );
   const resultTime = selectedResult ? matchTime(resultIsos, times[timeIndex]?.iso) : null;
   const resultTileUrl =
-    !useMockApi && resultXcubeId && resultTime
+    !useMockApi && !resultTilesWait && resultXcubeId && resultTime
       ? backofficeAdapter.tileUrl(resultXcubeId, "water_mask", resultTime, resultCube?.tileBaseUrl, AI_MASK_STYLE)
       : null;
   const sourceTileUrlA =
@@ -1427,6 +1447,7 @@ export default function Viewer({
               entry={selectedResult}
               timeLabel={times[timeIndex]?.label}
               covered={!!resultTime}
+              publishing={resultPublishing}
             />
           )}
           {compareActive && (

@@ -371,14 +371,15 @@ export function AiResultList({
 }
 
 /** Teal hatch swatch + words: the result is never told by colour alone. */
-export function AiLegend({ entry, timeLabel, covered, models }: { entry: ResultEntry; timeLabel?: string; covered: boolean; models?: AiModel[] }) {
+export function AiLegend({ entry, timeLabel, covered, models, publishing }: { entry: ResultEntry; timeLabel?: string; covered: boolean; models?: AiModel[]; publishing?: boolean }) {
   return (
     <div className="vx-legend" role="group" aria-label="AI 결과 범례">
       <span className="vx-legend__row"><i className="vx-hatch" aria-hidden="true" /><strong>물로 판정 · AI 결과</strong></span>
       <small className="tabular">
         {modelLabel(entry.modelId, models)}{entry.threshold != null ? ` · 임계값 ${thresholdText(entry.threshold)}` : ""}{timeLabel ? ` · ${timeLabel}` : ""}
       </small>
-      {!covered && <small>이 시점은 AI 결과 기간 밖이라 표시하지 않습니다.</small>}
+      {publishing && <small className="vx-legend__wait" role="status">지도에 올리는 중 · 보통 1분 이내. 다 되면 바로 보입니다.</small>}
+      {!publishing && !covered && <small>이 시점은 AI 결과 기간 밖이라 표시하지 않습니다.</small>}
     </div>
   );
 }
