@@ -12,6 +12,7 @@ import { BBoxMap } from '../pages/DatasetDetailPage';
 import AreaStep, { EstimatePanel } from './AreaStep';
 import { AreaState, bboxBounds, blockerText, emptyArea, resolveArea, ResolvedArea } from './areaModel';
 import { useGeeEstimate } from './useGeeEstimate';
+import { activeSelection, DateSelection, estimateDates, selectedDatesField, selectionProblem } from './dateModel';
 import { useLoad } from '../useLoad';
 import VariableStyleEditor, { autoRange, defaultChoice, toVariableSpecs, validateChoices, VariableChoice } from './VariableStyleEditor';
 import { FixedVariables, SarOptions } from './SarPairing';
@@ -72,6 +73,7 @@ export default function AddDataPage() {
   const [area, setArea] = useState<AreaState>(emptyArea);
   const [sar, setSar] = useState<SarState>(() => defaultSar());
   const [preset, setPreset] = useState(false);
+  const [dateSel, setDateSel] = useState<DateSelection | null>(null);
   const [storageUri, setStorageUri] = useState('');
   const [name, setName] = useState('');
   const [choices, setChoices] = useState<VariableChoice[]>([]);
@@ -127,6 +129,15 @@ export default function AddDataPage() {
     : null;
   const estimate = useGeeEstimate(estimateBody);
   const blockers = method === 'gee' ? withPairingBlockers(estimate.data, pairing) : [];
+  // Date picking (UR-43): the picks belong to one area/period; changing either (a new date list) starts again from all dates.
+  // Bands and what to do with unpaired dates do not change the list, so changing them keeps the picks.
+  const { dropUnpaired, ...pairScope } = sarFields.sarPairing ?? { dropUnpaired: true };
+  const dateScope = JSON.stringify([collectionId, gee.startDate, gee.endDate, gee.maxCloudPercent, resolved.request ?? null, pairScope]);
+  useEffect(() => { setDateSel(null); }, [dateScope]);
+  const estimateDateList = method === 'gee' ? estimateDates(estimate.data) : null;
+  const dateSelection = method === 'gee' ? activeSelection(dateSel, dateScope, estimateDateList) : null;
+  const dateProblem = selectionProblem(dateSelection, estimateDateList, pairing ? { keepUnpaired: sar.keepUnpaired } : null);
+  const pickDates = (picked: string[]) => { if (estimateDateList) setDateSel({ scope: dateScope, all: estimateDateList.map((item) => item.date), picked }); };
   const estimateHint = !collectionId ? '컬렉션을 고르세요.' : !datesOk ? '기간을 입력하세요.' : resolved.error;
   const noun = method === 'shape' ? '속성' : 'band';
   const continuous = choices.filter((choice) => choice.kind === 'continuous');
@@ -194,6 +205,7 @@ export default function AddDataPage() {
         if (resolved.error) return resolved.error;
         if (pairing && sarError(sar)) return sarError(sar);
         if (blockers.length) return blockerText(blockers[0]);
+        if (dateProblem) return dateProblem;
         return '';
       }
       if (method === 'zarr') return storageUri.trim() ? '' : 'Zarr 경로를 입력하세요.';
@@ -239,6 +251,7 @@ export default function AddDataPage() {
           rgbStyle,
           ...(pairing ? { variables: specs } : {}),
           ...sarFields,
+          ...selectedDatesField(dateSelection),
         }));
       } else if (method === 'zarr') {
         const dataset = await appApi.registerDataset({
@@ -369,7 +382,7 @@ export default function AddDataPage() {
                 <TextField label="최대 구름량 (%)" type="number" min={0} max={100} value={gee.maxCloudPercent} onChange={(event) => setGee({ ...gee, maxCloudPercent: event.target.value })} />
                 <TextField label="픽셀 크기 (m)" type="number" min={10} max={10000} value={gee.scaleMeters} onChange={(event) => setGee({ ...gee, scaleMeters: event.target.value })} />
               </div>
-              <AreaStep area={area} onChange={setArea} resolved={resolved} estimate={estimate} estimateHint={estimateHint} showErrors={showErrors} pairing={pairing ? { keepUnpaired: sar.keepUnpaired } : undefined} />
+              <AreaStep area={area} onChange={setArea} resolved={resolved} estimate={estimate} estimateHint={estimateHint} showErrors={showErrors} pairing={pairing ? { keepUnpaired: sar.keepUnpaired } : undefined} dates={dateSelection ? { picked: dateSelection.picked, onChange: pickDates } : undefined} />
             </div>
           )}
 
@@ -457,6 +470,20 @@ export default function AddDataPage() {
                 <dt>방식</dt><dd>{METHODS.find((item) => item.id === method)?.title}{method === 'geotiff' ? ` · ${rasterKind === 'cas500' ? 'CAS500' : '일반 GeoTIFF'}` : ''}</dd>
                 <dt>원본</dt><dd>{method === 'gee' ? `${collection?.title || collection?.name || collectionId} · ${gee.startDate} ~ ${gee.endDate}` : method === 'zarr' ? storageUri : inspection?.fileName}</dd>
                 {pairing && <><dt>레이더 짝</dt><dd>{sarSummary(sar)}</dd></>}
+                {method === 'gee' && dateSelection && (
+                  <>
+                    <dt>날짜</dt>
+                    <dd>
+                      <span className="tabular">선택 {dateSelection.picked.length} / 전체 {dateSelection.all.length}개 날짜</span>
+                      {dateSelection.picked.length > 0 && (
+                        <details className="summary-dates">
+                          <summary>고른 날짜 보기</summary>
+                          <ul aria-label="고른 날짜">{[...dateSelection.picked].sort().map((date) => <li key={date} className="tabular">{date}</li>)}</ul>
+                        </details>
+                      )}
+                    </dd>
+                  </>
+                )}
                 {method === 'gee' && <><dt>영역</dt><dd>{resolved.modeLabel} · {resolved.label}<br /><span className="xc-hint">{resolved.clipLabel}{resolved.request?.maskVariable ? ' · 경계선 표시 변수 저장' : ''}{resolved.request?.fullCoverOnly ? ' · 영역을 완전히 덮는 장면만' : ''}</span></dd></>}
                 <dt>이름</dt><dd>{name}</dd>
                 <dt>프로젝트</dt><dd>{editableProjects.find((item) => item.id === projectId)?.name ?? '프로젝트 없음'}</dd>
@@ -481,7 +508,8 @@ export default function AddDataPage() {
                 {obsDate && <><dt>관측 날짜</dt><dd>{obsDate}</dd></>}
                 {nodata !== '' && <><dt>nodata</dt><dd>{nodata}</dd></>}
               </dl>
-              {method === 'gee' && <EstimatePanel estimate={estimate} compact pairing={pairing ? { keepUnpaired: sar.keepUnpaired } : undefined} />}
+              {method === 'gee' && <EstimatePanel estimate={estimate} compact pairing={pairing ? { keepUnpaired: sar.keepUnpaired } : undefined} picked={dateSelection?.picked} />}
+              {method === 'gee' && dateProblem && <Alert tone="warning" role="alert">{dateProblem}</Alert>}
               {submitError && <Alert tone="danger">{submitError}</Alert>}
             </div>
           )}
@@ -492,9 +520,9 @@ export default function AddDataPage() {
           <Button variant="secondary" onClick={back} disabled={step === 0 || submitting}><ArrowLeft size={16} aria-hidden />이전</Button>
           <span className="xc-hint">{step + 1} / {STEPS.length}</span>
           {step < STEPS.length - 1 ? (
-            <Button onClick={next} disabled={inspecting || (step === 1 && blockers.length > 0)}>다음<ArrowRight size={16} aria-hidden /></Button>
+            <Button onClick={next} disabled={inspecting || (step === 1 && (blockers.length > 0 || !!dateProblem))}>다음<ArrowRight size={16} aria-hidden /></Button>
           ) : (
-            <Button onClick={submit} disabled={submitting || blockers.length > 0}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />요청 중…</> : method === 'zarr' ? '등록' : '생성 시작'}</Button>
+            <Button onClick={submit} disabled={submitting || blockers.length > 0 || !!dateProblem}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />요청 중…</> : method === 'zarr' ? '등록' : '생성 시작'}</Button>
           )}
         </div>
       </Card>

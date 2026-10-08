@@ -54,8 +54,20 @@ export type SarPairing = { enabled: boolean; maxDaysApart: number; orbitPass: Or
 export type WaterReference = { enabled: boolean; occurrenceThreshold: number };
 /** One S2 time of the estimate and the S1 pass picked for it (`s1Date` null = no pass covers the area within `maxDaysApart`). */
 export type SarPair = { s2Date: string; s1Date: string | null; daysApart?: number | null; orbitPass?: string | null; coverage?: number | null };
-export type GeeEstimate = { bounds?: { west: number; south: number; east: number; north: number }; areaKm2: number; grid: { width: number; height: number }; scenes: number | null; estimatedBytes: number; requestTiles: number; warnings: string[]; blockers: EstimateBlocker[]; pairs?: SarPair[]; pairedCount?: number; unpairedCount?: number };
-export type GeeJobBody = { name: string; collectionId: string; bands: string[]; startDate: string; endDate: string; maxCloudPercent: number; bounds: { west: number; south: number; east: number; north: number }; area?: AreaRequest; scaleMeters: number; bandStyles: BandStyle[]; rgbStyle?: RgbStyle; variables?: VariableSpec[]; sarPairing?: SarPairing; waterReference?: WaterReference };
+/** One UTC date of the estimate (Backend guide "GEE 날짜 고르기", UR-43): scenes of that date are merged into one time. `s1` only with pairing (null = no pass). */
+export type EstimateDate = {
+  date: string; time?: string; sceneCount: number; cloudPercent: number | null; coverage: number;
+  s1?: { date: string; daysApart: number; orbitPass?: string | null; coverage?: number | null } | null;
+};
+export type GeeEstimate = {
+  bounds?: { west: number; south: number; east: number; north: number }; areaKm2: number; grid: { width: number; height: number }; scenes: number | null; estimatedBytes: number; requestTiles: number; warnings: string[]; blockers: EstimateBlocker[];
+  pairs?: SarPair[]; pairedCount?: number; unpairedCount?: number;
+  /** Every date in the period (older servers send none). */
+  dates?: EstimateDate[]; bytesPerDate?: number; estimatedSeconds?: number;
+};
+export type GeeJobBody = { name: string; collectionId: string; bands: string[]; startDate: string; endDate: string; maxCloudPercent: number; bounds: { west: number; south: number; east: number; north: number }; area?: AreaRequest; scaleMeters: number; bandStyles: BandStyle[]; rgbStyle?: RgbStyle; variables?: VariableSpec[]; sarPairing?: SarPairing; waterReference?: WaterReference;
+  /** Only the picked dates (`YYYY-MM-DD`, sorted); omitted = every date, as before. */
+  selectedDates?: string[] };
 
 async function multipart<T>(path: string, data: FormData, fallback: string, accept: (status: number, body: any) => T | undefined): Promise<T> {
   const token = session.getToken();

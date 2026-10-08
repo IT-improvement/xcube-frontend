@@ -1,5 +1,5 @@
 // Demo mode (REACT_APP_USE_MOCK_API=true) for the GEE area step: admin boundaries, saved areas, estimate.
-import { AdminArea, AdminLevel, AdminSearch, AreaChoice, AreaGeometry, AreaPick, AreaUpload, Bbox, GeeEstimate, GeeJobBody, SavedArea } from '../api/generationApi';
+import { AdminArea, AdminLevel, AdminSearch, AreaChoice, AreaGeometry, AreaPick, AreaUpload, Bbox, EstimateDate, GeeEstimate, GeeJobBody, SavedArea } from '../api/generationApi';
 import { ADMIN_ATTRIBUTION, bboxAreaKm2, KM_PER_DEGREE } from './wizard/areaModel';
 
 const pause = (ms = 200) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -81,31 +81,50 @@ export const areaDemo = {
     const scale = Math.max(body.scaleMeters, 1);
     const width = Math.max(1, Math.round(((east - west) * KM_PER_DEGREE * Math.cos((((south + north) / 2) * Math.PI) / 180) * 1000) / scale));
     const height = Math.max(1, Math.round(((north - south) * KM_PER_DEGREE * 1000) / scale));
-    const scenes = Math.max(1, Math.round((Date.parse(body.endDate) - Date.parse(body.startDate)) / 86_400_000 / 5));
+    const days = Math.max(0, Math.round((Date.parse(body.endDate) - Date.parse(body.startDate)) / 86_400_000));
     const bands = Math.max(body.bands.length, 1);
-    const estimatedBytes = width * height * scenes * bands * 2;
+    const pairing = !!body.sarPairing?.enabled;
+    const dates = demoDates(body, Math.min(366, Math.floor(days / 5) + 1));
+    const scenes = dates.reduce((sum, item) => sum + item.sceneCount, 0);
+    // S1 VV·VH ride along with each paired date (stored as float32).
+    const bytesPerDate = width * height * (bands * 2 + (pairing ? 2 * 4 : 0));
+    const estimatedBytes = bytesPerDate * dates.length;
     const requestTiles = Math.max(1, Math.ceil((width * height * bands * 2) / (32 * 1024 * 1024)));
+    // About 3.4 MB/s per request, 6 at a time, plus 2 s of metadata per date (Backend guide, UR-43).
+    const perDate = 2 + Math.ceil((width * height * (bands + (pairing ? 2 : 0)) * 3) / (3.4e6 * 6));
+    const estimatedSeconds = perDate * dates.length;
     const warnings: string[] = [];
     if (Math.max(east - west, north - south) * KM_PER_DEGREE > 100) warnings.push('영역 한 변이 100 km를 넘어 시간이 오래 걸릴 수 있습니다.');
     if (estimatedBytes > 5 * 1024 ** 3) warnings.push('예상 용량이 5 GB를 넘습니다.');
     const blockers = estimatedBytes > 50 * 1024 ** 3 ? ['QUOTA_EXCEEDED'] : [];
-    const base = { bounds: body.bounds, areaKm2, grid: { width, height }, scenes, estimatedBytes, requestTiles, warnings, blockers };
-    return body.sarPairing?.enabled ? { ...base, ...demoPairs(body, scenes) } : base;
+    const base = { bounds: body.bounds, areaKm2, grid: { width, height }, scenes, estimatedBytes, requestTiles, warnings, blockers, dates, bytesPerDate, estimatedSeconds };
+    return pairing ? { ...base, ...demoPairs(dates) } : base;
   },
 };
 
-/** Demo S1 pairs: every S2 date gets the S1 pass 0.6~12 days away when it is within maxDaysApart (every fourth date has none). */
-function demoPairs(body: GeeJobBody, scenes: number): Pick<GeeEstimate, 'pairs' | 'pairedCount' | 'unpairedCount'> {
-  const limit = body.sarPairing!.maxDaysApart;
+/** Demo dates every 5 days: mostly clear, one cloudy date, one that misses part of the area; with pairing every fourth date has no S1 pass. */
+function demoDates(body: GeeJobBody, count: number): EstimateDate[] {
   const start = Date.parse(body.startDate);
-  const pairs = Array.from({ length: Math.min(scenes, 12) }, (_, index) => {
-    const s2 = new Date(start + index * 5 * 86_400_000);
-    const gap = [0.6, 2.4, 9.5, 13][index % 4];
+  const limit = body.sarPairing?.enabled ? body.sarPairing.maxDaysApart : null;
+  const cloudLimit = Number.isFinite(body.maxCloudPercent) ? body.maxCloudPercent : 100;
+  return Array.from({ length: count }, (_, index) => {
+    const day = new Date(start + index * 5 * 86_400_000);
+    const date = day.toISOString().slice(0, 10);
+    const cloud = [3.1, 12.4, 38.6, 0.8, 22.5][index % 5];
+    const row: EstimateDate = {
+      date, time: `${date}T02:27:28.344Z`, sceneCount: [2, 1, 2, 2, 1][index % 5],
+      cloudPercent: index % 7 === 6 ? null : Math.min(cloud, cloudLimit), coverage: [1, 1, 0.82, 1, 0.97][index % 5],
+    };
+    if (limit == null) return row;
+    const gap = [0.6, 2.4, 9.5, 18][index % 4];
     const pass = body.sarPairing!.orbitPass === 'ANY' ? (index % 2 ? 'ASCENDING' : 'DESCENDING') : body.sarPairing!.orbitPass;
-    const s2Date = s2.toISOString().slice(0, 10);
-    if (gap > limit) return { s2Date, s1Date: null, daysApart: null, orbitPass: null, coverage: null };
-    return { s2Date, s1Date: new Date(s2.getTime() - gap * 86_400_000).toISOString().slice(0, 10), daysApart: gap, orbitPass: pass, coverage: 1 };
+    return { ...row, s1: gap > limit ? null : { date: new Date(day.getTime() - gap * 86_400_000).toISOString().slice(0, 10), daysApart: gap, orbitPass: pass, coverage: 1 } };
   });
+}
+
+/** Demo S1 pairs in the older `pairs[]` shape, read from the dates. */
+function demoPairs(dates: EstimateDate[]): Pick<GeeEstimate, 'pairs' | 'pairedCount' | 'unpairedCount'> {
+  const pairs = dates.map((item) => ({ s2Date: item.date, s1Date: item.s1?.date ?? null, daysApart: item.s1?.daysApart ?? null, orbitPass: item.s1?.orbitPass ?? null, coverage: item.s1?.coverage ?? null }));
   const pairedCount = pairs.filter((pair) => pair.s1Date).length;
   return { pairs, pairedCount, unpairedCount: pairs.length - pairedCount };
 }

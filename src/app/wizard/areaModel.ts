@@ -8,14 +8,16 @@ export const AREA_TABS: Array<{ id: AreaTab; label: string }> = [
   { id: 'box', label: '사각형' },
   { id: 'shape', label: '내 영역(Shape)' },
 ];
-export const SIZE_CHIPS = [5, 10, 20, 40] as const;
+/** Side length chips; 30 km is the research default (`center.buffer(15_000)` → its 30 × 30 km outer box, FR-GEE-15). */
+export const SIZE_CHIPS = [10, 20, 30, 40] as const;
+export const DEFAULT_SIZE_KM = 30;
 export const KM_PER_DEGREE = 111.32;
 export const SIZE_LIMITS = { min: 1, max: 200 } as const;
 export const ADMIN_ATTRIBUTION = '경계: 통계청 SGIS(공공누리 1유형), admdongkor(CC BY 4.0)';
 
 export type AreaState = {
   tab: AreaTab;
-  lon: string; lat: string; sizeChip: '5' | '10' | '20' | '40' | 'custom'; customSize: string;
+  lon: string; lat: string; sizeChip: '10' | '20' | '30' | '40' | 'custom'; customSize: string;
   west: string; south: string; east: string; north: string;
   admin: AdminArea | null;
   shape: SavedArea | null;
@@ -24,7 +26,7 @@ export type AreaState = {
   fullCoverOnly: boolean;
 };
 export const emptyArea = (): AreaState => ({
-  tab: 'point', lon: '', lat: '', sizeChip: '20', customSize: '',
+  tab: 'point', lon: '', lat: '', sizeChip: String(DEFAULT_SIZE_KM) as AreaState['sizeChip'], customSize: '',
   west: '', south: '', east: '', north: '', admin: null, shape: null, clip: 'shape', maskVariable: false, fullCoverOnly: false,
 });
 

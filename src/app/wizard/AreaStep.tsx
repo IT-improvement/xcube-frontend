@@ -11,11 +11,16 @@ import { useLoad } from '../useLoad';
 import AreaMap, { AreaSketch } from './AreaMap';
 import { ADMIN_ATTRIBUTION, AREA_TABS, AreaState, AreaTab, bboxText, blockerText, hasPolygonOptions, km2Text, ResolvedArea, SIZE_CHIPS, SIZE_LIMITS } from './areaModel';
 import { PairTable } from './SarPairing';
+import DateTable from './DateTable';
+import { estimateDates, isLong, minutesText, selectionTotals } from './dateModel';
+import { withPairingBlockers } from './sarModel';
 import { EstimateView } from './useGeeEstimate';
 
-type Props = { area: AreaState; onChange: (next: AreaState) => void; resolved: ResolvedArea; estimate: EstimateView; estimateHint: string; showErrors: boolean; pairing?: PairingView };
+/** Picked dates of the estimate (UR-43) and how to change them. */
+export type DatePicking = { picked: string[]; onChange: (next: string[]) => void };
+type Props = { area: AreaState; onChange: (next: AreaState) => void; resolved: ResolvedArea; estimate: EstimateView; estimateHint: string; showErrors: boolean; pairing?: PairingView; dates?: DatePicking };
 
-export default function AreaStep({ area, onChange, resolved, estimate, estimateHint, showErrors, pairing }: Props) {
+export default function AreaStep({ area, onChange, resolved, estimate, estimateHint, showErrors, pairing, dates }: Props) {
   const set = (patch: Partial<AreaState>) => onChange({ ...area, ...patch });
   const pick = area.tab === 'point' ? 'point' : area.tab === 'box' ? 'box' : null;
   return (
@@ -50,7 +55,8 @@ export default function AreaStep({ area, onChange, resolved, estimate, estimateH
         </div>
       </div>
       {showErrors && resolved.error && <Alert tone="warning" role="alert">{resolved.error}</Alert>}
-      <EstimatePanel estimate={estimate} hint={estimateHint} pairing={pairing} />
+      <EstimatePanel estimate={estimate} hint={estimateHint} pairing={pairing} picked={dates?.picked} />
+      {estimate.data && dates && estimateDates(estimate.data) && <DateTable data={estimate.data} picked={dates.picked} onChange={dates.onChange} pairing={pairing} />}
     </div>
   );
 }
@@ -72,7 +78,7 @@ function PointPanel({ area, set, showErrors, resolved }: { area: AreaState; set:
           ))}
           <button type="button" role="radio" aria-checked={area.sizeChip === 'custom'} className={`area-chip ${area.sizeChip === 'custom' ? 'is-on' : ''}`} onClick={() => set({ sizeChip: 'custom' })}>직접 입력</button>
         </div>
-        <span className="xc-hint">연구에서는 20~40 km를 자주 씁니다. 더 넓은 영역도 서버가 자동으로 나눠 받습니다.</span>
+        <span className="xc-hint">연구 기본값 30 km(중심에서 15 km). 더 넓은 영역도 서버가 자동으로 나눠 받습니다.</span>
       </div>
       {area.sizeChip === 'custom' && (
         <>
@@ -365,8 +371,13 @@ function FromJobs({ busy, onImport }: { busy: boolean; onImport: (job: JobSummar
 export type PairingView = { keepUnpaired: boolean };
 const isNoMatch = (blocker: EstimateBlocker) => (typeof blocker === 'string' ? blocker : blocker.code) === 'NO_S1_MATCH';
 
-export function EstimatePanel({ estimate, hint, compact, pairing }: { estimate: EstimateView; hint?: string; compact?: boolean; pairing?: PairingView }) {
+export function EstimatePanel({ estimate, hint, compact, pairing, picked }: { estimate: EstimateView; hint?: string; compact?: boolean; pairing?: PairingView; picked?: string[] }) {
   const { data } = estimate;
+  const dates = estimateDates(data);
+  // With a date list the totals follow the checked dates at once; older servers keep the plain estimate.
+  const totals = data && dates ? selectionTotals(data, picked ?? dates.map((item) => item.date)) : null;
+  const seconds = totals ? totals.seconds : data?.estimatedSeconds ?? null;
+  const blockers = !data ? [] : pairing && dates ? withPairingBlockers(data, true) : data.blockers.filter((blocker) => !pairing || !isNoMatch(blocker));
   return (
     <section className={`area-estimate ${compact ? 'is-compact' : ''}`} aria-label="예상 크기">
       <h3 className="area-estimate__title"><Search size={14} aria-hidden /> 예상 크기</h3>
@@ -378,13 +389,29 @@ export function EstimatePanel({ estimate, hint, compact, pairing }: { estimate: 
           <dl className="meta-list area-estimate__list">
             <dt>면적</dt><dd className="tabular">{km2Text(data.areaKm2)}</dd>
             <dt>격자</dt><dd className="tabular">{data.grid.width.toLocaleString('ko-KR')} × {data.grid.height.toLocaleString('ko-KR')} px</dd>
-            <dt>예상 장면 수</dt><dd className="tabular">{data.scenes == null ? '알 수 없음' : `${data.scenes.toLocaleString('ko-KR')}개`}</dd>
-            <dt>예상 용량</dt><dd className="tabular">{formatBytes(data.estimatedBytes)}</dd>
+            {totals ? (
+              <>
+                <dt>시점 수</dt>
+                <dd className="tabular" data-testid="estimate-times">
+                  {totals.count.toLocaleString('ko-KR')}개{totals.count !== totals.total && <span className="xc-hint"> / 전체 {totals.total.toLocaleString('ko-KR')}개 날짜</span>}
+                  {pairing && !pairing.keepUnpaired && totals.unpaired > 0 && <span className="xc-hint"> · 짝 없는 {totals.unpaired}개 빠짐</span>}
+                </dd>
+                <dt>예상 장면 수</dt><dd className="tabular">{totals.scenes.toLocaleString('ko-KR')}개</dd>
+                <dt>예상 용량</dt><dd className="tabular" data-testid="estimate-bytes">{formatBytes(totals.bytes)}</dd>
+              </>
+            ) : (
+              <>
+                <dt>예상 장면 수</dt><dd className="tabular">{data.scenes == null ? '알 수 없음' : `${data.scenes.toLocaleString('ko-KR')}개`}</dd>
+                <dt>예상 용량</dt><dd className="tabular">{formatBytes(data.estimatedBytes)}</dd>
+              </>
+            )}
+            {seconds != null && <><dt>예상 시간</dt><dd className="tabular" data-testid="estimate-time">{minutesText(seconds)}</dd></>}
           </dl>
+          {isLong(seconds) && <p className="xc-hint">{dates ? '날짜를 줄이면 빨라집니다.' : '기간이나 영역을 줄이면 빨라집니다.'}</p>}
           {data.requestTiles > 1 && <p className="xc-hint">서버가 {data.requestTiles}개로 나눠 받습니다.</p>}
           {data.warnings.map((warning) => <Alert key={warning} tone="warning">{warning}</Alert>)}
-          {data.blockers.filter((blocker) => !pairing || !isNoMatch(blocker)).map((blocker, index) => <Alert key={index} tone="danger" role="alert">{blockerText(blocker)}</Alert>)}
-          {pairing && <PairTable data={data} keepUnpaired={pairing.keepUnpaired} />}
+          {blockers.map((blocker, index) => <Alert key={index} tone="danger" role="alert">{blockerText(blocker)}</Alert>)}
+          {pairing && !dates && <PairTable data={data} keepUnpaired={pairing.keepUnpaired} />}
         </>
       )}
     </section>
