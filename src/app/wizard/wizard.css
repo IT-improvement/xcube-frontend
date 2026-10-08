@@ -148,3 +148,23 @@
   .area-preview { position: static; order: -1; }
   .area-map { height: 280px; }
 }
+
+/* "수체 분석용 S1+S2" (UR-41): preset card, Sentinel-1 options, pair table, fixed variables. */
+.catalog__preset { display: grid; gap: 6px; }
+.catalog__preset .catalog__item { align-items: flex-start; }
+.catalog__preset .xc-cell-main small { white-space: normal; word-break: keep-all; }
+.catalog__group { margin: var(--space-2) 0 0; font: 600 12px/1.4 var(--font-sans); color: var(--color-text-tertiary); }
+.sar-box { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-subtle); word-break: keep-all; }
+.sar-details { display: grid; gap: var(--space-4); }
+.sar-details[open] > summary { margin-bottom: 0; }
+.sar-pairs { display: grid; gap: var(--space-2); }
+.sar-pairs__summary { margin: 0; font-size: 14px; }
+.sar-pairs__wrap { max-height: 260px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.sar-pairs__table td { padding: 8px var(--space-4); }
+.sar-pairs__table th { padding: 8px var(--space-4); }
+.sar-pairs__table tr.is-unpaired td { color: var(--color-text-tertiary); }
+.sar-fixed { display: grid; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-subtle); }
+.sar-fixed__list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.sar-fixed__item { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.sar-fixed__item strong { min-width: 72px; font: 600 14px/1.3 var(--font-sans); }
+.sar-fixed__lock { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }

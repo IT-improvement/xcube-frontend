@@ -8,6 +8,7 @@ import { asFusionRequest } from '../fusion';
 import { AI_MODEL_LABEL, elapsed, FusionRequestSummary, JOB_TYPE_LABEL, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
 import type { AiWaterJob } from '../../api/aiApi';
 import { useLoad } from '../useLoad';
+import { dateOnly, pairLine } from '../wizard/sarModel';
 import { DatasetStatus, DeleteDatasetDialog, LinkProjectDialog } from './DataLibraryPage';
 
 type Tab = 'overview' | 'variables' | 'history' | 'ai' | 'projects';
@@ -106,6 +107,7 @@ export default function DatasetDetailPage() {
                 <dt>기본 변수</dt><dd>{item.defaultVariable || '—'}</dd>
                 <dt>RGB 합성</dt><dd>{item.rgbAvailable ? '가능' : '—'}</dd>
                 <dt>데이터 ID</dt><dd>{item.xcubeDatasetId || '—'}</dd>
+                {item.pairs && <><dt>레이더 짝</dt><dd><ul className="tabular" style={{ display: 'grid', gap: 4, margin: 0, padding: 0, listStyle: 'none' }} aria-label="시점별 Sentinel-1 짝">{item.pairs.map((pair, index) => <li key={pair.time ?? index}>{pair.time ? <strong>{dateOnly(pair.time)}</strong> : null} {pairLine(pair)}</li>)}</ul></dd></>}
               </dl>
             </>
           )}

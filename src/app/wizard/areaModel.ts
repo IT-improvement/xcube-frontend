@@ -109,7 +109,9 @@ export const bboxBounds = (bbox: Bbox) => ({ west: bbox[0], south: bbox[1], east
 export const bboxText = (bbox: Bbox) => `경도 ${bbox[0].toFixed(4)} ~ ${bbox[2].toFixed(4)}, 위도 ${bbox[1].toFixed(4)} ~ ${bbox[3].toFixed(4)}`;
 export const km2Text = (value: number) => `${value >= 100 ? Math.round(value).toLocaleString('ko-KR') : value.toFixed(1)} km²`;
 
+export const NO_MATCH_TEXT = '영역을 덮는 레이더(Sentinel-1) 영상이 날짜 차이 안에 하나도 없습니다. 기간을 넓히거나 날짜 차이를 늘려 보세요.';
 const BLOCKER_TEXT: Record<string, string> = {
+  NO_S1_MATCH: NO_MATCH_TEXT,
   QUOTA_EXCEEDED: '저장 용량 한도를 넘어 만들 수 없습니다. 영역·기간을 줄이거나 쓰지 않는 데이터를 정리하세요.',
   NO_SCENES: '고른 영역과 기간에 조건에 맞는 장면이 없습니다. 기간이나 구름량 조건을 넓혀 보세요.',
   AREA_TOO_LARGE: '영역이 너무 큽니다. 영역을 줄여 주세요.',

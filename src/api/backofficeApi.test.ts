@@ -108,13 +108,15 @@ test('Zarr 전역 등록과 프로젝트 연결·해제를 분리한다', async 
 test('목록은 융합 결과(FUSION)와 AI 결과(M7, 원본 연결 포함)를 함께 담는다', async () => {
   const base = { ownerUserId: 7, accessType: 'OWNED', integrationStatus: 'REGISTERED', availabilityStatus: 'AVAILABLE', variables: [{ name: 'fusion' }] };
   jest.spyOn(global, 'fetch').mockResolvedValue(json({ content: [
-    { ...base, datacubeId: 1, xcubeDatasetId: 'a', name: 'original', kind: 'ORIGINAL' },
+    { ...base, datacubeId: 1, xcubeDatasetId: 'a', name: 'original', kind: 'ORIGINAL', metadata: { xcube_pairs: [{ time: '2024-08-14T02:15:00Z', s1Time: '2024-08-13T21:30:00Z', orbitPass: 'DESCENDING', daysApart: 0.6, coverage: 1 }] } },
     { ...base, datacubeId: 2, xcubeDatasetId: 'b', name: 'NDWI 융합', kind: 'FUSION', metadata: { fusion: { formula: 'A - B' } } },
     { ...base, datacubeId: 3, xcubeDatasetId: 'c', name: 'infer', kind: 'AI_RESULT', sourceDatacubeId: 1 },
     { ...base, datacubeId: 4, xcubeDatasetId: 'd', name: 'infer2', kind: 'AI_RESULT', metadata: { sourceDatacubeIds: [1] } },
   ], page: 0, size: 100, totalElements: 4, totalPages: 1 }));
   const items = await backofficeAdapter.getDatasets();
   expect(items.map((item) => item.name)).toEqual(['original', 'NDWI 융합', 'infer', 'infer2']);
+  expect(items[0].pairs).toEqual([{ time: '2024-08-14T02:15:00Z', s1Time: '2024-08-13T21:30:00Z', orbitPass: 'DESCENDING', daysApart: 0.6, coverage: 1 }]);
+  expect(items[1].pairs).toBeUndefined();
   expect(items[1]).toMatchObject({ kind: 'FUSION', fusion: { formula: 'A - B' } });
   expect(items[2]).toMatchObject({ kind: 'AI_RESULT', sourceDatacubeId: '1' });
   expect(items[3]).toMatchObject({ kind: 'AI_RESULT', sourceDatacubeId: '1' });
