@@ -100,18 +100,31 @@ export default function ViewerTour({
       `[data-tour="${step.target}"]`,
     );
     const box = element?.getBoundingClientRect();
-    setRect(
+    const next =
       box && box.width > 0 && box.height > 0
         ? { top: box.top, left: box.left, width: box.width, height: box.height }
-        : null,
+        : null;
+    // Only a real move re-renders, so this can run every frame.
+    setRect((current) =>
+      current && next &&
+      current.top === next.top && current.left === next.left &&
+      current.width === next.width && current.height === next.height
+        ? current
+        : next,
     );
-    if (cardRef.current) setCardHeight(cardRef.current.offsetHeight);
+    if (cardRef.current) setCardHeight((height) => cardRef.current?.offsetHeight ?? height);
   }, [step.target]);
 
   useLayoutEffect(measure, [measure]);
+  // The target moves without a window resize: the project name, dataset list and
+  // web fonts arrive after the tour opens and change the top bar's widths.
+  // Follow it every frame while the tour is open (one rect read per frame).
   useEffect(() => {
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    let frame = window.requestAnimationFrame(function follow() {
+      measure();
+      frame = window.requestAnimationFrame(follow);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [measure]);
   useEffect(() => {
     primaryRef.current?.focus();
