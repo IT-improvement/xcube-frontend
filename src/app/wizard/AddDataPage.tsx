@@ -1,6 +1,6 @@
 // S4 data add wizard: method → source → inspection → settings → confirm.
 // Replaces the Viewer's ZarrStudio panel (GeoTIFF/CAS500, Shapefile, GEE, Zarr register).
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, CloudDownload, Database, FileArchive, Globe2, Image, Loader2, Search, UploadCloud } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, CloudDownload, Database, Droplets, FileArchive, Globe2, Image, Loader2, Search, UploadCloud } from 'lucide-react';
 import { ChangeEvent, DragEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, userMessage } from '../../api/httpClient';
@@ -13,7 +13,9 @@ import AreaStep, { EstimatePanel } from './AreaStep';
 import { AreaState, bboxBounds, blockerText, emptyArea, resolveArea, ResolvedArea } from './areaModel';
 import { useGeeEstimate } from './useGeeEstimate';
 import { useLoad } from '../useLoad';
-import VariableStyleEditor, { autoRange, toVariableSpecs, validateChoices, VariableChoice } from './VariableStyleEditor';
+import VariableStyleEditor, { autoRange, defaultChoice, toVariableSpecs, validateChoices, VariableChoice } from './VariableStyleEditor';
+import { FixedVariables, SarOptions } from './SarPairing';
+import { defaultSar, FIXED_NAMES, PRESET_GEE, isS2, ORBIT_OPTIONS, pairingActive, presetSar, S2_COLLECTION, sarError, sarRequest, SarState, WATER_BANDS, WATER_NAME, withPairingBlockers } from './sarModel';
 import './wizard.css';
 
 type Method = 'geotiff' | 'shape' | 'gee' | 'zarr';
@@ -40,6 +42,20 @@ const SENSORS = [
 const hasTimeInName = (fileName: string, method: Method) => (method === 'shape' ? /\d{6}/ : /\d{14}/).test(fileName);
 const STATUS_LABEL: Record<string, string> = { QUEUED: '대기 중', RUNNING: '처리 중', SUCCEEDED: '완료', FAILED: '실패', CANCELLED: '취소됨' };
 
+/** Preset "수체 분석용 S1+S2" (UR-41): S2 optical bands under the names the AI looks for, plus Sentinel-1 VV·VH and the JRC reference. */
+const WATER_PRESET = { title: '수체 분석용 (Sentinel-2 + Sentinel-1)', text: 'AI 수체 추출에 필요한 광학 5 band와 레이더 VV·VH를 같은 위치·비슷한 날짜로 받습니다' };
+// S2 L2A reflectance is stored as DN (×10,000); 0~3,000 shows land and water well.
+const WATER_RANGE = { min: '0', max: '3000' };
+/** Pairing on: S2 bands take the AI names (blue…swir) unless the user already renamed them; off: back to the band names. */
+const renameForPairing = (choices: VariableChoice[], on: boolean) => choices.map((choice) => {
+  const mapped = WATER_NAME[choice.source];
+  if (!mapped) return choice;
+  if (on && choice.name === choice.source) return { ...choice, name: mapped };
+  if (!on && choice.name === mapped) return { ...choice, name: choice.source };
+  return choice;
+});
+const sarSummary = (sar: SarState) => `Sentinel-1 VV·VH · 날짜 차이 최대 ${sar.maxDaysApart}일 · 궤도 ${ORBIT_OPTIONS.find((item) => item.id === sar.orbitPass)?.label} · 짝 없는 날짜 ${sar.keepUnpaired ? '레이더 없이 남김' : '제외'}${sar.waterReference ? ' · 참조 수체(JRC)' : ''}`;
+
 const fieldsOf = (inspection: SpatialInspection | null): InspectionField[] =>
   inspection ? inspection.fields ?? inspection.bands.map((name) => ({ name })) : [];
 
@@ -54,6 +70,8 @@ export default function AddDataPage() {
   const [catalogQuery, setCatalogQuery] = useState('');
   const [gee, setGee] = useState<GeeParams>({ startDate: '', endDate: '', maxCloudPercent: '20', scaleMeters: '30' });
   const [area, setArea] = useState<AreaState>(emptyArea);
+  const [sar, setSar] = useState<SarState>(() => defaultSar());
+  const [preset, setPreset] = useState(false);
   const [storageUri, setStorageUri] = useState('');
   const [name, setName] = useState('');
   const [choices, setChoices] = useState<VariableChoice[]>([]);
@@ -101,12 +119,14 @@ export default function AddDataPage() {
   }, [method, collection, inspection]);
   const resolved = useMemo(() => resolveArea(area), [area]);
   const datesOk = !!gee.startDate && !!gee.endDate && gee.startDate <= gee.endDate;
+  const pairing = method === 'gee' && pairingActive(collectionId, sar);
+  const sarFields = method === 'gee' ? sarRequest(collectionId, sar) : {};
   const estimateBands = choices.length ? choices.map((item) => item.source) : fields.map((field) => field.name);
   const estimateBody = method === 'gee' && step >= 1 && collectionId && datesOk && resolved.request && resolved.bbox
-    ? { name: name.trim() || '새 데이터', collectionId, bands: estimateBands, startDate: gee.startDate, endDate: gee.endDate, maxCloudPercent: Number(gee.maxCloudPercent), scaleMeters: Number(gee.scaleMeters), bounds: bboxBounds(resolved.bbox), area: resolved.request, bandStyles: [] }
+    ? { name: name.trim() || '새 데이터', collectionId, bands: estimateBands, startDate: gee.startDate, endDate: gee.endDate, maxCloudPercent: Number(gee.maxCloudPercent), scaleMeters: Number(gee.scaleMeters), bounds: bboxBounds(resolved.bbox), area: resolved.request, bandStyles: [], ...sarFields }
     : null;
   const estimate = useGeeEstimate(estimateBody);
-  const blockers = method === 'gee' ? estimate.data?.blockers ?? [] : [];
+  const blockers = method === 'gee' ? withPairingBlockers(estimate.data, pairing) : [];
   const estimateHint = !collectionId ? '컬렉션을 고르세요.' : !datesOk ? '기간을 입력하세요.' : resolved.error;
   const noun = method === 'shape' ? '속성' : 'band';
   const continuous = choices.filter((choice) => choice.kind === 'continuous');
@@ -121,7 +141,7 @@ export default function AddDataPage() {
 
   const chooseMethod = (next: Method) => {
     if (next !== method) {
-      setInspection(null); setInspectError(''); setChoices([]); setCollectionId(''); setRgbOn(false); setName('');
+      setInspection(null); setInspectError(''); setChoices([]); setCollectionId(''); setRgbOn(false); setName(''); setSar(defaultSar()); setPreset(false);
     }
     setMethod(next);
   };
@@ -140,6 +160,30 @@ export default function AddDataPage() {
     }
   };
 
+  const chooseCollection = (id: string) => {
+    setPreset(false);
+    if (id === collectionId) return;
+    setCollectionId(id); setChoices([]); setRgbOn(false); setSar(defaultSar());
+  };
+  const choosePreset = () => {
+    const bars = colorBars.data ?? [];
+    setPreset(true); setCollectionId(S2_COLLECTION); setSar(presetSar()); setGee((current) => ({ ...current, ...PRESET_GEE }));
+    setChoices(WATER_BANDS.map((band) => ({ ...defaultChoice({ name: band.source }, bars), name: band.name, ...WATER_RANGE })));
+    setRgbOn(true); setRgb({ red: 'B4', green: 'B3', blue: 'B2' });
+  };
+  const changeSar = (nextSar: SarState) => {
+    if (nextSar.enabled !== sar.enabled) setChoices((current) => renameForPairing(current, nextSar.enabled));
+    if (!nextSar.enabled) setPreset(false);
+    setSar(nextSar);
+  };
+  const changeChoices = (nextChoices: VariableChoice[]) => {
+    // Newly picked S2 bands get the AI names while pairing is on.
+    const known = new Set(choices.map((item) => item.source));
+    const named = pairing ? nextChoices.map((item) => (known.has(item.source) ? item : renameForPairing([item], true)[0])) : nextChoices;
+    setChoices(named);
+    if (rgbOn && named.filter((item) => item.kind === 'continuous').length < 3) setRgbOn(false);
+  };
+
   const stepValid = (index: number): string => {
     if (index === 0) return method ? '' : '생성 방식을 고르세요.';
     if (index === 1) {
@@ -148,6 +192,7 @@ export default function AddDataPage() {
         if (!gee.startDate || !gee.endDate) return '기간을 입력하세요.';
         if (gee.startDate > gee.endDate) return '시작 날짜가 끝 날짜보다 늦습니다.';
         if (resolved.error) return resolved.error;
+        if (pairing && sarError(sar)) return sarError(sar);
         if (blockers.length) return blockerText(blockers[0]);
         return '';
       }
@@ -158,6 +203,7 @@ export default function AddDataPage() {
       if (!name.trim()) return '데이터 이름을 입력하세요.';
       if (!choices.length) return `만들 ${noun}을 하나 이상 고르세요.`;
       if (Object.keys(variableErrors).length) return '표시 설정을 확인하세요.';
+      if (pairing && choices.some((choice) => (FIXED_NAMES as readonly string[]).includes(choice.name.trim()))) return `${FIXED_NAMES.join('·')}는 레이더·참조 변수 이름이라 band 이름으로 쓸 수 없습니다.`;
       if (method === 'shape' && !(Number(resolution) > 0)) return '출력 해상도를 확인하세요.';
       if (genericRaster && !sensorValue) return '위성·센서를 고르거나 입력하세요.';
       if (dateRequired && !obsDate) return '파일 이름에 날짜가 없어 관측 날짜가 필요합니다.';
@@ -191,6 +237,8 @@ export default function AddDataPage() {
           bounds: bboxBounds(resolved.bbox!), area: resolved.request,
           bandStyles: choices.map((item) => ({ variable: item.source, colorBar: item.colorBar, valueMin: Number(item.min), valueMax: Number(item.max) })),
           rgbStyle,
+          ...(pairing ? { variables: specs } : {}),
+          ...sarFields,
         }));
       } else if (method === 'zarr') {
         const dataset = await appApi.registerDataset({
@@ -296,8 +344,17 @@ export default function AddDataPage() {
                   <Alert tone="danger">GEE 목록을 불러오지 못했습니다. {collections.error}</Alert>
                 ) : (
                   <div className="catalog__list" role="radiogroup" aria-label="GEE 컬렉션">
+                    {(collections.data ?? []).some((item) => item.id === S2_COLLECTION) && [WATER_PRESET.title, WATER_PRESET.text, '수체 S1 S2 water'].some((text) => text.toLowerCase().includes(catalogQuery.trim().toLowerCase())) && (
+                      <>
+                        <button type="button" role="radio" aria-checked={preset} className={`catalog__item ${preset ? 'is-on' : ''}`} onClick={choosePreset}>
+                          <span className="xc-cell-main"><strong>{WATER_PRESET.title}</strong><small>{WATER_PRESET.text}</small></span>
+                          <Badge><Droplets size={12} aria-hidden /> 프리셋</Badge>
+                        </button>
+                        <p className="catalog__group" aria-hidden>컬렉션</p>
+                      </>
+                    )}
                     {(collections.data ?? []).filter((item) => [item.id, item.name, item.title].some((text) => text?.toLowerCase().includes(catalogQuery.trim().toLowerCase()))).map((item) => (
-                      <button key={item.id} type="button" role="radio" aria-checked={collectionId === item.id} className={`catalog__item ${collectionId === item.id ? 'is-on' : ''}`} onClick={() => { if (item.id !== collectionId) { setCollectionId(item.id); setChoices([]); setRgbOn(false); } }}>
+                      <button key={item.id} type="button" role="radio" aria-checked={!preset && collectionId === item.id} className={`catalog__item ${!preset && collectionId === item.id ? 'is-on' : ''}`} onClick={() => chooseCollection(item.id)}>
                         <span className="xc-cell-main"><strong>{item.title || item.name || item.id}</strong><small>{item.id}</small></span>
                         <Badge>band {item.bands.length}</Badge>
                       </button>
@@ -305,13 +362,14 @@ export default function AddDataPage() {
                   </div>
                 )}
               </div>
+              {isS2(collectionId) && <SarOptions sar={sar} onChange={changeSar} showErrors={showErrors} />}
               <div className="form-grid">
                 <TextField label="시작 날짜" type="date" value={gee.startDate} onChange={(event) => setGee({ ...gee, startDate: event.target.value })} />
                 <TextField label="끝 날짜" type="date" value={gee.endDate} onChange={(event) => setGee({ ...gee, endDate: event.target.value })} />
                 <TextField label="최대 구름량 (%)" type="number" min={0} max={100} value={gee.maxCloudPercent} onChange={(event) => setGee({ ...gee, maxCloudPercent: event.target.value })} />
                 <TextField label="픽셀 크기 (m)" type="number" min={10} max={10000} value={gee.scaleMeters} onChange={(event) => setGee({ ...gee, scaleMeters: event.target.value })} />
               </div>
-              <AreaStep area={area} onChange={setArea} resolved={resolved} estimate={estimate} estimateHint={estimateHint} showErrors={showErrors} />
+              <AreaStep area={area} onChange={setArea} resolved={resolved} estimate={estimate} estimateHint={estimateHint} showErrors={showErrors} pairing={pairing ? { keepUnpaired: sar.keepUnpaired } : undefined} />
             </div>
           )}
 
@@ -321,7 +379,7 @@ export default function AddDataPage() {
             </div>
           )}
 
-          {step === 2 && <InspectionSummary method={method!} rasterKind={rasterKind} inspection={inspection} collection={collection} gee={gee} resolved={resolved} storageUri={storageUri} fields={fields} />}
+          {step === 2 && <InspectionSummary method={method!} rasterKind={rasterKind} inspection={inspection} collection={collection} gee={gee} resolved={resolved} storageUri={storageUri} fields={fields} sarText={pairing ? sarSummary(sar) : ''} />}
 
           {step === 3 && (
             <div className="wizard-section">
@@ -363,14 +421,15 @@ export default function AddDataPage() {
               <VariableStyleEditor
                 fields={method === 'zarr' ? [] : fields}
                 value={choices}
-                onChange={(nextChoices) => { setChoices(nextChoices); if (rgbOn && nextChoices.filter((item) => item.kind === 'continuous').length < 3) setRgbOn(false); }}
+                onChange={changeChoices}
                 colorBars={colorBars.data ?? []}
                 noun={noun}
                 allowCustom={method === 'zarr'}
-                renamable={method !== 'gee'}
+                renamable={method !== 'gee' || pairing}
                 continuousOnly={method === 'gee'}
                 errors={showErrors ? variableErrors : {}}
               />
+              {pairing && <FixedVariables waterReference={sar.waterReference} />}
               {rgbPossible && (
                 <div className="rgb-box">
                   <label className="xc-check"><input type="checkbox" checked={rgbOn} onChange={(event) => setRgbOn(event.target.checked)} /><span><strong>RGB 컬러 영상도 만들기</strong> <span className="xc-hint">고른 band 중 세 개를 빨강·초록·파랑에 배치합니다. 범위는 각 band의 표시 범위를 씁니다.</span></span></label>
@@ -397,6 +456,7 @@ export default function AddDataPage() {
               <dl className="meta-list summary-list">
                 <dt>방식</dt><dd>{METHODS.find((item) => item.id === method)?.title}{method === 'geotiff' ? ` · ${rasterKind === 'cas500' ? 'CAS500' : '일반 GeoTIFF'}` : ''}</dd>
                 <dt>원본</dt><dd>{method === 'gee' ? `${collection?.title || collection?.name || collectionId} · ${gee.startDate} ~ ${gee.endDate}` : method === 'zarr' ? storageUri : inspection?.fileName}</dd>
+                {pairing && <><dt>레이더 짝</dt><dd>{sarSummary(sar)}</dd></>}
                 {method === 'gee' && <><dt>영역</dt><dd>{resolved.modeLabel} · {resolved.label}<br /><span className="xc-hint">{resolved.clipLabel}{resolved.request?.maskVariable ? ' · 경계선 표시 변수 저장' : ''}{resolved.request?.fullCoverOnly ? ' · 영역을 완전히 덮는 장면만' : ''}</span></dd></>}
                 <dt>이름</dt><dd>{name}</dd>
                 <dt>프로젝트</dt><dd>{editableProjects.find((item) => item.id === projectId)?.name ?? '프로젝트 없음'}</dd>
@@ -410,6 +470,9 @@ export default function AddDataPage() {
                         <span className="xc-hint"> · {choice.colorBar} · {choice.kind === 'continuous' ? `${choice.min} ~ ${choice.max}` : '범주형'}</span>
                       </li>
                     ))}
+                    {pairing && ['vv', 'vh', ...(sar.waterReference ? ['water_gt'] : [])].map((fixed) => (
+                      <li key={fixed}><strong>{fixed}</strong><span className="xc-hint"> · {fixed === 'water_gt' ? '참조 수체(JRC) · 범주형 · 비교용' : '레이더 · dB · 회색조'}</span></li>
+                    ))}
                   </ul>
                 </dd>
                 {rgbOn && rgbPossible && <><dt>RGB</dt><dd>R {rgb.red} · G {rgb.green} · B {rgb.blue}</dd></>}
@@ -418,7 +481,7 @@ export default function AddDataPage() {
                 {obsDate && <><dt>관측 날짜</dt><dd>{obsDate}</dd></>}
                 {nodata !== '' && <><dt>nodata</dt><dd>{nodata}</dd></>}
               </dl>
-              {method === 'gee' && <EstimatePanel estimate={estimate} compact />}
+              {method === 'gee' && <EstimatePanel estimate={estimate} compact pairing={pairing ? { keepUnpaired: sar.keepUnpaired } : undefined} />}
               {submitError && <Alert tone="danger">{submitError}</Alert>}
             </div>
           )}
@@ -455,7 +518,7 @@ function FileDrop({ accept, title, hint, busy, fileName, onFile }: { accept: str
   );
 }
 
-function InspectionSummary({ method, rasterKind, inspection, collection, gee, resolved, storageUri, fields }: { method: Method; rasterKind: RasterKind; inspection: SpatialInspection | null; collection?: GeeCollection; gee: GeeParams; resolved: ResolvedArea; storageUri: string; fields: InspectionField[] }) {
+function InspectionSummary({ method, rasterKind, inspection, collection, gee, resolved, storageUri, fields, sarText }: { method: Method; rasterKind: RasterKind; inspection: SpatialInspection | null; collection?: GeeCollection; gee: GeeParams; resolved: ResolvedArea; storageUri: string; fields: InspectionField[]; sarText: string }) {
   if (method === 'zarr') {
     return <div className="wizard-section"><Alert>등록하면 서버가 <strong>{storageUri}</strong>의 좌표계(EPSG:4326)·변수·시간 정보를 검사합니다. 문제가 있으면 데이터 목록에서 상태로 알려 드립니다.</Alert></div>;
   }
@@ -470,6 +533,7 @@ function InspectionSummary({ method, rasterKind, inspection, collection, gee, re
             <dt>영역</dt><dd>{resolved.modeLabel} · {resolved.label}<br /><span className="xc-hint">{resolved.clipLabel}</span></dd>
             <dt>픽셀 크기</dt><dd>{gee.scaleMeters} m · 구름 {gee.maxCloudPercent}% 이하</dd>
             <dt>band</dt><dd>{fields.length}개</dd>
+            {sarText && <><dt>레이더 짝</dt><dd>{sarText}<br /><span className="xc-hint">같은 위치(영역을 99% 이상 덮음), 가까운 날짜의 레이더 영상</span></dd></>}
             <dt>좌표계</dt><dd>EPSG:4326으로 저장</dd>
           </dl>
         </div>

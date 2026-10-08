@@ -89,6 +89,23 @@ export const areaDemo = {
     if (Math.max(east - west, north - south) * KM_PER_DEGREE > 100) warnings.push('영역 한 변이 100 km를 넘어 시간이 오래 걸릴 수 있습니다.');
     if (estimatedBytes > 5 * 1024 ** 3) warnings.push('예상 용량이 5 GB를 넘습니다.');
     const blockers = estimatedBytes > 50 * 1024 ** 3 ? ['QUOTA_EXCEEDED'] : [];
-    return { bounds: body.bounds, areaKm2, grid: { width, height }, scenes, estimatedBytes, requestTiles, warnings, blockers };
+    const base = { bounds: body.bounds, areaKm2, grid: { width, height }, scenes, estimatedBytes, requestTiles, warnings, blockers };
+    return body.sarPairing?.enabled ? { ...base, ...demoPairs(body, scenes) } : base;
   },
 };
+
+/** Demo S1 pairs: every S2 date gets the S1 pass 0.6~12 days away when it is within maxDaysApart (every fourth date has none). */
+function demoPairs(body: GeeJobBody, scenes: number): Pick<GeeEstimate, 'pairs' | 'pairedCount' | 'unpairedCount'> {
+  const limit = body.sarPairing!.maxDaysApart;
+  const start = Date.parse(body.startDate);
+  const pairs = Array.from({ length: Math.min(scenes, 12) }, (_, index) => {
+    const s2 = new Date(start + index * 5 * 86_400_000);
+    const gap = [0.6, 2.4, 9.5, 13][index % 4];
+    const pass = body.sarPairing!.orbitPass === 'ANY' ? (index % 2 ? 'ASCENDING' : 'DESCENDING') : body.sarPairing!.orbitPass;
+    const s2Date = s2.toISOString().slice(0, 10);
+    if (gap > limit) return { s2Date, s1Date: null, daysApart: null, orbitPass: null, coverage: null };
+    return { s2Date, s1Date: new Date(s2.getTime() - gap * 86_400_000).toISOString().slice(0, 10), daysApart: gap, orbitPass: pass, coverage: 1 };
+  });
+  const pairedCount = pairs.filter((pair) => pair.s1Date).length;
+  return { pairs, pairedCount, unpairedCount: pairs.length - pairedCount };
+}

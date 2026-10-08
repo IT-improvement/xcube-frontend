@@ -50,7 +50,7 @@ async function toAreaStep() {
   renderWizard();
   fireEvent.click(await screen.findByRole('radio', { name: /Google Earth Engine/ }));
   fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-  fireEvent.click(await screen.findByRole('radio', { name: /Sentinel-2/ }));
+  fireEvent.click(await screen.findByRole('radio', { name: /Sentinel-2 L2A/ }));
   fireEvent.change(screen.getByLabelText('시작 날짜'), { target: { value: '2026-05-01' } });
   fireEvent.change(screen.getByLabelText('끝 날짜'), { target: { value: '2026-05-31' } });
 }

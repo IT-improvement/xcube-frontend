@@ -48,8 +48,14 @@ export type AreaChoice = { polygonCount: number; attributes: Array<{ name: strin
 export type AreaUpload = { area: SavedArea; choice?: undefined } | { area?: undefined; choice: AreaChoice };
 export type AreaPick = { dissolve?: boolean; attribute?: string; value?: string };
 export type EstimateBlocker = string | { code: string; message?: string };
-export type GeeEstimate = { bounds?: { west: number; south: number; east: number; north: number }; areaKm2: number; grid: { width: number; height: number }; scenes: number | null; estimatedBytes: number; requestTiles: number; warnings: string[]; blockers: EstimateBlocker[] };
-export type GeeJobBody = { name: string; collectionId: string; bands: string[]; startDate: string; endDate: string; maxCloudPercent: number; bounds: { west: number; south: number; east: number; north: number }; area?: AreaRequest; scaleMeters: number; bandStyles: BandStyle[]; rgbStyle?: RgbStyle };
+/** Sentinel-1 pairing for an S2 request (Backend guide "GEE Sentinel-1 짝 맞춤", UR-41): location first, the date only needs to be near. */
+export type OrbitPass = 'ANY' | 'ASCENDING' | 'DESCENDING';
+export type SarPairing = { enabled: boolean; maxDaysApart: number; orbitPass: OrbitPass; minCoverage: number; dropUnpaired: boolean };
+export type WaterReference = { enabled: boolean; occurrenceThreshold: number };
+/** One S2 time of the estimate and the S1 pass picked for it (`s1Date` null = no pass covers the area within `maxDaysApart`). */
+export type SarPair = { s2Date: string; s1Date: string | null; daysApart?: number | null; orbitPass?: string | null; coverage?: number | null };
+export type GeeEstimate = { bounds?: { west: number; south: number; east: number; north: number }; areaKm2: number; grid: { width: number; height: number }; scenes: number | null; estimatedBytes: number; requestTiles: number; warnings: string[]; blockers: EstimateBlocker[]; pairs?: SarPair[]; pairedCount?: number; unpairedCount?: number };
+export type GeeJobBody = { name: string; collectionId: string; bands: string[]; startDate: string; endDate: string; maxCloudPercent: number; bounds: { west: number; south: number; east: number; north: number }; area?: AreaRequest; scaleMeters: number; bandStyles: BandStyle[]; rgbStyle?: RgbStyle; variables?: VariableSpec[]; sarPairing?: SarPairing; waterReference?: WaterReference };
 
 async function multipart<T>(path: string, data: FormData, fallback: string, accept: (status: number, body: any) => T | undefined): Promise<T> {
   const token = session.getToken();

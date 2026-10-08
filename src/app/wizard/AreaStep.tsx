@@ -1,7 +1,7 @@
 // S4 GEE step "영역": four ways to give the area of interest, a map that always shows the result, and the size estimate.
 import { Loader2, Search, Trash2, UploadCloud } from 'lucide-react';
 import { ChangeEvent, useEffect, useRef, useState } from 'react';
-import { AdminArea, AdminLevel, AreaChoice, AreaPick, AreaUpload, JobSummary, SavedArea } from '../../api/generationApi';
+import { AdminArea, AdminLevel, AreaChoice, AreaPick, AreaUpload, EstimateBlocker, JobSummary, SavedArea } from '../../api/generationApi';
 import { userMessage } from '../../api/httpClient';
 import { Alert, Button, TextField } from '../../components/ui';
 import { Badge, Dialog, EmptyState, Skeleton, Tabs } from '../../components/ui/kit';
@@ -10,11 +10,12 @@ import { formatBytes } from '../fusion';
 import { useLoad } from '../useLoad';
 import AreaMap, { AreaSketch } from './AreaMap';
 import { ADMIN_ATTRIBUTION, AREA_TABS, AreaState, AreaTab, bboxText, blockerText, hasPolygonOptions, km2Text, ResolvedArea, SIZE_CHIPS, SIZE_LIMITS } from './areaModel';
+import { PairTable } from './SarPairing';
 import { EstimateView } from './useGeeEstimate';
 
-type Props = { area: AreaState; onChange: (next: AreaState) => void; resolved: ResolvedArea; estimate: EstimateView; estimateHint: string; showErrors: boolean };
+type Props = { area: AreaState; onChange: (next: AreaState) => void; resolved: ResolvedArea; estimate: EstimateView; estimateHint: string; showErrors: boolean; pairing?: PairingView };
 
-export default function AreaStep({ area, onChange, resolved, estimate, estimateHint, showErrors }: Props) {
+export default function AreaStep({ area, onChange, resolved, estimate, estimateHint, showErrors, pairing }: Props) {
   const set = (patch: Partial<AreaState>) => onChange({ ...area, ...patch });
   const pick = area.tab === 'point' ? 'point' : area.tab === 'box' ? 'box' : null;
   return (
@@ -49,7 +50,7 @@ export default function AreaStep({ area, onChange, resolved, estimate, estimateH
         </div>
       </div>
       {showErrors && resolved.error && <Alert tone="warning" role="alert">{resolved.error}</Alert>}
-      <EstimatePanel estimate={estimate} hint={estimateHint} />
+      <EstimatePanel estimate={estimate} hint={estimateHint} pairing={pairing} />
     </div>
   );
 }
@@ -360,7 +361,11 @@ function FromJobs({ busy, onImport }: { busy: boolean; onImport: (job: JobSummar
   );
 }
 
-export function EstimatePanel({ estimate, hint, compact }: { estimate: EstimateView; hint?: string; compact?: boolean }) {
+/** Sentinel-1 pairing of the request (UR-41); absent when pairing is off. */
+export type PairingView = { keepUnpaired: boolean };
+const isNoMatch = (blocker: EstimateBlocker) => (typeof blocker === 'string' ? blocker : blocker.code) === 'NO_S1_MATCH';
+
+export function EstimatePanel({ estimate, hint, compact, pairing }: { estimate: EstimateView; hint?: string; compact?: boolean; pairing?: PairingView }) {
   const { data } = estimate;
   return (
     <section className={`area-estimate ${compact ? 'is-compact' : ''}`} aria-label="예상 크기">
@@ -378,7 +383,8 @@ export function EstimatePanel({ estimate, hint, compact }: { estimate: EstimateV
           </dl>
           {data.requestTiles > 1 && <p className="xc-hint">서버가 {data.requestTiles}개로 나눠 받습니다.</p>}
           {data.warnings.map((warning) => <Alert key={warning} tone="warning">{warning}</Alert>)}
-          {data.blockers.map((blocker, index) => <Alert key={index} tone="danger" role="alert">{blockerText(blocker)}</Alert>)}
+          {data.blockers.filter((blocker) => !pairing || !isNoMatch(blocker)).map((blocker, index) => <Alert key={index} tone="danger" role="alert">{blockerText(blocker)}</Alert>)}
+          {pairing && <PairTable data={data} keepUnpaired={pairing.keepUnpaired} />}
         </>
       )}
     </section>
