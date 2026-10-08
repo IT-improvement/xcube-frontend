@@ -5,6 +5,11 @@ import Map from "ol/Map";
 import { session } from "../../api/httpClient";
 import { ApiError } from "../../api/httpClient";
 
+/** A layer none of whose tiles has drawn yet retries after these waits (ms), about 2 minutes in all: the
+ *  owner's pod restarts to serve new data (an AI result, a new Zarr) and answers 404 meanwhile, measured
+ *  10–60 s. Failed tiles still free their slot at once, so the wait never blocks other layers. */
+export const TILE_RETRY_DELAYS = [2000, 3000, 5000, 5000, 10000, 10000, 15000, 15000, 20000, 30000];
+
 interface Props {
   map: Map;
   tileUrl: string;
@@ -20,8 +25,18 @@ export default async function addDynamicXcubeLayer({
 }: Props) {
   const controllers = new Set<AbortController>();
   const objectUrls = new Set<string>();
+  let drawn = false;
+  let retries = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let source: XYZ;
+  const failed = (error: ApiError) => {
+    if (drawn) return onError?.(error);
+    if (retryTimer) return;
+    if (retries >= TILE_RETRY_DELAYS.length) return onError?.(error);
+    retryTimer = setTimeout(() => { retryTimer = undefined; retries += 1; source.refresh(); }, TILE_RETRY_DELAYS[retries]);
+  };
   const layer = new TileLayer({
-    source: new XYZ({
+    source: source = new XYZ({
       url: tileUrl,
       minZoom: 0,
       maxZoom: 23,
@@ -38,9 +53,9 @@ export default async function addDynamicXcubeLayer({
         const controller = new AbortController(); controllers.add(controller);
         fetch(src, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal })
           .then(async (response) => { if (!response.ok) { let body: any = {}; try { body = await response.json(); } catch { /* binary error */ } if (response.status === 401) session.clearIfCurrent(token); throw new ApiError(response.status, body.code ?? `HTTP_${response.status}`, body.message ?? response.statusText, body.traceId); } return response.blob(); })
-          .then((blob) => { const objectUrl = URL.createObjectURL(blob); objectUrls.add(objectUrl); const release = () => { URL.revokeObjectURL(objectUrl); objectUrls.delete(objectUrl); }; image.onload = release; image.onerror = release; image.src = objectUrl; })
+          .then((blob) => { drawn = true; const objectUrl = URL.createObjectURL(blob); objectUrls.add(objectUrl); const release = () => { URL.revokeObjectURL(objectUrl); objectUrls.delete(objectUrl); }; image.onload = release; image.onerror = release; image.src = objectUrl; })
           .catch((error) => {
-            if (error?.name !== 'AbortError') onError?.(error instanceof ApiError ? error : new ApiError(0, 'NETWORK_ERROR', 'Tile request failed'));
+            if (error?.name !== 'AbortError') failed(error instanceof ApiError ? error : new ApiError(0, 'NETWORK_ERROR', 'Tile request failed'));
             image.removeAttribute('src');
             // Without a load or error event the tile stays LOADING and keeps one of the map's
             // few tile-queue slots forever; enough failed tiles (e.g. a 404 RGB) stop every layer.
@@ -53,7 +68,7 @@ export default async function addDynamicXcubeLayer({
   });
 
   map.addLayer(layer);
-  layer.set('cleanup', () => { controllers.forEach((controller) => controller.abort()); controllers.clear(); objectUrls.forEach((url) => URL.revokeObjectURL(url)); objectUrls.clear(); });
+  layer.set('cleanup', () => { if (retryTimer) clearTimeout(retryTimer); retryTimer = undefined; retries = TILE_RETRY_DELAYS.length; controllers.forEach((controller) => controller.abort()); controllers.clear(); objectUrls.forEach((url) => URL.revokeObjectURL(url)); objectUrls.clear(); });
 
   // Keep the user's current center and zoom when a time-frame layer is replaced.
   // Dataset fitting is an explicit viewer toolbar action, never a layer side effect.
