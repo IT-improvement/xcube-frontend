@@ -858,3 +858,4 @@
   .vx-run__bar i { transition: none; }
 .vx-status.is-starting svg { animation: none; }
 }
+.vx-legend__wait { color: var(--vx-ink-2); }
