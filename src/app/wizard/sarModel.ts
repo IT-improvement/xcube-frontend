@@ -2,6 +2,8 @@
 // Pure rules shared by the wizard, the estimate pair table and the tests.
 import { EstimateBlocker, GeeEstimate, OrbitPass, SarPair, SarPairing, WaterReference } from '../../api/generationApi';
 
+/** "100% 덮음" (UR-45): footprints are compared with 10 m geometry error, ~0.1 % of a 30 km area. */
+export const FULL_COVER = 0.998;
 export const S2_COLLECTION = 'COPERNICUS/S2_SR_HARMONIZED';
 /** S2 bands the AI models read, and the names the AI registry looks them up by. */
 export const WATER_BANDS: Array<{ source: string; name: string }> = [
@@ -45,7 +47,7 @@ export function sarError(sar: SarState): string {
 export function sarRequest(collectionId: string, sar: SarState): { sarPairing?: SarPairing; waterReference?: WaterReference } {
   if (!pairingActive(collectionId, sar) || sarError(sar)) return {};
   return {
-    sarPairing: { enabled: true, maxDaysApart: Number(sar.maxDaysApart), orbitPass: sar.orbitPass, minCoverage: 0.99, dropUnpaired: !sar.keepUnpaired },
+    sarPairing: { enabled: true, maxDaysApart: Number(sar.maxDaysApart), orbitPass: sar.orbitPass, minCoverage: FULL_COVER, dropUnpaired: !sar.keepUnpaired },
     ...(sar.waterReference ? { waterReference: { enabled: true, occurrenceThreshold: 50 } } : {}),
   };
 }
@@ -71,7 +73,10 @@ export function withPairingBlockers(data: GeeEstimate | undefined, active: boole
   const blockers = data?.blockers ?? [];
   if (!active || !data) return blockers;
   const { noMatch } = pairSummary(data);
-  const listed = blockers.some((blocker) => (typeof blocker === 'string' ? blocker : blocker.code) === 'NO_S1_MATCH');
+  const code = (blocker: EstimateBlocker) => (typeof blocker === 'string' ? blocker : blocker.code);
+  // No date covers the area at all: that is the one message to show, not a missing radar pass too.
+  if (blockers.some((blocker) => code(blocker) === 'NO_FULL_COVER_DATE')) return blockers.filter((blocker) => code(blocker) !== 'NO_S1_MATCH');
+  const listed = blockers.some((blocker) => code(blocker) === 'NO_S1_MATCH');
   return noMatch && !listed ? [...blockers, 'NO_S1_MATCH'] : blockers;
 }
 

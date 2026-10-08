@@ -11,6 +11,7 @@ type Props = { data: GeeEstimate; picked: string[]; onChange: (next: string[]) =
 
 export default function DateTable({ data, picked, onChange, pairing }: Props) {
   const dates = estimateDates(data) ?? [];
+  const excluded = data.excludedDates ?? [];
   const [clearCount, setClearCount] = useState(String(Math.min(DEFAULT_CLEAR_COUNT, dates.length)));
   if (!dates.length) return null;
   const chosen = new Set(picked);
@@ -41,6 +42,10 @@ export default function DateTable({ data, picked, onChange, pairing }: Props) {
         <Button size="sm" variant="ghost" onClick={() => onChange(all)} disabled={count === dates.length}>전체</Button>
         <Button size="sm" variant="ghost" onClick={() => onChange([])} disabled={count === 0}>모두 해제</Button>
       </div>
+      <p className="xc-hint tabular">
+        위치를 100% 덮는 날짜만 보여 줍니다.
+        {excluded.length > 0 && ` 다 덮지 못해 뺀 날짜 ${excluded.length}개: ${excluded.map((item) => `${item.date}(${coverageText(item.coverage)}%)`).join(', ')}`}
+      </p>
       {pairing && (
         <p className="xc-hint tabular">
           레이더 짝 {dates.length - unpaired.length} / {dates.length}개 날짜
@@ -55,7 +60,6 @@ export default function DateTable({ data, picked, onChange, pairing }: Props) {
               <th scope="col">날짜</th>
               <th scope="col">장면</th>
               <th scope="col">구름 %</th>
-              <th scope="col">영역 덮음 %</th>
               {pairing && <><th scope="col">레이더 날짜</th><th scope="col">차이(일)</th></>}
             </tr>
           </thead>
@@ -72,7 +76,6 @@ export default function DateTable({ data, picked, onChange, pairing }: Props) {
                   <td className="tabular">{item.date}</td>
                   <td className="tabular">{item.sceneCount}</td>
                   <td className="tabular">{cloudText(item.cloudPercent)}</td>
-                  <td className="tabular">{coverageText(item.coverage)}</td>
                   {pairing && (noPass ? (
                     <td colSpan={2}>{pairing.keepUnpaired ? '레이더 없음 – 레이더 없이 남김' : '레이더 없음 – 제외'}</td>
                   ) : (

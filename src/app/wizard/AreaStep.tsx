@@ -34,10 +34,6 @@ export default function AreaStep({ area, onChange, resolved, estimate, estimateH
           {area.tab === 'box' && <BoxPanel area={area} set={set} />}
           {area.tab === 'shape' && <ShapePanel area={area} set={set} />}
           {hasPolygonOptions(area.tab) && (area.tab === 'admin' ? area.admin : area.shape) && <PolygonOptions area={area} set={set} />}
-          <label className="xc-check area-check">
-            <input type="checkbox" checked={area.fullCoverOnly} onChange={(event) => set({ fullCoverOnly: event.target.checked })} />
-            <span>영역을 완전히 덮는 장면만 <span className="xc-hint">장면 경계가 영역을 모두 덮는 것만 씁니다.</span></span>
-          </label>
         </div>
         <div className="area-preview">
           <AreaMap

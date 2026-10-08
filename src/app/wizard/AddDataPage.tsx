@@ -484,7 +484,7 @@ export default function AddDataPage() {
                     </dd>
                   </>
                 )}
-                {method === 'gee' && <><dt>영역</dt><dd>{resolved.modeLabel} · {resolved.label}<br /><span className="xc-hint">{resolved.clipLabel}{resolved.request?.maskVariable ? ' · 경계선 표시 변수 저장' : ''}{resolved.request?.fullCoverOnly ? ' · 영역을 완전히 덮는 장면만' : ''}</span></dd></>}
+                {method === 'gee' && <><dt>영역</dt><dd>{resolved.modeLabel} · {resolved.label}<br /><span className="xc-hint">{resolved.clipLabel}{resolved.request?.maskVariable ? ' · 경계선 표시 변수 저장' : ''}</span></dd></>}
                 <dt>이름</dt><dd>{name}</dd>
                 <dt>프로젝트</dt><dd>{editableProjects.find((item) => item.id === projectId)?.name ?? '프로젝트 없음'}</dd>
                 <dt>변수</dt>

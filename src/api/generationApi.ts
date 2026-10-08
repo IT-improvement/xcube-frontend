@@ -59,7 +59,7 @@ export type EstimateDate = {
   date: string; time?: string; sceneCount: number; cloudPercent: number | null; coverage: number;
   s1?: { date: string; daysApart: number; orbitPass?: string | null; coverage?: number | null } | null;
 };
-export type GeeEstimate = {
+export type GeeEstimate = { excludedDates?: { date: string; coverage: number }[];
   bounds?: { west: number; south: number; east: number; north: number }; areaKm2: number; grid: { width: number; height: number }; scenes: number | null; estimatedBytes: number; requestTiles: number; warnings: string[]; blockers: EstimateBlocker[];
   pairs?: SarPair[]; pairedCount?: number; unpairedCount?: number;
   /** Every date in the period (older servers send none). */

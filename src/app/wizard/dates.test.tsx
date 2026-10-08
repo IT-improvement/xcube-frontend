@@ -100,7 +100,7 @@ describe('GEE 날짜 고르기', () => {
     const estimate = jest.spyOn(generation, 'estimateGee').mockResolvedValue(ESTIMATE);
     await toAreaStep();
     const table = await dateTable();
-    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '날짜', '장면', '구름 %', '영역 덮음 %']);
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '날짜', '장면', '구름 %']);
     expect(within(table).getAllByRole('checkbox').every((box) => (box as HTMLInputElement).checked)).toBe(true);
     expect(count()).toHaveTextContent('선택 5 / 전체 5개 날짜');
     expect(within(table).getAllByRole('row')[4]).toHaveTextContent('—'); // no cloud value
@@ -197,7 +197,7 @@ describe('GEE 날짜 고르기', () => {
     jest.spyOn(generation, 'estimateGee').mockResolvedValue({ ...ESTIMATE, dates: withS1 });
     await toAreaStep(/Sentinel-2 L2A/);
     const table = await screen.findByRole('table', { name: '날짜 고르기 · 광학·레이더 날짜 짝' }, { timeout: T });
-    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '날짜', '장면', '구름 %', '영역 덮음 %', '레이더 날짜', '차이(일)']);
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '날짜', '장면', '구름 %', '레이더 날짜', '차이(일)']);
     const rows = within(table).getAllByRole('row').slice(1);
     expect(rows[0]).toHaveTextContent('하강');
     expect(rows[2]).toHaveTextContent('주의');
@@ -218,4 +218,27 @@ describe('GEE 날짜 고르기', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '2024-08-19 선택' }));
     expect(next()).toBeDisabled();
   });
+});
+
+describe('100% 덮는 날짜만 (UR-45)', () => {
+  const DateTable = require('./DateTable').default;
+  const { blockerText } = require('./areaModel');
+
+  test('다 덮지 못한 날짜는 표에 없고 뺀 날짜로 알려 준다', () => {
+    const data = { ...ESTIMATE, dates: DATES.filter((item) => item.coverage === 1), excludedDates: [{ date: '2024-08-14', coverage: 0.82 }, { date: '2024-08-24', coverage: 0.97 }] };
+    render(<DateTable data={data} picked={['2024-08-04']} onChange={jest.fn()} />);
+    const table = screen.getByRole('table', { name: '날짜 고르기' });
+    expect(within(table).queryByText('2024-08-14')).not.toBeInTheDocument();
+    expect(screen.getByText(/위치를 100% 덮는 날짜만 보여 줍니다/)).toHaveTextContent('다 덮지 못해 뺀 날짜 2개: 2024-08-14(82%), 2024-08-24(97%)');
+  });
+
+  test('하나도 없으면 없다고 알려 준다', () => {
+    expect(blockerText('NO_FULL_COVER_DATE')).toBe('고른 기간에 이 위치를 100% 덮는 영상이 없습니다. 기간을 넓히거나 위치를 옮겨 보세요.');
+  });
+});
+
+test('100% 덮는 날짜가 없으면 레이더 없음 대신 그 문구 하나만 보인다', () => {
+  const { withPairingBlockers } = require('./sarModel');
+  const data = { ...ESTIMATE, dates: [], excludedDates: [{ date: '2024-08-06', coverage: 0 }], pairs: [], pairedCount: 0, unpairedCount: 0, blockers: ['NO_FULL_COVER_DATE', 'NO_S1_MATCH'] };
+  expect(withPairingBlockers(data, true)).toEqual(['NO_FULL_COVER_DATE']);
 });
