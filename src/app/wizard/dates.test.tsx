@@ -242,3 +242,8 @@ test('100% 덮는 날짜가 없으면 레이더 없음 대신 그 문구 하나�
   const data = { ...ESTIMATE, dates: [], excludedDates: [{ date: '2024-08-06', coverage: 0 }], pairs: [], pairedCount: 0, unpairedCount: 0, blockers: ['NO_FULL_COVER_DATE', 'NO_S1_MATCH'] };
   expect(withPairingBlockers(data, true)).toEqual(['NO_FULL_COVER_DATE']);
 });
+
+test('날짜 목록을 못 받으면 이유와 함께 막는다 (UR-46)', () => {
+  const { blockerText } = require('./areaModel');
+  expect(blockerText('DATE_LIST_UNAVAILABLE')).toMatch(/날짜 목록을 받지 못했습니다/);
+});
