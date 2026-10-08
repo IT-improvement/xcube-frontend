@@ -603,7 +603,10 @@
 .vx-reading__coords > div { display: grid; grid-template-columns: 36px 1fr; padding: 5px 0; border-bottom: 1px solid var(--vx-rule); font-size: 13px; }
 .vx-reading__coords > div:last-child { border-bottom: 0; }
 .vx-reading__coords dt { color: var(--vx-ink-3); }
-.vx-graph.hidden .vx-reading { display: flex; align-items: center; gap: 16px; padding-top: 0; padding-bottom: 0; }
+/* Folded: the empty chart column lends its width to the reading line, which stays on one line (no overlap). */
+.vx-graph.hidden .vx-reading { grid-column: 1 / 3; display: flex; align-items: center; gap: 16px; padding-top: 0; padding-bottom: 0; white-space: nowrap; overflow: hidden; }
+.vx-graph.hidden .vx-graph__chart { display: none; }
+.vx-graph.hidden .vx-reading__title, .vx-graph.hidden .vx-reading__coords { flex: none; }
 .vx-graph.hidden .vx-reading__coords { display: flex; gap: 12px; }
 .vx-graph.hidden .vx-reading__coords > div { display: flex; gap: 4px; padding: 0; border: 0; }
 .vx-graph__chart { position: relative; min-width: 0; min-height: 0; padding: 8px 0 2px; }
