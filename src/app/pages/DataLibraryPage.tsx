@@ -1,6 +1,6 @@
 import { Database, ExternalLink, FolderPlus, Plus, Search, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Alert, Button, ButtonLink } from '../../components/ui';
 import { Badge, Card, Dialog, EmptyState, PageHeader, Skeleton, TabPanel, Tabs, useToast } from '../../components/ui/kit';
 import { userMessage } from '../../api/httpClient';
@@ -10,21 +10,41 @@ import { useLoad } from '../useLoad';
 type Scope = 'all' | 'owned' | 'shared';
 type Sort = 'recent' | 'name' | 'period';
 
-/** Status badge from "INTEGRATION · AVAILABILITY" (Backoffice) or demo text. */
-export function DatasetStatus({ dataset }: { dataset: ZarrDataset }) {
+/**
+ * Status tag from "INTEGRATION · AVAILABILITY" (Backoffice) or demo text.
+ * `quiet` (lists) shows only the exceptions: nothing while the dataset is usable.
+ */
+export function DatasetStatus({ dataset, quiet }: { dataset: ZarrDataset; quiet?: boolean }) {
   const text = dataset.subtitle ?? '';
   if (/UNAVAILABLE|FAILED|ERROR/i.test(text)) return <Badge tone="danger">사용 불가</Badge>;
-  if (/AVAILABLE|READY/i.test(text)) return <Badge tone="success">사용 가능</Badge>;
+  if (/AVAILABLE|READY/i.test(text)) return quiet ? null : <Badge tone="success">사용 가능</Badge>;
   if (/PENDING|SYNC|REGISTERED|QUEUED|RUNNING/i.test(text)) return <Badge tone="warning">동기화 중</Badge>;
+  if (quiet) return null;
   return <Badge>{text || '—'}</Badge>;
 }
+
+const SCOPES: Scope[] = ['all', 'owned', 'shared'];
+const SORTS: Sort[] = ['recent', 'name', 'period'];
+const pick = <T extends string>(value: string | null, allowed: T[], fallback: T) => (allowed.includes(value as T) ? (value as T) : fallback);
 
 /** S3: all Zarr datasets the user owns or received. */
 export default function DataLibraryPage() {
   const datasets = useLoad(() => appApi.listDatasets());
-  const [scope, setScope] = useState<Scope>('all');
-  const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<Sort>('recent');
+  // Scope, search and sort live in the URL so a reload or a shared link keeps them (?scope=shared&q=…&sort=name).
+  const [params, setParams] = useSearchParams();
+  const scope = pick(params.get('scope'), SCOPES, 'all');
+  const sort = pick(params.get('sort'), SORTS, 'recent');
+  // The search box keeps its own state (typing stays immediate) and mirrors it into the URL.
+  const [query, setQueryState] = useState(() => params.get('q') ?? '');
+  const setParam = (key: string, value: string, fallback: string) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value && value !== fallback) next.set(key, value); else next.delete(key);
+      return next;
+    }, { replace: true });
+  const setScope = (value: Scope) => setParam('scope', value, 'all');
+  const setQuery = (value: string) => { setQueryState(value); setParam('q', value.trim() ? value : '', ''); };
+  const setSort = (value: Sort) => setParam('sort', value, 'recent');
   const [deleting, setDeleting] = useState<ZarrDataset | null>(null);
   const [linking, setLinking] = useState<ZarrDataset | null>(null);
   const toast = useToast();
@@ -73,7 +93,7 @@ export default function DataLibraryPage() {
         ) : !items.length ? (
           <EmptyState icon={<Database size={22} />} title="아직 데이터가 없습니다" text="위성 영상, Shapefile, GEE 자료로 데이터큐브를 만들거나 이미 있는 Zarr를 등록하세요." action={<ButtonLink to="/app/data/new"><Plus size={16} aria-hidden />데이터 추가</ButtonLink>} />
         ) : !visible.length ? (
-          <EmptyState icon={<Search size={22} />} title="검색 결과가 없습니다" text="검색어나 구분을 바꿔 보세요." action={<Button variant="secondary" onClick={() => { setQuery(''); setScope('all'); }}>조건 초기화</Button>} />
+          <EmptyState icon={<Search size={22} />} title="검색 결과가 없습니다" text="검색어나 구분을 바꿔 보세요." action={<Button variant="secondary" onClick={() => { setQueryState(''); setParams((current) => { const next = new URLSearchParams(current); next.delete('q'); next.delete('scope'); return next; }, { replace: true }); }}>조건 초기화</Button>} />
         ) : (
           <div className="xc-table-wrap">
             <table className="xc-table xc-table--cards">
@@ -84,7 +104,6 @@ export default function DataLibraryPage() {
                   <th scope="col" className="num hide-sm">시점</th>
                   <th scope="col" className="num hide-sm">변수</th>
                   <th scope="col" className="hide-sm">프로젝트</th>
-                  <th scope="col">접근</th>
                   <th scope="col">상태</th>
                   <th scope="col"><span className="sr-only">동작</span></th>
                 </tr>
@@ -92,13 +111,12 @@ export default function DataLibraryPage() {
               <tbody>
                 {visible.map((item) => (
                   <tr key={item.id}>
-                    <td className="cell-main"><span className="xc-cell-main"><Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link><small>{item.kind === 'FUSION' && <Badge tone="water">융합 결과</Badge>}{item.kind === 'AI_RESULT' && <Badge tone="result">AI 결과</Badge>} {item.xcubeDatasetId}{item.kind === 'AI_RESULT' && item.sourceDatacubeId && <> · 원본 <Link to={`/app/data/${encodeURIComponent(item.sourceDatacubeId)}`}>{items.find((source) => source.id === item.sourceDatacubeId)?.name ?? `#${item.sourceDatacubeId}`}</Link></>}</small></span></td>
+                    <td className="cell-main"><span className="xc-cell-main"><Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link><small>{!isOwned(item) && <Badge tone="water">공유받음</Badge>} {item.kind === 'FUSION' && <Badge tone="water">융합 결과</Badge>}{item.kind === 'AI_RESULT' && <Badge tone="result">AI 결과</Badge>} {item.xcubeDatasetId}{item.kind === 'AI_RESULT' && item.sourceDatacubeId && <> · 원본 <Link to={`/app/data/${encodeURIComponent(item.sourceDatacubeId)}`}>{items.find((source) => source.id === item.sourceDatacubeId)?.name ?? `#${item.sourceDatacubeId}`}</Link></>}</small></span></td>
                     <td className="hide-sm tabular">{periodLabel(item)}</td>
                     <td className="num hide-sm">{item.times.length}</td>
                     <td className="num hide-sm">{item.variables.length}</td>
                     <td className="hide-sm">{item.projectName || <span className="xc-hint">프로젝트 없음</span>}</td>
-                    <td>{isOwned(item) ? <Badge tone="primary">내 데이터</Badge> : <Badge tone="water">공유받음</Badge>}</td>
-                    <td><DatasetStatus dataset={item} /></td>
+                    <td><DatasetStatus dataset={item} quiet /></td>
                     <td className="cell-actions">
                       <div className="row-actions">
                         <a className="xc-icon-btn" href={item.kind === 'AI_RESULT' && item.sourceDatacubeId ? aiViewerHref(item.sourceDatacubeId, item.id) : viewerHref(item.id)} target="_blank" rel="noopener noreferrer" aria-label={`${item.name} Viewer에서 열기 (새 탭)`} title="Viewer에서 열기"><ExternalLink size={16} aria-hidden /></a>

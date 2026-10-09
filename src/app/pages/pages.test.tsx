@@ -1,7 +1,7 @@
 /* M4 management pages against mocked Backoffice/Generation APIs (real mode). */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 jest.mock('../../api', () => ({ activeViewerAdapter: { getProjects: jest.fn(), getDatasets: jest.fn(), getProjectDatasets: jest.fn(), getJobs: jest.fn(), runWaterExtraction: jest.fn() }, useMockApi: false }));
 jest.mock('../../api/backofficeApi', () => ({ backofficeAdapter: { getProject: jest.fn(), createProject: jest.fn(), updateProject: jest.fn(), deleteProject: jest.fn(), getProjectMembers: jest.fn(), addProjectMember: jest.fn(), updateProjectMember: jest.fn(), removeProjectMember: jest.fn(), getProjectDatasets: jest.fn(), getLinkableDatacubes: jest.fn(), linkProjectDataset: jest.fn(), unlinkProjectDataset: jest.fn(), getDatasetDetail: jest.fn(), deleteDatacube: jest.fn(), registerDatacube: jest.fn() } }));
@@ -28,9 +28,15 @@ const FusionPage = require('./FusionPage').default;
 const owned = { id: '77', projectId: '4', name: '연결된 Zarr', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: 'linked', defaultVariable: 'red', variables: ['red'], times: [], accessType: 'OWNED' };
 const shared = { ...owned, id: '88', projectId: '', name: '공유받은 Zarr', xcubeDatasetId: 'global', accessType: 'SHARED' };
 
+/** Shows the current query string so tests can check what the page keeps in the URL. */
+function SearchProbe() {
+  return <output data-testid="search">{decodeURIComponent(useLocation().search)}</output>;
+}
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
+      <SearchProbe />
       <Routes>
         <Route path="/app" element={<DashboardPage />} />
         <Route path="/app/data" element={<DataLibraryPage />} />
@@ -204,8 +210,31 @@ describe('S3·S5 데이터', () => {
   test('대시보드는 데이터가 없으면 첫 데이터 추가를 안내한다', async () => {
     adapter.getDatasets.mockResolvedValue([]);
     renderAt('/app');
-    expect(await screen.findByText('첫 데이터큐브를 추가해 보세요.')).toBeInTheDocument();
-    expect(screen.queryByText('내 데이터큐브')).not.toBeInTheDocument();
+    expect(await screen.findByText(/첫 데이터큐브를 추가해 보세요/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('요약')).not.toBeInTheDocument();
+    const section = screen.getByRole('region', { name: '최근 데이터' });
+    expect(within(section).getByRole('link', { name: /데이터 추가/ })).toHaveAttribute('href', '/app/data/new');
+  });
+
+  test('대시보드: 제목 옆 한 줄 요약, 바로 가기 세 줄, 최근 데이터 5개(이름·종류·기간·Viewer)', async () => {
+    const many = Array.from({ length: 7 }, (_, index) => ({ ...owned, id: String(100 + index), name: `데이터 ${index + 1}`, times: [{ iso: '2024-08-01', label: '2024-08-01' }, { iso: '2024-08-30', label: '2024-08-30' }] }));
+    adapter.getDatasets.mockResolvedValue([...many, { ...shared, kind: 'FUSION' }]);
+    renderAt('/app');
+    expect(await screen.findByText('데이터 1')).toBeInTheDocument();
+    const summary = screen.getByLabelText('요약');
+    expect(summary).toHaveTextContent('내 데이터 7공유받음 1처리 중 0');
+    expect(within(summary).getByRole('link', { name: '공유받음 1' })).toHaveAttribute('href', '/app/data?scope=shared');
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+    const actions = within(screen.getByRole('navigation', { name: '바로 가기' })).getAllByRole('link');
+    expect(actions.map((link) => link.getAttribute('href'))).toEqual(['/app/data/new', '/app/analysis/fusion', '/app/viewer?dataset=100']);
+    const section = screen.getByRole('region', { name: '최근 데이터' });
+    const rows = within(section).getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(5);
+    expect(within(rows[0]).getByText('원본')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('2024-08-01 ~ 2024-08-30')).toBeInTheDocument();
+    expect(within(rows[0]).getByRole('link', { name: '데이터 1 Viewer에서 열기 (새 탭)' })).toHaveAttribute('href', '/app/viewer?dataset=100');
+    expect(within(rows[0]).queryByText('사용 가능')).toBeNull();
+    expect(within(section).getByRole('link', { name: '전체 보기' })).toHaveAttribute('href', '/app/data');
   });
 });
 
@@ -420,8 +449,14 @@ describe('M4 작업 센터·대시보드·생성 이력', () => {
     generation.listJobs.mockResolvedValue([running, failed, done]);
     renderAt('/app');
     expect(await screen.findByText('제주 GeoTIFF')).toBeInTheDocument();
-    expect(within(screen.getByRole('group', { name: '처리 중 작업' })).getByText('1')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: /전체 보기/ }).map((link) => link.getAttribute('href'))).toContain('/app/jobs');
+    expect(screen.getByRole('link', { name: '처리 중 1' })).toHaveAttribute('href', '/app/jobs?status=QUEUED%2CRUNNING');
+    const section = screen.getByRole('region', { name: '최근 작업' });
+    const rows = within(section).getAllByRole('row').slice(1);
+    expect(rows.map((row) => within(row).getByText(/제주|울산|완료 영상/).textContent)).toEqual(['제주 GeoTIFF', '울산 Shape', '완료 영상']);
+    expect(within(rows[0]).getByText('처리 중')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('실패')).toBeInTheDocument();
+    expect(within(rows[0]).getByText(formatDateTime(running.createdAt))).toHaveClass('date');
+    expect(within(section).getByRole('link', { name: '전체 보기' })).toHaveAttribute('href', '/app/jobs');
   });
 
   test('데이터 상세의 생성 이력은 생성 작업의 입력과 단계를 보여 준다', async () => {
@@ -491,7 +526,7 @@ describe('M6 수식 융합 작업·데이터 표시', () => {
     analysis.listJobs.mockResolvedValue([{ ...fusionDone, status: 'RUNNING', registration: null }]);
     renderAt('/app');
     expect(await screen.findByText('NDWI 융합')).toBeInTheDocument();
-    expect(within(screen.getByRole('group', { name: '처리 중 작업' })).getByText('2')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '처리 중 2' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /수식 융합/ })).toHaveAttribute('href', '/app/analysis/fusion');
   });
 
@@ -568,7 +603,7 @@ describe('M7 AI 수체 추출 작업·결과 표시', () => {
     aiService.listJobs.mockResolvedValue([aiRunning]);
     renderAt('/app');
     expect(await screen.findByText('연결된 Zarr_수체_U-Net')).toBeInTheDocument();
-    expect(within(screen.getByRole('group', { name: '처리 중 작업' })).getByText('2')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '처리 중 2' })).toBeInTheDocument();
   });
 
   test('AI 결과 데이터는 목록·상세에 “AI 결과” badge와 원본 링크를 달고, Viewer는 원본에서 결과를 연다', async () => {
@@ -596,5 +631,61 @@ describe('M7 AI 수체 추출 작업·결과 표시', () => {
     expect(await screen.findByRole('link', { name: '끝난 수체 추출' })).toHaveAttribute('href', '/app/data/95');
     expect(aiService.listJobs).toHaveBeenCalledWith({ datacubeId: '77' });
     expect(screen.getByRole('link', { name: /Viewer에서 원본과 비교/ })).toHaveAttribute('href', '/app/viewer?dataset=77&ai=a2');
+  });
+});
+
+describe('목록 상태를 주소에 남긴다 (#17)과 목록 표시 정리 (#20)', () => {
+  test('데이터 목록: 구분·검색·정렬을 주소에서 읽고, 바꾸면 주소에 쓴다', async () => {
+    renderAt('/app/data?scope=shared&sort=name');
+    expect(await screen.findByText('공유받은 Zarr')).toBeInTheDocument();
+    expect(screen.queryByText('연결된 Zarr')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /공유받음/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('combobox', { name: '정렬' })).toHaveValue('name');
+    fireEvent.click(screen.getByRole('tab', { name: /전체/ }));
+    expect(await screen.findByText('연결된 Zarr')).toBeInTheDocument();
+    expect(screen.getByTestId('search')).toHaveTextContent('?sort=name');
+    fireEvent.change(screen.getByRole('searchbox', { name: '데이터 검색' }), { target: { value: '연결' } });
+    expect(screen.getByTestId('search')).toHaveTextContent('?sort=name&q=연결');
+    expect(screen.queryByText('공유받은 Zarr')).not.toBeInTheDocument();
+  });
+
+  test('검색어도 주소에서 다시 채운다', async () => {
+    renderAt('/app/data?q=global');
+    expect(await screen.findByText('공유받은 Zarr')).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: '데이터 검색' })).toHaveValue('global');
+    expect(screen.queryByText('연결된 Zarr')).not.toBeInTheDocument();
+  });
+
+  test('데이터 목록은 “공유받음”을 공유받은 행에만, 상태는 예외일 때만 단다', async () => {
+    adapter.getDatasets.mockResolvedValue([owned, shared, { ...owned, id: '79', name: '동기화 Zarr', subtitle: 'PENDING · UNKNOWN' }]);
+    renderAt('/app/data');
+    await screen.findByText('동기화 Zarr');
+    const rowOf = (text: string) => screen.getAllByRole('row').find((row) => within(row).queryByRole('link', { name: text }))!;
+    expect(within(rowOf('연결된 Zarr')).queryByText('공유받음')).toBeNull();
+    expect(within(rowOf('연결된 Zarr')).queryByText('내 데이터')).toBeNull();
+    expect(within(rowOf('연결된 Zarr')).queryByText('사용 가능')).toBeNull();
+    expect(within(rowOf('공유받은 Zarr')).getByText('공유받음')).toBeInTheDocument();
+    expect(within(rowOf('동기화 Zarr')).getByText('동기화 중')).toBeInTheDocument();
+  });
+
+  test('작업: 종류·상태 필터를 주소에서 읽고 바꾸면 주소에 쓴다', async () => {
+    renderAt('/app/jobs?type=SHAPEFILE&status=FAILED,CANCELLED');
+    await waitFor(() => expect(generation.listJobs).toHaveBeenLastCalledWith({ type: 'SHAPEFILE', status: 'FAILED,CANCELLED' }));
+    expect(screen.getByRole('button', { name: 'Shapefile' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('combobox', { name: '상태' })).toHaveValue('FAILED,CANCELLED');
+    fireEvent.click(screen.getByRole('button', { name: '전체' }));
+    await waitFor(() => expect(generation.listJobs).toHaveBeenLastCalledWith({ type: '', status: 'FAILED,CANCELLED' }));
+    expect(screen.getByTestId('search')).toHaveTextContent('?status=FAILED,CANCELLED');
+  });
+
+  test('데이터 상세: 연 탭을 주소에 남기고, 주소의 탭으로 연다', async () => {
+    backoffice.getDatasetDetail.mockResolvedValue({ ...owned, bbox: [126, 33, 127, 34] });
+    const { unmount } = renderAt('/app/data/77');
+    fireEvent.click(await screen.findByRole('tab', { name: /변수·Band/ }));
+    expect(screen.getByTestId('search')).toHaveTextContent('?tab=variables');
+    unmount();
+    renderAt('/app/data/77?tab=history');
+    expect(await screen.findByRole('tab', { name: '생성 이력' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('생성 이력이 없습니다')).toBeInTheDocument();
   });
 });
