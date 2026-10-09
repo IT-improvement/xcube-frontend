@@ -5,7 +5,7 @@
   grid-template-columns: minmax(360px, 2fr) 3fr;
 }
 .auth__brand {
-  display: flex; flex-direction: column; justify-content: space-between; gap: var(--space-10);
+  display: flex; flex-direction: column; justify-content: space-between; gap: var(--space-8);
   padding: var(--space-10);
   background: var(--fb-ground);
   border-right: 1px solid var(--fb-rule);
@@ -13,7 +13,14 @@
 .auth__brand-copy { display: grid; gap: var(--space-3); max-width: 360px; }
 .auth__brand-title { font: 600 26px/1.35 var(--fb-font); letter-spacing: -0.01em; color: var(--fb-ink); text-wrap: balance; }
 .auth__brand-text { color: var(--fb-ink-2); font-size: 15px; line-height: 1.65; word-break: keep-all; }
-.auth__brand-map { display: block; width: 100%; max-width: 360px; height: auto; }
+.auth__brand { overflow: hidden; }
+/* The capture fills whatever height the form column leaves; absolute so it never stretches the row. */
+.auth__brand-shot { position: relative; flex: 1 1 0; min-height: 240px; padding-bottom: 28px; }
+.auth__brand-shot img {
+  position: absolute; inset: 0 0 28px 0; width: 100%; height: calc(100% - 28px); object-fit: cover; object-position: 50% 62%;
+  border: 1px solid var(--fb-rule-strong); border-radius: var(--fb-radius-lg); background: var(--fb-sunken);
+}
+.auth__brand-shot figcaption { position: absolute; left: 0; right: 0; bottom: 0; font: var(--text-caption); color: var(--fb-ink-2); }
 
 .auth__main { display: grid; place-items: center; padding: var(--space-10) var(--space-6); background: var(--fb-surface); }
 .auth__panel { width: 100%; max-width: 380px; display: grid; gap: var(--space-4); }

@@ -53,18 +53,19 @@ function AuthLayout({ title, subtitle, children }: { title: string; subtitle: st
       <aside className="auth__brand" aria-label="XCube 소개">
         <Logo />
         <div className="auth__brand-copy">
-          <p className="auth__brand-title">위성 자료에서<br />물의 변화를 읽습니다</p>
-          <p className="auth__brand-text">위성 영상을 가볍게 저장하고, 필요한 곳과 날짜만 지도에서 보고, AI로 찾은 수체를 원본과 비교합니다.</p>
+          <p className="auth__brand-title">위성 영상은 작게 보관하고, 필요한 곳과 날짜만 지도에서 봅니다</p>
+          <p className="auth__brand-text">파일을 올리면 지도에서 바로 열리는 데이터로 바꾸고, AI가 찾은 물을 원본 옆에 놓아 줍니다.</p>
         </div>
-        <svg className="auth__brand-map" viewBox="0 0 320 180" aria-hidden="true" focusable="false">
-          <rect x="0.5" y="0.5" width="319" height="179" rx="7.5" fill="var(--fb-surface)" stroke="var(--fb-rule)" />
-          <path d="M1 120 C60 96 92 140 150 118 S250 70 319 92 V172 Q319 179 312 179 H8 Q1 179 1 172Z" fill="var(--fb-sunken)" />
-          <path d="M40 70 C70 54 110 66 120 84 S96 120 70 112 34 92 40 70Z" fill="var(--fb-water)" opacity=".7" />
-          <path d="M170 40 C190 30 228 34 236 52 S220 82 196 78 160 58 170 40Z" fill="var(--fb-water)" opacity=".45" />
-          <path d="M130 150 C170 132 214 146 256 128" fill="none" stroke="var(--fb-water)" strokeWidth="4" strokeLinecap="round" opacity=".6" />
-          <circle cx="196" cy="58" r="5" fill="none" stroke="var(--fb-overprint)" strokeWidth="2" />
-          <path d="M196 46v6M196 64v6M184 58h6M202 58h6" stroke="var(--fb-overprint)" strokeWidth="2" />
-        </svg>
+        <figure className="auth__brand-shot">
+          <img
+            src={`${process.env.PUBLIC_URL ?? ''}/landing/daecheong-swipe.webp`}
+            width={780}
+            height={1148}
+            decoding="async"
+            alt="실제 Viewer 화면: 대청호를 구분선으로 나눠 왼쪽은 위성 원본, 오른쪽은 AI가 물로 찾은 곳을 청록으로 표시"
+          />
+          <figcaption>대청호, 2024년 8월 14일 · 원본과 AI 결과</figcaption>
+        </figure>
       </aside>
       <main className="auth__main" id="main">
         <div className="auth__panel">
