@@ -1,0 +1,80 @@
+/* Field-book tokens ("측량 야장", DESIGN.md) shared by the Viewer, the app, the landing page and auth.
+   One source: the Viewer aliases these as --vx-*, and tokens.css maps the older --color-* names onto them.
+   Contrast (WCAG 2.2) was computed for every text/ground pair: text ≥ 4.5:1, control borders ≥ 3:1. */
+/* Light values. The app, landing and auth screens (.xc) stay light even when the Viewer switched <html>
+   to dark in the same tab: they still hold a few fixed colours (illustrations, colour-bar swatches).
+   Drop the second selector once those screens are checked in dark. */
+:root,
+:root[data-theme='dark'] .xc {
+  color-scheme: light;
+  --fb-ground: #f3f5f2;
+  --fb-surface: #ffffff;
+  --fb-sunken: #eceee9;
+  --fb-rule: #d8ddd5;          /* dividers only — too light for a control outline */
+  --fb-rule-strong: #b3bbb0;   /* button/chip/segment frames next to a text label */
+  --fb-input-border: #7f8a81;  /* text field / select outline: 3.6:1 on surface, 3.3 on ground, 3.1 on sunken */
+  --fb-ink: #1b201d;
+  --fb-ink-2: #454d47;
+  --fb-ink-3: #5f6862;
+  --fb-on-ink: #ffffff;
+  --fb-overprint: #b8166f;      /* marks the user placed: cursor, flags, reticle, AOI */
+  --fb-overprint-text: #a3135f;
+  --fb-overprint-soft: #f8e3ee;
+  --fb-on-overprint: #ffffff;
+  --fb-water: #1769aa;          /* data */
+  --fb-water-soft: #e2eef8;
+  --fb-result: #0f7a6e;         /* AI results */
+  --fb-basemap: #7f9a7f;
+  --fb-ok: #2e7a3c;
+  --fb-warn: #94580a;
+  --fb-bad: #b42318;
+  --fb-focus: #1b201d;
+  --fb-backdrop: rgba(27, 32, 29, 0.42);
+  --fb-lift: 0 1px 2px rgba(27, 32, 29, 0.07), 0 6px 16px rgba(27, 32, 29, 0.09);
+  --fb-lift-high: 0 2px 4px rgba(27, 32, 29, 0.08), 0 16px 36px rgba(27, 32, 29, 0.16);
+
+  /* Data colours for compare / change maps (kept from the previous token set). */
+  --data-cmp-agree: #1d4ed8;
+  --data-cmp-only-a: #ea580c;
+  --data-cmp-only-b: #7c3aed;
+  --data-chg-gain: #0284c7;
+  --data-chg-loss: #ea580c;
+  --data-chg-stable: #94a3b8;
+
+  --fb-radius-mark: 4px;  /* tags, badges, segments */
+  --fb-radius: 6px;       /* controls */
+  --fb-radius-lg: 8px;    /* sheets, dialogs, popovers, toasts */
+  --fb-font: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --fb-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --fb-press: 140ms;
+}
+
+/* Dark theme (the Viewer's toggle sets data-theme on <html>). */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --fb-ground: #111412;
+  --fb-surface: #181c19;
+  --fb-sunken: #222723;
+  --fb-rule: #2d3430;
+  --fb-rule-strong: #46504a;
+  --fb-input-border: #6f7a73;
+  --fb-ink: #e7ebe7;
+  --fb-ink-2: #bcc4be;
+  --fb-ink-3: #99a29c;
+  --fb-on-ink: #111412;
+  --fb-overprint: #ff6fb3;
+  --fb-overprint-text: #ff8cc2;
+  --fb-overprint-soft: #3d1b2d;
+  --fb-on-overprint: #1a0712;
+  --fb-water: #6db3ec;
+  --fb-water-soft: #172b3c;
+  --fb-result: #4fc4b4;
+  --fb-basemap: #7d977d;
+  --fb-ok: #6fcf7f;
+  --fb-warn: #f0b45a;
+  --fb-bad: #ff8a80;
+  --fb-focus: #e7ebe7;
+  --fb-backdrop: rgba(0, 0, 0, 0.6);
+  --fb-lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 16px rgba(0, 0, 0, 0.4);
+  --fb-lift-high: 0 2px 4px rgba(0, 0, 0, 0.45), 0 16px 36px rgba(0, 0, 0, 0.55);
+}

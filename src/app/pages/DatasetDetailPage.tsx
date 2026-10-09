@@ -2,7 +2,7 @@ import { ArrowLeft, ExternalLink, FolderPlus, Lock, SearchX, Trash2 } from 'luci
 import { ReactNode, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Button, ButtonAnchor, ButtonLink } from '../../components/ui';
-import { Badge, Card, EmptyState, PageHeader, Skeleton, Tabs, useToast } from '../../components/ui/kit';
+import { Badge, Card, EmptyState, PageHeader, Skeleton, TabPanel, Tabs, useToast } from '../../components/ui/kit';
 import { ai, aiViewerHref, appApi, formatDate, fusion, generation, isOwned, periodLabel, viewerHref, ZarrDataset } from '../api';
 import { asFusionRequest } from '../fusion';
 import { AI_MODEL_LABEL, elapsed, FusionRequestSummary, JOB_TYPE_LABEL, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
@@ -87,7 +87,7 @@ export default function DatasetDetailPage() {
       />
       <Card>
         <div style={{ padding: '0 20px' }}>
-          <Tabs label="데이터 상세" value={tab} onChange={setTab} items={[
+          <Tabs label="데이터 상세" idPrefix="dataset-detail" value={tab} onChange={setTab} items={[
             { id: 'overview', label: '개요' },
             { id: 'variables', label: '변수·Band', count: item.variables.length },
             { id: 'history', label: '생성 이력' },
@@ -95,7 +95,7 @@ export default function DatasetDetailPage() {
             { id: 'projects', label: '프로젝트·공유' },
           ]} />
         </div>
-        <div role="tabpanel">
+        <TabPanel idPrefix="dataset-detail" value={tab}>
           {tab === 'overview' && (
             <>
               {item.bbox && <BBoxMap bbox={item.bbox} />}
@@ -137,7 +137,7 @@ export default function DatasetDetailPage() {
               <div><Button variant="secondary" onClick={() => setLinking(true)}><FolderPlus size={16} aria-hidden />프로젝트에 연결</Button></div>
             </div>
           )}
-        </div>
+        </TabPanel>
       </Card>
       {deleting && <DeleteDatasetDialog dataset={item} onClose={() => setDeleting(false)} onDeleted={() => navigate('/app/data', { replace: true })} />}
       {linking && <LinkProjectDialog dataset={item} onClose={() => setLinking(false)} onLinked={(project) => { setLinking(false); toast.show(`“${project.name}” 프로젝트에 연결했습니다.`); }} />}

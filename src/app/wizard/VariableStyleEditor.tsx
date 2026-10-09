@@ -140,10 +140,11 @@ export default function VariableStyleEditor({
                   <input type="checkbox" checked={selected.has(field.name)} onChange={() => toggle(field)} />
                   <span className="vse-option__text">
                     <strong>{field.name}</strong>
-                    <small>
-                      {field.type ? TYPE_LABEL[field.type] : '형식 미확인'}
-                      {range ? ` · ${formatValue(range.min)} ~ ${formatValue(range.max)}` : field.categories ? ` · 값 ${field.categories.length}종` : ''}
-                    </small>
+                    {(field.type || range || field.categories) && (
+                      <small>
+                        {[field.type && TYPE_LABEL[field.type], range ? `${formatValue(range.min)} ~ ${formatValue(range.max)}` : field.categories ? `값 ${field.categories.length}종` : ''].filter(Boolean).join(' · ')}
+                      </small>
+                    )}
                   </span>
                 </label>
               );
@@ -156,7 +157,7 @@ export default function VariableStyleEditor({
         <div className="vse-custom">
           <label className="xc-field" style={{ flex: 1 }}>
             <span className="xc-label">변수 이름 추가</span>
-            <input className="xc-field__input" style={{ height: 40 }} value={custom} placeholder="예: ndvi" onChange={(event) => setCustom(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addCustom(); } }} />
+            <input className="xc-field__input" value={custom} placeholder="예: ndvi" onChange={(event) => setCustom(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addCustom(); } }} />
           </label>
           <button type="button" className="xc-btn xc-btn--secondary" onClick={addCustom} disabled={!custom.trim()}><Plus size={16} aria-hidden />추가</button>
         </div>
@@ -183,7 +184,7 @@ export default function VariableStyleEditor({
                 <div className="vse-row__grid">
                   {renamable && <label className="xc-field">
                     <span className="xc-label">변수 이름</span>
-                    <input className="xc-field__input" style={{ height: 40 }} value={choice.name} maxLength={64} onChange={(event) => update(choice.source, { name: event.target.value })} aria-label={`${choice.source} 변수 이름`} />
+                    <input className="xc-field__input" value={choice.name} maxLength={64} onChange={(event) => update(choice.source, { name: event.target.value })} aria-label={`${choice.source} 변수 이름`} />
                   </label>}
                   {!continuousOnly && <div className="xc-field">
                     <span className="xc-label">표현</span>
@@ -198,11 +199,11 @@ export default function VariableStyleEditor({
                   <div className="vse-range">
                     <label className="xc-field">
                       <span className="xc-label">표시 최솟값</span>
-                      <input className="xc-field__input" style={{ height: 40 }} type="number" step="any" value={choice.min} onChange={(event) => update(choice.source, { min: event.target.value })} aria-label={`${choice.source} 표시 최솟값`} />
+                      <input className="xc-field__input" type="number" step="any" value={choice.min} onChange={(event) => update(choice.source, { min: event.target.value })} aria-label={`${choice.source} 표시 최솟값`} />
                     </label>
                     <label className="xc-field">
                       <span className="xc-label">표시 최댓값</span>
-                      <input className="xc-field__input" style={{ height: 40 }} type="number" step="any" value={choice.max} onChange={(event) => update(choice.source, { max: event.target.value })} aria-label={`${choice.source} 표시 최댓값`} />
+                      <input className="xc-field__input" type="number" step="any" value={choice.max} onChange={(event) => update(choice.source, { max: event.target.value })} aria-label={`${choice.source} 표시 최댓값`} />
                     </label>
                     <div className="vse-range__auto">
                       {range ? (

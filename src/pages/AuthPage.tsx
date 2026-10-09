@@ -1,5 +1,5 @@
 import { ArrowLeft } from 'lucide-react';
-import { FormEvent, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { authApi } from '../api/authApi';
 import { userMessage } from '../api/httpClient';
@@ -8,7 +8,9 @@ import { Alert, Button, Logo, TextField } from '../components/ui';
 import './auth.css';
 
 const DEFAULT_REDIRECT = '/app';
-const USERNAME_PATTERN = '[A-Za-z0-9_.\\-]{3,50}';
+const USERNAME_RULE = /^[A-Za-z0-9_.-]{3,50}$/;
+/** iOS would otherwise capitalise or "correct" the first letter of the id. */
+const ID_INPUT = { autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false } as const;
 
 /** Only same-origin app paths are allowed as a post-login destination. */
 export function safeRedirect(value: string | null) {
@@ -16,23 +18,52 @@ export function safeRedirect(value: string | null) {
 }
 
 type LoginState = { username?: string; notice?: string } | null;
+type Errors<K extends string> = Partial<Record<K, string>>;
 
-function AuthLayout({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+/**
+ * Inline validation without browser bubbles: errors show under the fields after the first submit
+ * (or after leaving a filled field), the submit button stays enabled, and a failed submit moves focus
+ * to the first field with an error.
+ */
+function useFormErrors<K extends string>(validate: () => Errors<K>) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [touched, setTouched] = useState<Partial<Record<K, boolean>>>({});
+  const [focusTick, setFocusTick] = useState(0);
+  const errors = validate();
+  useEffect(() => {
+    if (focusTick) formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [focusTick]);
+  return {
+    formRef,
+    shown: (key: K) => (submitted || touched[key] ? errors[key] : undefined),
+    blur: (key: K, value: string) => () => { if (value) setTouched((current) => ({ ...current, [key]: true })); },
+    /** Returns true when the form may be sent. */
+    check: () => {
+      setSubmitted(true);
+      if (Object.values(errors).some(Boolean)) { setFocusTick((value) => value + 1); return false; }
+      return true;
+    },
+  };
+}
+
+function AuthLayout({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
     <div className="xc auth">
-      <aside className="auth__brand" aria-hidden>
+      <aside className="auth__brand" aria-label="XCube 소개">
         <Logo />
         <div className="auth__brand-copy">
-          <p className="auth__brand-title">위성 데이터에서<br />물의 변화를 읽습니다</p>
-          <p className="auth__brand-text">위성 영상을 Zarr 데이터큐브로 만들고, 시계열로 탐색하고, 수체를 추출해 비교합니다.</p>
+          <p className="auth__brand-title">위성 자료에서<br />물의 변화를 읽습니다</p>
+          <p className="auth__brand-text">위성 영상을 가볍게 저장하고, 필요한 곳과 날짜만 지도에서 보고, AI로 찾은 수체를 원본과 비교합니다.</p>
         </div>
-        <svg className="auth__brand-map" viewBox="0 0 320 180">
-          <rect width="320" height="180" rx="12" fill="#fff" />
-          <path d="M0 120 C60 96 92 140 150 118 S250 70 320 92 V180 H0Z" fill="#e8eef9" />
-          <path d="M40 70 C70 54 110 66 120 84 S96 120 70 112 34 92 40 70Z" fill="var(--color-water)" opacity=".75" />
-          <path d="M170 40 C190 30 228 34 236 52 S220 82 196 78 160 58 170 40Z" fill="var(--color-water)" opacity=".55" />
-          <path d="M130 150 C170 132 214 146 256 128" fill="none" stroke="var(--color-water)" strokeWidth="5" strokeLinecap="round" opacity=".7" />
-          <circle cx="196" cy="58" r="5" fill="var(--color-primary)" stroke="#fff" strokeWidth="2" />
+        <svg className="auth__brand-map" viewBox="0 0 320 180" aria-hidden="true" focusable="false">
+          <rect x="0.5" y="0.5" width="319" height="179" rx="7.5" fill="var(--fb-surface)" stroke="var(--fb-rule)" />
+          <path d="M1 120 C60 96 92 140 150 118 S250 70 319 92 V172 Q319 179 312 179 H8 Q1 179 1 172Z" fill="var(--fb-sunken)" />
+          <path d="M40 70 C70 54 110 66 120 84 S96 120 70 112 34 92 40 70Z" fill="var(--fb-water)" opacity=".7" />
+          <path d="M170 40 C190 30 228 34 236 52 S220 82 196 78 160 58 170 40Z" fill="var(--fb-water)" opacity=".45" />
+          <path d="M130 150 C170 132 214 146 256 128" fill="none" stroke="var(--fb-water)" strokeWidth="4" strokeLinecap="round" opacity=".6" />
+          <circle cx="196" cy="58" r="5" fill="none" stroke="var(--fb-overprint)" strokeWidth="2" />
+          <path d="M196 46v6M196 64v6M184 58h6M202 58h6" stroke="var(--fb-overprint)" strokeWidth="2" />
         </svg>
       </aside>
       <main className="auth__main" id="main">
@@ -59,15 +90,21 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Login only checks that both fields are filled: older accounts may not follow today's sign-up rules.
+  const form = useFormErrors<'username' | 'password'>(() => ({
+    username: username.trim() ? undefined : '아이디를 입력하세요.',
+    password: password ? undefined : '비밀번호를 입력하세요.',
+  }));
 
   if (user) return <Navigate to={redirect} replace />;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!form.check()) return;
     setBusy(true);
     setError('');
     try {
-      await authApi.login({ email: username, password });
+      await authApi.login({ email: username.trim(), password });
       signIn(await authApi.me());
       navigate(redirect, { replace: true });
     } catch (cause) {
@@ -83,26 +120,26 @@ export function LoginPage() {
       {params.get('reason') === 'idle' && <Alert tone="warning">장시간 사용하지 않아 로그아웃되었습니다. 다시 로그인해 주세요.</Alert>}
       {state?.notice && <Alert tone="success">{state.notice}</Alert>}
       {error && <Alert tone="danger">{error}</Alert>}
-      <form className="auth__form" onSubmit={submit} aria-labelledby="auth-title">
+      <form ref={form.formRef} className="auth__form" onSubmit={submit} aria-labelledby="auth-title" noValidate>
         <TextField
           label="아이디"
           name="username"
           required
-          pattern={USERNAME_PATTERN}
-          title="영문, 숫자, 밑줄, 점, 하이픈을 3~50자로 사용할 수 있습니다."
           autoComplete="username"
+          {...ID_INPUT}
           value={username}
           onChange={(event) => setUsername(event.target.value)}
+          error={form.shown('username')}
         />
         <TextField
           label="비밀번호"
           name="password"
           type="password"
           required
-          minLength={8}
           autoComplete="current-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
+          error={form.shown('password')}
         />
         <Button type="submit" size="lg" block disabled={busy}>{busy ? '로그인하는 중…' : '로그인'}</Button>
       </form>
@@ -115,25 +152,30 @@ export function SignupPage() {
   const { user } = useAuth();
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: '', username: '', password: '', confirm: '' });
+  const [values, setValues] = useState({ name: '', username: '', password: '', confirm: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const mismatch = form.confirm.length > 0 && form.confirm !== form.password;
+  const form = useFormErrors<keyof typeof values>(() => ({
+    name: values.name.trim() ? undefined : '이름을 입력하세요.',
+    username: !values.username ? '아이디를 입력하세요.' : USERNAME_RULE.test(values.username) ? undefined : '영문·숫자·밑줄(_)·점(.)·하이픈(-)으로 3~50자를 입력하세요.',
+    password: !values.password ? '비밀번호를 입력하세요.' : values.password.length >= 8 ? undefined : '비밀번호는 8자 이상이어야 합니다.',
+    confirm: !values.confirm ? '비밀번호를 한 번 더 입력하세요.' : values.confirm === values.password ? undefined : '비밀번호가 일치하지 않습니다.',
+  }));
 
   if (user) return <Navigate to={safeRedirect(params.get('redirect'))} replace />;
 
-  const update = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((current) => ({ ...current, [key]: event.target.value }));
+  const update = (key: keyof typeof values) => (event: React.ChangeEvent<HTMLInputElement>) =>
+    setValues((current) => ({ ...current, [key]: event.target.value }));
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (form.password !== form.confirm) return;
+    if (!form.check()) return;
     setBusy(true);
     setError('');
     try {
-      await authApi.signup({ email: form.username, password: form.password, name: form.name });
+      await authApi.signup({ email: values.username, password: values.password, name: values.name.trim() });
       const loginPath = params.get('redirect') ? `/login?redirect=${encodeURIComponent(safeRedirect(params.get('redirect')))}` : '/login';
-      navigate(loginPath, { state: { username: form.username, notice: '회원가입이 완료되었습니다. 로그인해 주세요.' } });
+      navigate(loginPath, { state: { username: values.username, notice: '회원가입이 완료되었습니다. 로그인해 주세요.' } });
     } catch (cause) {
       setError(userMessage(cause));
     } finally {
@@ -144,29 +186,32 @@ export function SignupPage() {
   return (
     <AuthLayout title="회원가입" subtitle="몇 가지 정보만 입력하면 바로 시작할 수 있습니다.">
       {error && <Alert tone="danger">{error}</Alert>}
-      <form className="auth__form" onSubmit={submit} aria-labelledby="auth-title">
-        <TextField label="이름" name="name" required maxLength={100} autoComplete="name" value={form.name} onChange={update('name')} />
+      <form ref={form.formRef} className="auth__form" onSubmit={submit} aria-labelledby="auth-title" noValidate>
+        <TextField label="이름" name="name" required maxLength={100} autoComplete="name" help="이름은 화면 표시에만 씁니다." value={values.name} onChange={update('name')} onBlur={form.blur('name', values.name)} error={form.shown('name')} />
         <TextField
           label="아이디"
           name="username"
           required
-          pattern={USERNAME_PATTERN}
-          title="영문, 숫자, 밑줄, 점, 하이픈을 3~50자로 사용할 수 있습니다."
+          maxLength={50}
           help="영문·숫자·밑줄(_)·점(.)·하이픈(-) 3~50자"
           autoComplete="username"
-          value={form.username}
+          {...ID_INPUT}
+          value={values.username}
           onChange={update('username')}
+          onBlur={form.blur('username', values.username)}
+          error={form.shown('username')}
         />
         <TextField
           label="비밀번호"
           name="password"
           type="password"
           required
-          minLength={8}
           help="8자 이상"
           autoComplete="new-password"
-          value={form.password}
+          value={values.password}
           onChange={update('password')}
+          onBlur={form.blur('password', values.password)}
+          error={form.shown('password')}
         />
         <TextField
           label="비밀번호 확인"
@@ -174,11 +219,12 @@ export function SignupPage() {
           type="password"
           required
           autoComplete="new-password"
-          value={form.confirm}
+          value={values.confirm}
           onChange={update('confirm')}
-          error={mismatch ? '비밀번호가 일치하지 않습니다.' : undefined}
+          onBlur={form.blur('confirm', values.confirm)}
+          error={form.shown('confirm')}
         />
-        <Button type="submit" size="lg" block disabled={busy || mismatch}>{busy ? '가입하는 중…' : '회원가입'}</Button>
+        <Button type="submit" size="lg" block disabled={busy}>{busy ? '가입하는 중…' : '회원가입'}</Button>
       </form>
       <p className="auth__switch">이미 계정이 있나요? <Link to={params.get('redirect') ? `/login?redirect=${encodeURIComponent(safeRedirect(params.get('redirect')))}` : '/login'}>로그인</Link></p>
     </AuthLayout>

@@ -2,7 +2,7 @@ import { Database, ExternalLink, FolderPlus, Plus, Search, Trash2 } from 'lucide
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, ButtonLink } from '../../components/ui';
-import { Badge, Card, Dialog, EmptyState, PageHeader, Skeleton, Tabs, useToast } from '../../components/ui/kit';
+import { Badge, Card, Dialog, EmptyState, PageHeader, Skeleton, TabPanel, Tabs, useToast } from '../../components/ui/kit';
 import { userMessage } from '../../api/httpClient';
 import { aiViewerHref, appApi, canEditProject, isOwned, periodLabel, Project, viewerHref, ZarrDataset } from '../api';
 import { useLoad } from '../useLoad';
@@ -44,9 +44,10 @@ export default function DataLibraryPage() {
     <div className="page-stack">
       <PageHeader title="데이터" description="내가 만든 데이터큐브와 공유받은 데이터큐브입니다." actions={<ButtonLink to="/app/data/new"><Plus size={16} aria-hidden />데이터 추가</ButtonLink>} />
       <Card>
-        <div style={{ padding: '0 20px' }}>
-          <Tabs label="데이터 구분" value={scope} onChange={setScope} items={[{ id: 'all', label: '전체', count: counts.all }, { id: 'owned', label: '내 데이터', count: counts.owned }, { id: 'shared', label: '공유받음', count: counts.shared }]} />
+        <div className="sheet-tabs">
+          <Tabs label="데이터 구분" idPrefix="data-scope" value={scope} onChange={setScope} items={[{ id: 'all', label: '전체', count: counts.all }, { id: 'owned', label: '내 데이터', count: counts.owned }, { id: 'shared', label: '공유받음', count: counts.shared }]} />
         </div>
+        <TabPanel idPrefix="data-scope" value={scope}>
         <div className="toolbar">
           <label className="toolbar__search">
             <Search size={16} aria-hidden />
@@ -67,7 +68,7 @@ export default function DataLibraryPage() {
         ) : datasets.error ? (
           <div className="inline-error">
             <Alert tone="danger">데이터 목록을 불러오지 못했습니다. {datasets.error}</Alert>
-            <Button variant="secondary" size="sm" onClick={datasets.reload} style={{ marginTop: 12 }}>다시 시도</Button>
+            <Button variant="line" size="sm" onClick={datasets.reload} className="inline-error__retry">다시 시도</Button>
           </div>
         ) : !items.length ? (
           <EmptyState icon={<Database size={22} />} title="아직 데이터가 없습니다" text="위성 영상, Shapefile, GEE 자료로 데이터큐브를 만들거나 이미 있는 Zarr를 등록하세요." action={<ButtonLink to="/app/data/new"><Plus size={16} aria-hidden />데이터 추가</ButtonLink>} />
@@ -75,7 +76,7 @@ export default function DataLibraryPage() {
           <EmptyState icon={<Search size={22} />} title="검색 결과가 없습니다" text="검색어나 구분을 바꿔 보세요." action={<Button variant="secondary" onClick={() => { setQuery(''); setScope('all'); }}>조건 초기화</Button>} />
         ) : (
           <div className="xc-table-wrap">
-            <table className="xc-table">
+            <table className="xc-table xc-table--cards">
               <thead>
                 <tr>
                   <th scope="col">이름</th>
@@ -91,14 +92,14 @@ export default function DataLibraryPage() {
               <tbody>
                 {visible.map((item) => (
                   <tr key={item.id}>
-                    <td><span className="xc-cell-main"><Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link><small>{item.kind === 'FUSION' && <Badge tone="water">융합 결과</Badge>}{item.kind === 'AI_RESULT' && <Badge tone="result">AI 결과</Badge>} {item.xcubeDatasetId}{item.kind === 'AI_RESULT' && item.sourceDatacubeId && <> · 원본 <Link to={`/app/data/${encodeURIComponent(item.sourceDatacubeId)}`}>{items.find((source) => source.id === item.sourceDatacubeId)?.name ?? `#${item.sourceDatacubeId}`}</Link></>}</small></span></td>
+                    <td className="cell-main"><span className="xc-cell-main"><Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link><small>{item.kind === 'FUSION' && <Badge tone="water">융합 결과</Badge>}{item.kind === 'AI_RESULT' && <Badge tone="result">AI 결과</Badge>} {item.xcubeDatasetId}{item.kind === 'AI_RESULT' && item.sourceDatacubeId && <> · 원본 <Link to={`/app/data/${encodeURIComponent(item.sourceDatacubeId)}`}>{items.find((source) => source.id === item.sourceDatacubeId)?.name ?? `#${item.sourceDatacubeId}`}</Link></>}</small></span></td>
                     <td className="hide-sm tabular">{periodLabel(item)}</td>
                     <td className="num hide-sm">{item.times.length}</td>
                     <td className="num hide-sm">{item.variables.length}</td>
                     <td className="hide-sm">{item.projectName || <span className="xc-hint">프로젝트 없음</span>}</td>
                     <td>{isOwned(item) ? <Badge tone="primary">내 데이터</Badge> : <Badge tone="water">공유받음</Badge>}</td>
                     <td><DatasetStatus dataset={item} /></td>
-                    <td>
+                    <td className="cell-actions">
                       <div className="row-actions">
                         <a className="xc-icon-btn" href={item.kind === 'AI_RESULT' && item.sourceDatacubeId ? aiViewerHref(item.sourceDatacubeId, item.id) : viewerHref(item.id)} target="_blank" rel="noopener noreferrer" aria-label={`${item.name} Viewer에서 열기 (새 탭)`} title="Viewer에서 열기"><ExternalLink size={16} aria-hidden /></a>
                         <button type="button" className="xc-icon-btn" aria-label={`${item.name} 프로젝트에 연결`} title="프로젝트에 연결" onClick={() => setLinking(item)}><FolderPlus size={16} aria-hidden /></button>
@@ -111,6 +112,7 @@ export default function DataLibraryPage() {
             </table>
           </div>
         )}
+        </TabPanel>
       </Card>
       {deleting && (
         <DeleteDatasetDialog

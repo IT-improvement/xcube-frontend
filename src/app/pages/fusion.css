@@ -1,7 +1,7 @@
 /* S12 수식 융합 */
 .fusion-bindings { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
-.fusion-binding { display: grid; grid-template-columns: 36px repeat(3, minmax(0, 1fr)) auto; gap: var(--space-3); align-items: end; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-subtle); }
-.fusion-binding__letter { display: grid; place-items: center; height: 40px; border-radius: var(--radius-sm); background: var(--color-primary); color: #fff; font: 700 16px/1 var(--font-sans); }
+.fusion-binding { display: grid; grid-template-columns: 36px repeat(3, minmax(0, 1fr)) auto; gap: var(--space-3); align-items: end; padding: var(--space-4); border: 1px solid var(--fb-rule); border-radius: var(--fb-radius); background: var(--fb-ground); }
+.fusion-binding__letter { display: grid; place-items: center; height: 36px; border-radius: var(--fb-radius-mark); background: var(--fb-ink); color: var(--fb-on-ink); font: 700 15px/1 var(--font-sans); }
 .fusion-binding__custom { grid-column: 2 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); align-items: start; }
 .fusion-binding__custom .xc-hint { grid-column: 1 / -1; margin: 0; }
 .fusion-formula .xc-field__input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 16px; }
@@ -11,7 +11,7 @@
 .fusion-error { color: var(--color-danger); font-weight: 600; }
 .fusion-error p { margin: 4px 0 0; }
 .fusion-marker { font: 16px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--color-text-secondary); padding: 0 var(--space-3); }
-.fusion-marker mark { background: #fef2f2; color: var(--color-danger); text-decoration: underline wavy var(--color-danger); text-underline-offset: 4px; }
+.fusion-marker mark { background: color-mix(in srgb, var(--fb-bad) 10%, var(--fb-surface)); color: var(--color-danger); text-decoration: underline wavy var(--color-danger); text-underline-offset: 4px; }
 .fusion-help { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
 .fusion-help summary { cursor: pointer; font-weight: 600; }
 .fusion-help code, .fusion-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; background: var(--color-surface-subtle); padding: 1px 6px; border-radius: 4px; }
@@ -20,7 +20,7 @@
 .fusion-preview__body { display: grid; gap: var(--space-4); }
 .fusion-list { margin: 6px 0 0; padding-left: 18px; }
 .fusion-caption { text-align: left; padding: 8px var(--space-4); font: 600 13px/1.4 var(--font-sans); color: var(--color-text-secondary); }
-.fusion-quota { display: flex; height: 10px; overflow: hidden; border-radius: 999px; background: var(--color-surface-subtle); border: 1px solid var(--color-border); }
+.fusion-quota { display: flex; height: 8px; overflow: hidden; border-radius: 2px; background: var(--color-surface-subtle); border: 1px solid var(--color-border); }
 .fusion-quota i { display: block; height: 100%; }
 .fusion-quota .is-used { background: var(--color-text-tertiary); }
 .fusion-quota .is-new { background: var(--color-primary); min-width: 2px; }

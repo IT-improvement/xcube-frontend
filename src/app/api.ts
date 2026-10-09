@@ -177,6 +177,14 @@ export function formatDate(value?: string) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('ko-KR');
 }
 
+const DATE_TIME = new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+/** "10. 8. 14:05" — month, day and 24-hour time for job rows (set on one line with `.date`). */
+export function formatDateTime(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : DATE_TIME.format(date);
+}
+
 /** "2025.07.03 ~ 2025.10.22" from the dataset's time labels. */
 export function periodLabel(dataset: ZarrDataset) {
   const times = dataset.times;

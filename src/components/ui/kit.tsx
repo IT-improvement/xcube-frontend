@@ -1,11 +1,15 @@
-// Shared building blocks for the app pages (M4): badges, tabs, dialogs, empty
-// and loading states, and a small toast. Styles live in ui.css under .xc.
+// Shared building blocks for the app pages: tags, tabs, radio groups, dialogs, empty and loading
+// states and a small toast. Field-book system (DESIGN.md); styles in kit.css under .xc.
 import { X } from 'lucide-react';
-import { KeyboardEvent, ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { KeyboardEvent, ReactNode, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { userMessage } from '../../api/httpClient';
+import { Alert, Button } from '.';
 import './kit.css';
 
+/** `primary` is the ink tag (owner, group); water and result are data hues; the status trio always sits next to words. */
 export type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'water' | 'result';
 
+/** Tag: 4px corners, words first, the tone only colours them. */
 export function Badge({ tone = 'neutral', children }: { tone?: BadgeTone; children: ReactNode }) {
   return <span className={`xc-badge xc-badge--${tone}`}>{children}</span>;
 }
@@ -24,14 +28,19 @@ export function PageHeader({ title, description, actions, back }: { title: React
 }
 
 export type TabItem<T extends string> = { id: T; label: ReactNode; count?: number };
+const tabId = (prefix: string, id: string) => `${prefix}-tab-${id}`;
+const panelId = (prefix: string) => `${prefix}-panel`;
 
-/** Accessible tablist; ←/→ move between tabs. Panels are rendered by the caller. */
-export function Tabs<T extends string>({ items, value, onChange, label }: { items: TabItem<T>[]; value: T; onChange: (id: T) => void; label: string }) {
+/** Accessible tablist; ←/→ (and Home/End) move between tabs. Render the content in <TabPanel> with the same `idPrefix`. */
+export function Tabs<T extends string>({ items, value, onChange, label, idPrefix }: { items: TabItem<T>[]; value: T; onChange: (id: T) => void; label: string; idPrefix: string }) {
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
   const onKeyDown = (event: KeyboardEvent, index: number) => {
-    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+    const last = items.length - 1;
+    const next = event.key === 'ArrowRight' ? (index + 1) % items.length
+      : event.key === 'ArrowLeft' ? (index - 1 + items.length) % items.length
+      : event.key === 'Home' ? 0 : event.key === 'End' ? last : -1;
+    if (next < 0) return;
     event.preventDefault();
-    const next = (index + (event.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length;
     onChange(items[next].id);
     refs.current[next]?.focus();
   };
@@ -41,9 +50,11 @@ export function Tabs<T extends string>({ items, value, onChange, label }: { item
         <button
           key={item.id}
           ref={(node) => { refs.current[index] = node; }}
+          id={tabId(idPrefix, item.id)}
           type="button"
           role="tab"
           aria-selected={item.id === value}
+          aria-controls={panelId(idPrefix)}
           tabIndex={item.id === value ? 0 : -1}
           className="xc-tabs__tab"
           onClick={() => onChange(item.id)}
@@ -57,7 +68,42 @@ export function Tabs<T extends string>({ items, value, onChange, label }: { item
   );
 }
 
-/** Modal dialog: Esc closes, focus moves inside and returns on close. */
+/** The one panel a <Tabs> controls; it is labelled by the selected tab. */
+export function TabPanel({ idPrefix, value, className, children }: { idPrefix: string; value: string; className?: string; children: ReactNode }) {
+  return <div role="tabpanel" id={panelId(idPrefix)} aria-labelledby={tabId(idPrefix, value)} className={className}>{children}</div>;
+}
+
+const RADIO_STEP: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+
+/**
+ * Radio group of `role="radio"` buttons (cards, chips, list rows) with the standard keyboard model:
+ * one tab stop on the checked item (or the first), arrows move and select, Home/End jump.
+ */
+export function RadioGroup({ label, labelledBy, className, children }: { label?: string; labelledBy?: string; className?: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const radios = () => Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? []);
+  // Runs after every render so the tab stop follows the checked item.
+  useLayoutEffect(() => {
+    const items = radios();
+    const checked = items.findIndex((item) => item.getAttribute('aria-checked') === 'true');
+    const stop = checked >= 0 ? checked : items.findIndex((item) => !item.disabled);
+    items.forEach((item, index) => { item.tabIndex = index === stop ? 0 : -1; });
+  });
+  const onKeyDown = (event: KeyboardEvent) => {
+    const step = RADIO_STEP[event.key];
+    if (step === undefined && event.key !== 'Home' && event.key !== 'End') return;
+    const items = radios().filter((item) => !item.disabled);
+    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (index < 0 || !items.length) return;
+    event.preventDefault();
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + step + items.length) % items.length;
+    items[next].focus();
+    items[next].click();
+  };
+  return <div ref={ref} role="radiogroup" aria-label={label} aria-labelledby={labelledBy} className={className} onKeyDown={onKeyDown}>{children}</div>;
+}
+
+/** Modal dialog: Esc closes, focus moves inside and returns on close. Enters with a short fade and scale. */
 export function Dialog({ title, description, children, footer, onClose, size = 'md', role = 'dialog' }: { title: string; description?: ReactNode; children?: ReactNode; footer?: ReactNode; onClose: () => void; size?: 'sm' | 'md' | 'lg'; role?: 'dialog' | 'alertdialog' }) {
   const id = useId();
   const boxRef = useRef<HTMLDivElement>(null);
@@ -101,10 +147,43 @@ export function Dialog({ title, description, children, footer, onClose, size = '
   );
 }
 
-export function EmptyState({ icon, title, text, action }: { icon?: ReactNode; title: string; text?: ReactNode; action?: ReactNode }) {
+/**
+ * The one way to confirm an action (alertdialog). `onConfirm` runs the action; the caller closes the
+ * dialog when it succeeds, and a failure stays in the dialog as a message. Focus starts on the safe button.
+ */
+export function ConfirmDialog({ title, description, confirmLabel, busyLabel, cancelLabel = '취소', tone = 'danger', onConfirm, onClose }: {
+  title: string; description?: ReactNode; confirmLabel: string; busyLabel?: string; cancelLabel?: string; tone?: 'danger' | 'ink';
+  onConfirm: () => Promise<unknown> | void; onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+  const run = async () => {
+    setBusy(true);
+    setError('');
+    try { await onConfirm(); }
+    catch (cause) { if (mounted.current) setError(userMessage(cause)); }
+    finally { if (mounted.current) setBusy(false); }
+  };
+  return (
+    <Dialog
+      role="alertdialog"
+      size="sm"
+      title={title}
+      description={description}
+      onClose={onClose}
+      footer={<><Button variant="line" onClick={onClose}>{cancelLabel}</Button><Button variant={tone} disabled={busy} onClick={run}>{busy ? busyLabel ?? `${confirmLabel} 중…` : confirmLabel}</Button></>}
+    >
+      {error ? <Alert tone="danger">{error}</Alert> : undefined}
+    </Dialog>
+  );
+}
+
+/** Empty state: a title, a sentence and the next action. No decorative icon tile (the `icon` prop is accepted and ignored). */
+export function EmptyState({ title, text, action }: { icon?: ReactNode; title: string; text?: ReactNode; action?: ReactNode }) {
   return (
     <div className="xc-empty">
-      {icon && <span className="xc-empty__icon" aria-hidden>{icon}</span>}
       <p className="xc-empty__title">{title}</p>
       {text && <p className="xc-empty__text">{text}</p>}
       {action && <div className="xc-empty__action">{action}</div>}
@@ -120,6 +199,7 @@ export function Skeleton({ lines = 3, label = '불러오는 중' }: { lines?: nu
   );
 }
 
+/** A ruled sheet (no shadow). The head uses label type. */
 export function Card({ title, actions, children, className }: { title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string }) {
   return (
     <section className={['xc-card', className].filter(Boolean).join(' ')}>
@@ -134,15 +214,18 @@ export function Card({ title, actions, children, className }: { title?: ReactNod
   );
 }
 
-/** Short-lived status message, announced politely. */
+const TOAST_MS = 3200;
+const TOAST_EXIT_MS = 180;
+
+/** Short-lived status message, announced politely. Rises 8px on enter and sinks back on exit. */
 export function useToast() {
-  const [message, setMessage] = useState('');
+  const [toast, setToast] = useState<{ text: string; leaving: boolean; key: number } | null>(null);
   useEffect(() => {
-    if (!message) return;
-    const timer = window.setTimeout(() => setMessage(''), 3200);
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(toast.leaving ? null : { ...toast, leaving: true }), toast.leaving ? TOAST_EXIT_MS : TOAST_MS);
     return () => window.clearTimeout(timer);
-  }, [message]);
-  const show = useCallback((text: string) => setMessage(text), []);
-  const node = message ? <div className="xc-toast" role="status">{message}</div> : null;
+  }, [toast]);
+  const show = useCallback((text: string) => setToast({ text, leaving: false, key: Date.now() }), []);
+  const node = toast ? <div key={toast.key} className={`xc-toast${toast.leaving ? ' is-leaving' : ''}`} role="status">{toast.text}</div> : null;
   return { show, node };
 }

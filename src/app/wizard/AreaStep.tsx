@@ -4,7 +4,7 @@ import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import { AdminArea, AdminLevel, AreaChoice, AreaPick, AreaUpload, EstimateBlocker, JobSummary, SavedArea } from '../../api/generationApi';
 import { userMessage } from '../../api/httpClient';
 import { Alert, Button, TextField } from '../../components/ui';
-import { Badge, Dialog, EmptyState, Skeleton, Tabs } from '../../components/ui/kit';
+import { Badge, Dialog, EmptyState, RadioGroup, Skeleton, TabPanel, Tabs } from '../../components/ui/kit';
 import { generation } from '../api';
 import { formatBytes } from '../fusion';
 import { useLoad } from '../useLoad';
@@ -26,15 +26,15 @@ export default function AreaStep({ area, onChange, resolved, estimate, estimateH
   return (
     <div className="area-step">
       <h3 className="area-step__title">영역</h3>
-      <Tabs<AreaTab> label="영역 지정 방식" items={AREA_TABS} value={area.tab} onChange={(tab) => set({ tab })} />
+      <Tabs<AreaTab> label="영역 지정 방식" idPrefix="area-mode" items={AREA_TABS} value={area.tab} onChange={(tab) => set({ tab })} />
       <div className="area-layout">
-        <div className="area-controls" role="tabpanel" aria-label={AREA_TABS.find((item) => item.id === area.tab)?.label}>
+        <TabPanel idPrefix="area-mode" value={area.tab} className="area-controls">
           {area.tab === 'point' && <PointPanel area={area} set={set} showErrors={showErrors} resolved={resolved} />}
           {area.tab === 'admin' && <AdminPanel area={area} set={set} />}
           {area.tab === 'box' && <BoxPanel area={area} set={set} />}
           {area.tab === 'shape' && <ShapePanel area={area} set={set} />}
           {hasPolygonOptions(area.tab) && (area.tab === 'admin' ? area.admin : area.shape) && <PolygonOptions area={area} set={set} />}
-        </div>
+        </TabPanel>
         <div className="area-preview">
           <AreaMap
             bbox={resolved.bbox}
@@ -68,12 +68,12 @@ function PointPanel({ area, set, showErrors, resolved }: { area: AreaState; set:
       <p className="xc-hint">지도를 눌러도 중심이 정해집니다.</p>
       <div className="xc-field">
         <span className="xc-label" id="area-size-label">한 변 크기</span>
-        <div className="area-chips" role="radiogroup" aria-labelledby="area-size-label">
+        <RadioGroup className="area-chips" labelledBy="area-size-label">
           {SIZE_CHIPS.map((size) => (
             <button key={size} type="button" role="radio" aria-checked={area.sizeChip === String(size)} className={`area-chip ${area.sizeChip === String(size) ? 'is-on' : ''}`} onClick={() => set({ sizeChip: String(size) as AreaState['sizeChip'] })}>{size} km</button>
           ))}
           <button type="button" role="radio" aria-checked={area.sizeChip === 'custom'} className={`area-chip ${area.sizeChip === 'custom' ? 'is-on' : ''}`} onClick={() => set({ sizeChip: 'custom' })}>직접 입력</button>
-        </div>
+        </RadioGroup>
         <span className="xc-hint">연구 기본값 30 km(중심에서 15 km). 더 넓은 영역도 서버가 자동으로 나눠 받습니다.</span>
       </div>
       {area.sizeChip === 'custom' && (
@@ -137,11 +137,11 @@ function AdminPanel({ area, set }: { area: AreaState; set: (patch: Partial<AreaS
   return (
     <div className="area-panel">
       <TextField label="행정구역 이름 검색" type="search" placeholder="예: 제주시, 청주" value={query} onChange={(event) => setQuery(event.target.value)} autoComplete="off" />
-      <div className="area-chips" role="radiogroup" aria-label="행정구역 단계">
+      <RadioGroup className="area-chips" label="행정구역 단계">
         {LEVELS.map((item) => (
           <button key={item.id || 'all'} type="button" role="radio" aria-checked={level === item.id} className={`area-chip ${level === item.id ? 'is-on' : ''}`} onClick={() => setLevel(item.id)}>{item.label}</button>
         ))}
-      </div>
+      </RadioGroup>
       {error && <Alert tone="danger" role="alert">{error}</Alert>}
       {busy && <p className="xc-hint" role="status"><Loader2 size={14} className="spin" aria-hidden /> 검색하는 중…</p>}
       {!busy && query.trim() && !error && !items.length && <p className="xc-hint" role="status">검색 결과가 없습니다.</p>}
@@ -170,10 +170,10 @@ function PolygonOptions({ area, set }: { area: AreaState; set: (patch: Partial<A
   return (
     <fieldset className="area-fieldset">
       <legend className="xc-label">영역 처리</legend>
-      <div className="area-chips" role="radiogroup" aria-label="영역 처리 방식">
+      <RadioGroup className="area-chips" label="영역 처리 방식">
         <button type="button" role="radio" aria-checked={area.clip === 'shape'} className={`area-chip ${area.clip === 'shape' ? 'is-on' : ''}`} onClick={() => set({ clip: 'shape' })}>경계로 자르기</button>
         <button type="button" role="radio" aria-checked={area.clip === 'bbox'} className={`area-chip ${area.clip === 'bbox' ? 'is-on' : ''}`} onClick={() => set({ clip: 'bbox' })}>사각형 그대로</button>
-      </div>
+      </RadioGroup>
       <span className="xc-hint">{area.clip === 'shape' ? '경계 밖은 값 없음(nodata)으로 저장합니다.' : '경계를 감싸는 사각형 전체를 저장합니다.'}</span>
       <label className="xc-check">
         <input type="checkbox" checked={area.clip === 'shape' && area.maskVariable} disabled={area.clip !== 'shape'} onChange={(event) => set({ maskVariable: event.target.checked })} />
@@ -293,10 +293,10 @@ function ShapePanel({ area, set }: { area: AreaState; set: (patch: Partial<AreaS
       {pending && (
         <fieldset className="area-fieldset" aria-label="다각형 선택">
           <legend className="xc-label">다각형이 {pending.choice.polygonCount ? `${pending.choice.polygonCount}개` : '여러 개'} 있습니다</legend>
-          <div className="area-chips" role="radiogroup" aria-label="다각형 처리 방식">
+          <RadioGroup className="area-chips" label="다각형 처리 방식">
             <button type="button" role="radio" aria-checked={pickKind === 'dissolve'} className={`area-chip ${pickKind === 'dissolve' ? 'is-on' : ''}`} onClick={() => setPickKind('dissolve')}>전체 합치기</button>
             <button type="button" role="radio" aria-checked={pickKind === 'attribute'} className={`area-chip ${pickKind === 'attribute' ? 'is-on' : ''}`} onClick={() => setPickKind('attribute')}>속성 값으로 고르기</button>
-          </div>
+          </RadioGroup>
           {pickKind === 'attribute' && (
             <div className="form-grid">
               {pending.choice.attributes.length ? (
