@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, ListChecks, RotateCcw, Square } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { userMessage } from '../../api/httpClient';
 import { JobSummary } from '../../api/generationApi';
 import { Alert, Button, ButtonLink } from '../../components/ui';
@@ -11,11 +11,24 @@ import { useLoad } from '../useLoad';
 
 type TypeFilter = '' | 'GEE_TO_ZARR' | 'GEOTIFF_BANDS,CAS500' | 'SHAPEFILE' | 'FUSION' | 'AI_WATER';
 type StatusFilter = '' | 'QUEUED,RUNNING' | 'SUCCEEDED' | 'FAILED,CANCELLED';
+const TYPES: TypeFilter[] = ['', 'GEE_TO_ZARR', 'GEOTIFF_BANDS,CAS500', 'SHAPEFILE', 'FUSION', 'AI_WATER'];
+const STATUSES: StatusFilter[] = ['', 'QUEUED,RUNNING', 'SUCCEEDED', 'FAILED,CANCELLED'];
+const pick = <T extends string>(value: string | null, allowed: T[]) => (allowed.includes(value as T) ? (value as T) : ('' as T));
 
 /** S10 작업 센터: the user's generation, fusion and AI jobs with progress, steps, cancel and retry (FR-JOB-01·02). */
 export default function JobsPage() {
-  const [type, setType] = useState<TypeFilter>('');
-  const [status, setStatus] = useState<StatusFilter>('');
+  // Filters live in the URL (?type=FUSION&status=QUEUED,RUNNING) so reloads and links keep them.
+  const [params, setParams] = useSearchParams();
+  const type = pick(params.get('type'), TYPES);
+  const status = pick(params.get('status'), STATUSES);
+  const setFilter = (key: 'type' | 'status', value: string) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value) next.set(key, value); else next.delete(key);
+      return next;
+    }, { replace: true });
+  const setType = (value: TypeFilter) => setFilter('type', value);
+  const setStatus = (value: StatusFilter) => setFilter('status', value);
   const [open, setOpen] = useState<string | null>(null); // jobKey of the expanded row
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');

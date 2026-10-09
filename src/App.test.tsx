@@ -22,12 +22,10 @@ test('로그인 폼을 Auth API와 연결하고 성공하면 대시보드를 연
   expect(await screen.findByRole('heading', { name: '대시보드 화면' })).toBeInTheDocument();
   expect(screen.getByRole('navigation')).toBeInTheDocument();
   expect(window.location.pathname).toBe('/app');
-  const logo = screen.getAllByRole('link', { name: 'XCube Viewer로 이동' })[0];
-  expect(logo).toHaveAttribute('href', '/app/viewer');
-  expect(logo).not.toHaveAttribute('target');
-  fireEvent.click(logo);
-  expect(await screen.findByText('Viewer user: 홍길동')).toBeInTheDocument();
-  expect(window.location.pathname).toBe('/app/viewer');
+  expect(screen.getByRole('link', { name: 'XCube 대시보드' })).toHaveAttribute('href', '/app');
+  const viewer = within(screen.getByRole('navigation', { name: '주 메뉴' })).getByRole('link', { name: /Viewer/ });
+  expect(viewer).toHaveAttribute('href', '/app/viewer');
+  expect(viewer).toHaveAttribute('target', '_blank');
 });
 
 test('Viewer 주소의 dataset 값을 Viewer에 넘긴다', async () => {

@@ -1,6 +1,6 @@
 import { ArrowLeft, ExternalLink, FolderPlus, Lock, SearchX, Trash2 } from 'lucide-react';
 import { ReactNode, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Alert, Button, ButtonAnchor, ButtonLink } from '../../components/ui';
 import { Badge, Card, EmptyState, PageHeader, Skeleton, TabPanel, Tabs, useToast } from '../../components/ui/kit';
 import { ai, aiViewerHref, appApi, formatDate, fusion, generation, isOwned, periodLabel, viewerHref, ZarrDataset } from '../api';
@@ -12,8 +12,12 @@ import { dateOnly, pairLine } from '../wizard/sarModel';
 import { DatasetStatus, DeleteDatasetDialog, LinkProjectDialog } from './DataLibraryPage';
 
 type Tab = 'overview' | 'variables' | 'history' | 'ai' | 'projects';
+const TABS: Tab[] = ['overview', 'variables', 'history', 'ai', 'projects'];
 
-/** Small extent sketch: the dataset bbox inside a padded lon/lat frame. */
+/**
+ * Small extent sketch: the dataset bbox inside a padded lon/lat frame. The drawing is capped at 240px high and
+ * the corner labels are HTML (fixed 11.5px), so neither grows with a wide column.
+ */
 export function BBoxMap({ bbox }: { bbox: [number, number, number, number] }) {
   const [west, south, east, north] = bbox;
   const padX = Math.max((east - west) * 0.6, 0.05);
@@ -25,15 +29,19 @@ export function BBoxMap({ bbox }: { bbox: [number, number, number, number] }) {
   const y = (lat: number) => ((frame.n - lat) / (frame.n - frame.s)) * height;
   const ticks = [0.25, 0.5, 0.75];
   return (
-    <svg className="bbox-map" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`데이터 범위: 경도 ${west.toFixed(4)}~${east.toFixed(4)}, 위도 ${south.toFixed(4)}~${north.toFixed(4)}`}>
-      <g className="grid">
-        {ticks.map((ratio) => <line key={`v${ratio}`} x1={width * ratio} y1={0} x2={width * ratio} y2={height} />)}
-        {ticks.map((ratio) => <line key={`h${ratio}`} x1={0} y1={height * ratio} x2={width} y2={height * ratio} />)}
-      </g>
-      <rect className="area" x={x(west)} y={y(north)} width={Math.max(2, x(east) - x(west))} height={Math.max(2, y(south) - y(north))} rx={3} />
-      <text x={8} y={height - 8}>{frame.w.toFixed(2)}°E, {frame.s.toFixed(2)}°N</text>
-      <text x={width - 8} y={16} textAnchor="end">{frame.e.toFixed(2)}°E, {frame.n.toFixed(2)}°N</text>
-    </svg>
+    <figure className="bbox-figure">
+      <svg className="bbox-map" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`데이터 범위: 경도 ${west.toFixed(4)}~${east.toFixed(4)}, 위도 ${south.toFixed(4)}~${north.toFixed(4)}`}>
+        <g className="grid">
+          {ticks.map((ratio) => <line key={`v${ratio}`} x1={width * ratio} y1={0} x2={width * ratio} y2={height} vectorEffect="non-scaling-stroke" />)}
+          {ticks.map((ratio) => <line key={`h${ratio}`} x1={0} y1={height * ratio} x2={width} y2={height * ratio} vectorEffect="non-scaling-stroke" />)}
+        </g>
+        <rect className="area" x={x(west)} y={y(north)} width={Math.max(2, x(east) - x(west))} height={Math.max(2, y(south) - y(north))} vectorEffect="non-scaling-stroke" />
+      </svg>
+      <figcaption className="bbox-figure__labels" aria-hidden>
+        <span>{frame.w.toFixed(2)}°E, {frame.s.toFixed(2)}°N</span>
+        <span>{frame.e.toFixed(2)}°E, {frame.n.toFixed(2)}°N</span>
+      </figcaption>
+    </figure>
   );
 }
 
@@ -42,7 +50,14 @@ export default function DatasetDetailPage() {
   const { datasetId = '' } = useParams();
   const navigate = useNavigate();
   const dataset = useLoad(() => appApi.getDataset(datasetId), [datasetId]);
-  const [tab, setTab] = useState<Tab>('overview');
+  // The open tab is kept in the URL (?tab=variables) so a reload or a shared link lands on it.
+  const [params, setParams] = useSearchParams();
+  const tab = (TABS.includes(params.get('tab') as Tab) ? params.get('tab') : 'overview') as Tab;
+  const setTab = (value: Tab) => setParams((current) => {
+    const next = new URLSearchParams(current);
+    if (value === 'overview') next.delete('tab'); else next.set('tab', value);
+    return next;
+  }, { replace: true });
   const [deleting, setDeleting] = useState(false);
   const [linking, setLinking] = useState(false);
   const toast = useToast();
@@ -76,7 +91,7 @@ export default function DatasetDetailPage() {
       <PageHeader
         back={back}
         title={item.name}
-        description={<span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>{owned ? <Badge tone="primary">내 데이터</Badge> : <Badge tone="water">공유받음</Badge>}{item.kind === 'FUSION' ? <Badge tone="water">융합 결과</Badge> : item.kind === 'AI_RESULT' ? <Badge tone="result">AI 결과</Badge> : <Badge>원본</Badge>}<DatasetStatus dataset={item} /><span className="xc-hint">{item.xcubeDatasetId}</span>{isAiResult && item.sourceDatacubeId && <span>원본 데이터: <Link to={`/app/data/${encodeURIComponent(item.sourceDatacubeId)}`}>#{item.sourceDatacubeId} 보기</Link></span>}</span>}
+        description={<span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>{!owned && <Badge tone="water">공유받음</Badge>}{item.kind === 'FUSION' ? <Badge tone="water">융합 결과</Badge> : item.kind === 'AI_RESULT' ? <Badge tone="result">AI 결과</Badge> : <Badge>원본</Badge>}<DatasetStatus dataset={item} quiet /><span className="xc-hint">{item.xcubeDatasetId}</span>{isAiResult && item.sourceDatacubeId && <span>원본 데이터: <Link to={`/app/data/${encodeURIComponent(item.sourceDatacubeId)}`}>#{item.sourceDatacubeId} 보기</Link></span>}</span>}
         actions={
           <>
             <ButtonAnchor href={viewerLink} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} aria-hidden />{isAiResult ? 'Viewer에서 원본과 비교' : 'Viewer에서 열기'}<span className="sr-only">(새 탭)</span></ButtonAnchor>
@@ -97,7 +112,7 @@ export default function DatasetDetailPage() {
         </div>
         <TabPanel idPrefix="dataset-detail" value={tab}>
           {tab === 'overview' && (
-            <>
+            <div className={item.bbox ? 'detail-overview' : undefined}>
               {item.bbox && <BBoxMap bbox={item.bbox} />}
               <dl className="meta-list">
                 <dt>기간</dt><dd className="tabular">{periodLabel(item)}</dd>
@@ -109,7 +124,7 @@ export default function DatasetDetailPage() {
                 <dt>데이터 ID</dt><dd>{item.xcubeDatasetId || '—'}</dd>
                 {item.pairs && <><dt>레이더 짝</dt><dd><ul className="tabular" style={{ display: 'grid', gap: 4, margin: 0, padding: 0, listStyle: 'none' }} aria-label="시점별 Sentinel-1 짝">{item.pairs.map((pair, index) => <li key={pair.time ?? index}>{pair.time ? <strong>{dateOnly(pair.time)}</strong> : null} {pairLine(pair)}</li>)}</ul></dd></>}
               </dl>
-            </>
+            </div>
           )}
           {tab === 'variables' && (item.variables.length ? (
             <div className="xc-table-wrap">
