@@ -103,13 +103,14 @@ test('로그인은 빈 칸만 확인한다: 옛 규칙 밖의 아이디·짧은 
   await waitFor(() => expect(mockLogin).toHaveBeenCalledWith({ email: 'Old User', password: 'pw' }));
 });
 
-test('로그인 화면의 소개 영역은 그림만 숨기고 로고 링크는 이름을 가진다', () => {
+test('로그인 화면의 소개 영역은 실제 화면 캡처를 설명과 함께 보여주고 로고 링크는 이름을 가진다', () => {
   window.history.replaceState({}, '', '/login');
   render(<App />);
-  // The intro panel stays in the accessibility tree; only its illustration is hidden.
+  // The intro panel stays in the accessibility tree, with a named logo link and a described capture.
   const intro = screen.getByRole('complementary', { name: 'XCube 소개' });
   expect(within(intro).getByRole('link', { name: 'XCube 홈' })).toBeInTheDocument();
-  expect(within(intro).getByText(/물의 변화를 읽습니다/)).toBeInTheDocument();
+  expect(within(intro).getByText(/필요한 곳과 날짜만 지도에서 봅니다/)).toBeInTheDocument();
+  expect(within(intro).getByRole('img', { name: /실제 Viewer 화면/ })).toHaveAttribute('src', expect.stringContaining('/landing/daecheong-swipe.webp'));
 });
 
 test('로그인하지 않고 Viewer 주소로 오면 redirect를 붙여 로그인으로 보내고, 로그인 후 되돌아간다', async () => {

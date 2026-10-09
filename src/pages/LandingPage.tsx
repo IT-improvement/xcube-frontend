@@ -1,460 +1,315 @@
-import {
-  ArrowUpRight, Boxes, Building2, ChartLine, Container, Database, FileStack, GitCompareArrows,
-  Landmark, Layers, LogOut, Mail, Menu, ShieldCheck, Sigma, Waves, X,
-} from 'lucide-react';
-import { KeyboardEvent, useState } from 'react';
+import { LogOut, Mail, Menu, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../auth/AuthProvider';
 import { Button, ButtonAnchor, ButtonLink, Logo } from '../components/ui';
 import './landing.css';
 
-const VIEWER_PATH = '/app/viewer';
 const CONTACT_EMAIL = process.env.REACT_APP_CONTACT_EMAIL;
+const VERSION = process.env.REACT_APP_VERSION;
+const ASSET = `${process.env.PUBLIC_URL ?? ''}/landing`;
 
 const NAV = [
-  { href: '#workflow', label: '워크플로우' },
-  { href: '#features', label: '기능' },
-  { href: '#use-cases', label: '활용 분야' },
-  { href: '#tech', label: '기술' },
-  { href: '#contact', label: '문의' },
+  { href: '#case', label: '사례' },
+  { href: '#customers', label: '쓰는 곳' },
+  { href: '#adopt', label: '도입 안내' },
 ];
 
-const FORMATS = ['GeoTIFF', 'CAS500', 'Shapefile', 'Google Earth Engine', 'Zarr'];
-const STANDARDS = ['xcube', 'OGC Tile', 'Docker', 'Kubernetes'];
-
-const WORKFLOW = [
-  { icon: FileStack, title: '변환', text: '위성 원천 파일과 GEE 수집 결과를 Zarr 데이터큐브로 변환합니다.' },
-  { icon: Boxes, title: '관리', text: '데이터큐브를 프로젝트와 독립적으로 소유하고, 분류하고, 공유합니다.' },
-  { icon: Layers, title: '시각화', text: 'band·RGB 전환, 시점 재생, 픽셀 단위 전체 시계열을 확인합니다.' },
-  { icon: Sigma, title: '융합', text: '여러 데이터의 band를 수식으로 계산해 새 데이터큐브를 만듭니다.' },
-  { icon: Waves, title: 'AI 분석', text: '수체를 추출하고 모델·시점별 결과와 면적 변화를 비교합니다.' },
-];
-
-const FEATURES = [
+/** "무엇이 달라지나": three ruled lines. Only what is built today. */
+const CHANGES = [
   {
-    id: 'generate',
-    eyebrow: '데이터큐브 생성',
-    title: '형식이 달라도 같은 데이터큐브로',
-    text: 'GeoTIFF·CAS500·Shapefile 파일을 올리면 좌표계, 범위, 해상도, band를 자동으로 읽습니다. Google Earth Engine 카탈로그에서 데이터셋을 골라 바로 만들 수도 있습니다.',
-    points: ['GDAL 기반 공간정보 자동 인식', 'Shapefile 필수 구성 파일 검사', 'GEE 컬렉션·기간·영역·운량 설정'],
-    visual: 'generate' as const,
+    title: '용량을 줄여 보관합니다',
+    text: 'GeoTIFF, 국토위성(CAS500), Shapefile 파일을 올리거나 Google Earth Engine에서 기간과 영역을 골라 가져오면, 작은 조각으로 나눠 압축한 Zarr 데이터로 바꿔 둡니다.',
+    note: 'Zarr: 큰 격자 자료를 조각(chunk) 단위로 압축해 저장하는 공개 형식',
   },
   {
-    id: 'viewer',
-    eyebrow: '시계열 Viewer',
-    title: '시점을 넘기며, 픽셀 하나까지',
-    text: '데이터큐브를 지도 위에서 시점별로 재생하고, 지점을 클릭하면 같은 좌표의 전체 기간 값을 그래프로 봅니다.',
-    points: ['band·RGB 표시 전환과 색상표', '시점 재생·이전·다음·반복', '픽셀 클릭 시 전체 시계열 그래프'],
-    visual: 'viewer' as const,
+    title: '필요한 곳과 날짜만 엽니다',
+    text: '전체 파일을 내려받지 않고, 지도에서 보는 영역과 고른 시점만 불러옵니다. 시점을 차례로 재생하고, 한 지점을 누르면 그 자리의 전체 기간 값이 그래프로 나옵니다.',
+    note: '넓은 지역은 축소 단계를 함께 만들어 처음 열 때도 가볍습니다',
   },
   {
-    id: 'ai',
-    eyebrow: 'AI 수체 추출',
-    title: '물이 있는 곳을 기간 전체에서',
-    text: '모델과 기간, 영역을 정하면 모든 시점의 수체를 추출해 새 데이터큐브로 저장합니다. 원본과 겹쳐 보며 결과를 확인합니다.',
-    points: ['지수 기반 모델부터 단계적으로 확장', '기간·영역·파라미터 지정', '결과를 원본과 연결해 보관'],
-    visual: 'ai' as const,
-  },
-  {
-    id: 'compare',
-    eyebrow: '비교 분석',
-    title: '결과의 차이를 숫자로',
-    text: '모델 간, 시점 간 수체 결과를 겹쳐 차이 지도를 만들고, 면적 변화와 일치도 지표를 계산해 보고용으로 내보냅니다.',
-    points: ['일치도·변화 지도', '수체 면적 시계열 차트', '지표 표와 CSV·이미지 내보내기'],
-    visual: 'compare' as const,
+    title: '물의 범위는 AI가 찾습니다',
+    text: 'NDWI 기준선, U-Net, DeepLabV3+ 가운데 골라 물을 찾고, 결과를 원본 위에서 밀어 보며 확인합니다. 시점별 면적은 그래프로 보고 CSV로 내려받습니다.',
+    note: 'NDWI: 녹색과 근적외선 밴드로 물을 가려내는 지수',
   },
 ];
 
-const USE_CASES = [
+/** What the result panel in the case capture shows, top to bottom. */
+const CASE_READING = [
+  { title: '원본과 AI 결과를 밀어 보기', text: '구분선을 움직여 같은 날짜의 원본과 AI가 찾은 물을 한 화면에서 비교합니다.' },
+  { title: '임계값별 면적', text: '물로 볼 기준을 옮기면 면적이 어떻게 바뀌는지 바로 계산합니다.' },
+  { title: '참조 자료 대비 지표', text: 'JRC 지표수 자료(water_gt)와 겹쳐 IoU, F1, 정밀도, 재현율을 냅니다.' },
+  { title: '면적 그래프와 CSV', text: '시점별 수체 면적을 그래프로 보고, 표로 내려받아 보고서에 붙입니다.' },
+];
+
+const CUSTOMERS = [
   {
     id: 'enterprise',
-    icon: Building2,
-    label: '기업',
-    title: '대용량 위성영상을 가볍게',
-    text: '원본 영상을 그대로 쌓아 두는 대신 chunk 단위로 압축된 Zarr 데이터큐브로 바꿔 보관합니다. 필요한 영역과 시점만 지도 tile과 시계열로 불러오므로 전체 파일을 내려받지 않아도 됩니다.',
-    items: ['chunk 압축 데이터큐브로 저장 공간 절감', '필요한 영역·시점만 조회', '여러 위성 데이터의 수식 융합', '컨테이너 기반 사내 구축'],
+    title: '기업',
+    lead: '쌓여 가는 위성 영상을 가볍게 보관하고, 필요한 부분만 빠르게 읽고 싶은 곳',
+    items: [
+      '원본 값을 그대로 둔 채 압축 Zarr로 보관',
+      '영역과 시점을 골라 지도와 시계열로 조회',
+      '여러 데이터의 밴드를 수식으로 합쳐 새 데이터 생성',
+    ],
   },
   {
-    id: 'public',
-    icon: Landmark,
-    label: '지자체',
-    title: '전용 시스템 없이 수면 변화 확인',
-    text: '국토위성(CAS500), Sentinel-2, Landsat 같은 공공 위성 데이터로 하천과 저수지의 수면 변화를 확인합니다. 기간을 비교한 결과를 표와 이미지로 내보내 행정 보고에 활용합니다.',
-    items: ['공공 위성 데이터 활용', '저수지·하천 수면적 변화 확인', '기간 비교 결과 내보내기', '웹 브라우저만으로 사용'],
+    id: 'local',
+    title: '시·군·구',
+    lead: 'GIS 전담 인력 없이 저수지와 하천의 물 변화를 확인하고 보고해야 하는 곳',
+    items: [
+      '설치 없이 웹 브라우저에서 사용',
+      '국토위성·Sentinel 같은 공공 위성 자료로 수면 확인',
+      '면적을 CSV로 받아 보고서에 정리, 동료와는 로그인 아이디로 공유',
+    ],
   },
 ];
 
-const TECH = [
-  { icon: Database, title: '오픈 표준', text: 'Zarr 데이터큐브와 공식 xcube 서버로 시각화합니다. 특정 상용 형식에 묶이지 않습니다.' },
-  { icon: Container, title: '컨테이너 배포', text: '서비스마다 독립된 Docker 컨테이너로 만들어 Kubernetes에서 운영합니다.' },
-  { icon: ShieldCheck, title: '권한과 공유', text: '데이터는 소유자에게 있고 보기·편집 권한으로 공유합니다. 2시간 동안 활동이 없으면 자동으로 로그아웃됩니다.' },
+const ADOPT = [
+  { title: '시작', text: '웹 브라우저에서 계정을 만들면 바로 데이터를 올리고 만들 수 있습니다. 사용자마다 전용 시각화 서버가 붙어, 새로 만든 데이터가 곧바로 지도에 올라옵니다.' },
+  { title: '데이터 위치', text: '지금은 기관 내부 네트워크 안에서 운영합니다. 지도 타일에 접근 보안을 거는 작업은 다음 단계로 예정되어 있고, 그 전까지는 고객 데이터를 외부망에 공개하지 않습니다.' },
+  { title: '형식', text: '저장은 Zarr, 지도 표시는 공개 소프트웨어인 xcube 서버를 씁니다. 만든 데이터가 특정 상용 형식에 묶이지 않습니다.' },
+  { title: '계정', text: '비밀번호는 되돌릴 수 없는 방식으로 저장하고, 2시간 동안 활동이 없으면 자동으로 로그아웃합니다. 데이터는 만든 사람이 소유하고, 그 사람이 공유한 계정만 볼 수 있습니다.' },
+  { title: '준비 중', text: '기관 서버에 직접 설치하는 배포 묶음과 관리자용 운영 화면은 아직 준비 중입니다.' },
 ];
+
+const MOBILE_QUERY = '(max-width: 767px)';
 
 export default function LandingPage() {
   const { user, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const closeMenu = useCallback((returnFocus = true) => {
+    setMenuOpen(false);
+    if (returnFocus) toggleRef.current?.focus();
+  }, []);
+
+  // The bar sits transparent over the hero and takes a sheet + rule once the page moves.
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Mobile menu: focus the first link on open; Escape or a click outside closes it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuRef.current?.querySelector<HTMLElement>('a, button')?.focus();
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') closeMenu(); };
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && !toggleRef.current?.contains(target)) closeMenu(false);
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPointer);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPointer);
+    };
+  }, [menuOpen, closeMenu]);
+
+  // Leaving the phone layout with the menu open would leave it stuck open in the desktop bar.
+  useEffect(() => {
+    if (!menuOpen || typeof window.matchMedia !== 'function') return;
+    const query = window.matchMedia(MOBILE_QUERY);
+    const onChange = () => { if (!query.matches) setMenuOpen(false); };
+    query.addEventListener?.('change', onChange);
+    return () => query.removeEventListener?.('change', onChange);
+  }, [menuOpen]);
+
+  const actions = (inMenu: boolean) => user ? (
+    <>
+      <ButtonLink to="/app" variant="ink" size={inMenu ? 'lg' : 'md'} block={inMenu}>콘솔로 이동</ButtonLink>
+      <Button variant={inMenu ? 'line' : 'quiet'} size={inMenu ? 'lg' : 'md'} block={inMenu} onClick={() => { setMenuOpen(false); signOut(); }}>
+        <LogOut size={16} aria-hidden />로그아웃
+      </Button>
+    </>
+  ) : (
+    <>
+      <ButtonLink to="/login?redirect=%2F" variant={inMenu ? 'line' : 'quiet'} size={inMenu ? 'lg' : 'md'} block={inMenu}>로그인</ButtonLink>
+      <ButtonLink to="/signup" variant="ink" size={inMenu ? 'lg' : 'md'} block={inMenu}>시작하기</ButtonLink>
+    </>
+  );
 
   return (
     <div className="xc landing">
       <a className="skip-link" href="#main">본문으로 건너뛰기</a>
-      <header className="landing__header">
-        <div className="landing__container landing__nav">
+      <header className="lp-bar" data-scrolled={scrolled || menuOpen ? 'true' : undefined}>
+        <div className="lp-wrap lp-bar__inner">
           <Logo />
-          <nav aria-label="주요 메뉴" className={menuOpen ? 'landing__menu landing__menu--open' : 'landing__menu'} id="landing-menu">
+          <nav aria-label="주요 메뉴" className="lp-bar__nav">
             <ul>
-              {NAV.map((item) => (
-                <li key={item.href}><a href={item.href} onClick={() => setMenuOpen(false)}>{item.label}</a></li>
-              ))}
+              {NAV.map((item) => <li key={item.href}><a href={item.href}>{item.label}</a></li>)}
             </ul>
-            <div className="landing__menu-account">
-              {user ? (
-                <>
-                  <p className="landing__menu-user">{user.name}님</p>
-                  <Button variant="secondary" block onClick={() => { setMenuOpen(false); signOut(); }}>
-                    <LogOut size={16} aria-hidden />로그아웃
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <ButtonLink to="/login?redirect=%2F" variant="secondary" block>로그인</ButtonLink>
-                  <ButtonLink to="/signup" variant="ghost" block>시작하기</ButtonLink>
-                </>
-              )}
-            </div>
           </nav>
-          <div className="landing__actions">
-            {user ? (
-              <>
-                <span className="landing__user">{user.name}님</span>
-                <Button variant="ghost" className="landing__hide-sm" onClick={signOut}>
-                  <LogOut size={16} aria-hidden />로그아웃
-                </Button>
-              </>
-            ) : (
-              <>
-                <ButtonLink to="/login?redirect=%2F" variant="ghost" className="landing__hide-sm">로그인</ButtonLink>
-                <ButtonLink to="/signup" variant="secondary" className="landing__hide-sm">시작하기</ButtonLink>
-              </>
-            )}
-            <ViewerLink size="md" />
-            <button
-              type="button"
-              className="landing__menu-toggle"
-              aria-label={menuOpen ? '메뉴 닫기' : '메뉴 열기'}
-              aria-expanded={menuOpen}
-              aria-controls="landing-menu"
-              onClick={() => setMenuOpen((open) => !open)}
-            >
-              {menuOpen ? <X size={20} aria-hidden /> : <Menu size={20} aria-hidden />}
-            </button>
-          </div>
+          <div className="lp-bar__actions">{actions(false)}</div>
+          <button
+            ref={toggleRef}
+            type="button"
+            className="lp-bar__toggle"
+            aria-label={menuOpen ? '메뉴 닫기' : '메뉴 열기'}
+            aria-expanded={menuOpen}
+            aria-controls="lp-menu"
+            onClick={() => (menuOpen ? closeMenu() : setMenuOpen(true))}
+          >
+            {menuOpen ? <X size={20} aria-hidden /> : <Menu size={20} aria-hidden />}
+          </button>
+        </div>
+        <div ref={menuRef} id="lp-menu" className="lp-menu" data-open={menuOpen ? 'true' : undefined} inert={!menuOpen}>
+          <nav aria-label="모바일 메뉴">
+            <ul>
+              {NAV.map((item) => <li key={item.href}><a href={item.href} onClick={() => closeMenu(false)}>{item.label}</a></li>)}
+            </ul>
+          </nav>
+          <div className="lp-menu__actions">{actions(true)}</div>
         </div>
       </header>
 
       <main id="main">
-        <section className="landing__hero" aria-labelledby="hero-title">
-          <div className="landing__container landing__hero-grid">
-            <div className="landing__hero-copy">
-              <p className="landing__eyebrow">위성 시계열 · AI 수체 분석 플랫폼</p>
-              <h1 id="hero-title" className="landing__hero-title">위성 데이터에서<br />물의 변화를 읽습니다</h1>
-              <p className="landing__lead">
-                다양한 위성 형식을 Zarr 데이터큐브로 변환하고, 시계열 시각화와 데이터 융합, AI 수체 추출과 결과 비교까지 한 곳에서 수행합니다.
+        <section className="lp-hero" aria-labelledby="hero-title">
+          <div className="lp-wrap lp-hero__copy">
+            <h1 id="hero-title" className="lp-hero__title">위성 영상은 작게 보관하고, 필요한 곳과 날짜만 지도에서 봅니다</h1>
+            <div className="lp-hero__side">
+              <p className="lp-hero__lead">
+                파일을 올리면 지도에서 바로 열리는 데이터로 바꿉니다. 물이 어디까지 찼는지는 AI가 찾아 원본 옆에 놓아 줍니다.
               </p>
-              <div className="landing__cta">
-                <ViewerLink size="lg" />
+              <div className="lp-cta">
                 {user
-                  ? <ButtonAnchor href="#contact" variant="secondary" size="lg">도입 문의</ButtonAnchor>
-                  : <ButtonLink to="/signup" variant="secondary" size="lg">회원가입</ButtonLink>}
+                  ? <ButtonLink to="/app" variant="ink" size="lg">콘솔로 이동</ButtonLink>
+                  : (
+                    <>
+                      <ButtonLink to="/signup" variant="ink" size="lg">시작하기</ButtonLink>
+                      <ButtonAnchor href="#adopt" variant="line" size="lg">도입 안내</ButtonAnchor>
+                    </>
+                  )}
               </div>
-              <p className="landing__hint">Viewer는 새 탭에서 열립니다.</p>
-            </div>
-            <ProductPreview />
-          </div>
-        </section>
-
-        <section className="landing__strip" aria-label="지원 데이터와 표준">
-          <div className="landing__container landing__strip-inner">
-            <div className="landing__chips">
-              <span className="landing__chips-label">지원 데이터</span>
-              {FORMATS.map((name) => <span key={name} className="landing__chip">{name}</span>)}
-            </div>
-            <div className="landing__chips">
-              <span className="landing__chips-label">기술 표준</span>
-              {STANDARDS.map((name) => <span key={name} className="landing__chip landing__chip--muted">{name}</span>)}
             </div>
           </div>
+          <figure className="lp-hero__shot">
+            <picture>
+              <source media={MOBILE_QUERY} srcSet={`${ASSET}/daecheong-swipe.webp`} width={780} height={1148} />
+              <img
+                src={`${ASSET}/daecheong-viewer.webp`}
+                width={2400}
+                height={1016}
+                alt="XCube Viewer 실제 화면. 대청호를 가운데 구분선으로 나눠 왼쪽은 위성 원본, 오른쪽은 AI가 물로 찾은 곳을 청록으로 보여 주고, 오른쪽 패널에 면적과 참조 자료 대비 지표가 있습니다."
+                fetchPriority="high"
+              />
+            </picture>
+            <figcaption className="lp-wrap lp-caption">
+              실제 화면 · 대청호, 2024년 8월 14일 Sentinel-1·2 · 왼쪽 원본, 오른쪽 DeepLabV3+ 결과
+            </figcaption>
+          </figure>
         </section>
 
-        <section id="workflow" className="landing__section" aria-labelledby="workflow-title">
-          <div className="landing__container">
-            <SectionHeading id="workflow-title" eyebrow="워크플로우" title="데이터 준비부터 분석까지 다섯 단계" />
-            <ol className="landing__steps">
-              {WORKFLOW.map(({ icon: Icon, title, text }, index) => (
-                <li key={title} className="landing__step">
-                  <span className="landing__step-index tabular" aria-hidden>{String(index + 1).padStart(2, '0')}</span>
-                  <span className="landing__step-icon" aria-hidden><Icon size={22} /></span>
-                  <h3 className="landing__step-title"><span className="sr-only">{index + 1}단계. </span>{title}</h3>
-                  <p className="landing__step-text">{text}</p>
+        <section className="lp-change" aria-labelledby="change-title">
+          <div className="lp-wrap">
+            <h2 id="change-title" className="lp-h2">무엇이 달라지나</h2>
+            <ul className="lp-lines">
+              {CHANGES.map((item) => (
+                <li key={item.title} className="lp-line">
+                  <h3 className="lp-line__title">{item.title}</h3>
+                  <div className="lp-line__body">
+                    <p>{item.text}</p>
+                    <p className="lp-line__note">{item.note}</p>
+                  </div>
                 </li>
               ))}
-            </ol>
+            </ul>
           </div>
         </section>
 
-        <section id="features" className="landing__section landing__section--surface" aria-labelledby="features-title">
-          <div className="landing__container">
-            <SectionHeading id="features-title" eyebrow="기능" title="한 플랫폼에서 이어지는 분석 흐름" />
-            <div className="landing__features">
-              {FEATURES.map((feature, index) => (
-                <article key={feature.id} className={index % 2 ? 'landing__feature landing__feature--reverse' : 'landing__feature'} aria-labelledby={`feature-${feature.id}`}>
-                  <div className="landing__feature-copy">
-                    <p className="landing__eyebrow">{feature.eyebrow}</p>
-                    <h3 id={`feature-${feature.id}`} className="landing__feature-title">{feature.title}</h3>
-                    <p className="landing__feature-text">{feature.text}</p>
-                    <ul className="landing__checks">
-                      {feature.points.map((point) => <li key={point}>{point}</li>)}
-                    </ul>
-                  </div>
-                  <FeatureVisual kind={feature.visual} />
+        <section id="case" className="lp-case" aria-labelledby="case-title">
+          <div className="lp-wrap lp-case__grid">
+            <div className="lp-case__copy">
+              <h2 id="case-title" className="lp-h2">대청호, 한 장면을 끝까지</h2>
+              <p className="lp-case__lead">
+                Sentinel-1(레이더)과 Sentinel-2(광학)를 함께 담은 2024년 8월 14일 대청호 데이터에 DeepLabV3+를 돌렸습니다. 결과 패널에서 읽을 수 있는 것은 이렇습니다.
+              </p>
+              <ol className="lp-reading">
+                {CASE_READING.map((item) => (
+                  <li key={item.title}>
+                    <h3>{item.title}</h3>
+                    <p>{item.text}</p>
+                  </li>
+                ))}
+              </ol>
+              <p className="lp-fine">
+                화면의 IoU·F1은 이 한 장면을 참조 자료와 견준 값입니다. 다른 지역이나 시기의 결과를 보장하는 수치가 아닙니다.
+              </p>
+            </div>
+            <figure className="lp-case__shot">
+              <img
+                src={`${ASSET}/daecheong-result.webp`}
+                width={666}
+                height={1280}
+                loading="lazy"
+                decoding="async"
+                alt="원본 대비 결과 패널 실제 화면. AI 수체 결과와 원본 레이어 불투명도, 임계값 0.50에서 추정 면적 54.60 km², 참조 자료 대비 IoU 0.854, F1 0.922, 정밀도 0.873, 재현율 0.975."
+              />
+              <figcaption className="lp-caption">원본 대비 결과 패널 · 같은 화면의 오른쪽</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section id="customers" className="lp-customers" aria-labelledby="customers-title">
+          <div className="lp-wrap">
+            <h2 id="customers-title" className="lp-h2">이런 곳에서 씁니다</h2>
+            <div className="lp-customers__cols">
+              {CUSTOMERS.map((item) => (
+                <article key={item.id} className="lp-customer" aria-labelledby={`customer-${item.id}`}>
+                  <h3 id={`customer-${item.id}`} className="lp-customer__title">{item.title}</h3>
+                  <p className="lp-customer__lead">{item.lead}</p>
+                  <ul className="lp-customer__items">
+                    {item.items.map((line) => <li key={line}>{line}</li>)}
+                  </ul>
                 </article>
               ))}
             </div>
           </div>
         </section>
 
-        <section id="use-cases" className="landing__section" aria-labelledby="use-cases-title">
-          <div className="landing__container">
-            <SectionHeading id="use-cases-title" eyebrow="활용 분야" title="필요한 곳에 맞게" />
-            <UseCaseTabs />
-          </div>
-        </section>
-
-        <section id="tech" className="landing__section landing__section--surface" aria-labelledby="tech-title">
-          <div className="landing__container">
-            <SectionHeading id="tech-title" eyebrow="기술" title="표준 위에서, 독립적으로 운영" />
-            <ul className="landing__tech">
-              {TECH.map(({ icon: Icon, title, text }) => (
-                <li key={title} className="landing__tech-item">
-                  <span className="landing__tech-icon" aria-hidden><Icon size={22} /></span>
-                  <h3 className="landing__tech-title">{title}</h3>
-                  <p className="landing__tech-text">{text}</p>
-                </li>
+        <section id="adopt" className="lp-adopt" aria-labelledby="adopt-title">
+          <div className="lp-wrap lp-adopt__grid">
+            <div className="lp-adopt__head">
+              <h2 id="adopt-title" className="lp-h2">도입 안내</h2>
+              <p className="lp-adopt__lead">지금 어떻게 운영되는지, 무엇이 아직 준비 중인지 그대로 적었습니다.</p>
+              <div className="lp-cta">
+                {user
+                  ? <ButtonLink to="/app" variant="ink" size="lg">콘솔로 이동</ButtonLink>
+                  : <ButtonLink to="/signup" variant="ink" size="lg">시작하기</ButtonLink>}
+                {CONTACT_EMAIL && (
+                  <ButtonAnchor href={`mailto:${CONTACT_EMAIL}`} variant="line" size="lg">
+                    <Mail size={18} aria-hidden />도입 문의 메일
+                  </ButtonAnchor>
+                )}
+              </div>
+            </div>
+            <dl className="lp-facts">
+              {ADOPT.map((item) => (
+                <div key={item.title} className="lp-fact">
+                  <dt>{item.title}</dt>
+                  <dd>{item.text}</dd>
+                </div>
               ))}
-            </ul>
-          </div>
-        </section>
-
-        <section id="contact" className="landing__contact" aria-labelledby="contact-title">
-          <div className="landing__container landing__contact-inner">
-            <div>
-              <h2 id="contact-title" className="landing__contact-title">우리 기관의 데이터로 확인해 보세요</h2>
-              <p className="landing__contact-text">Viewer에서 바로 데이터를 열어 보거나, 도입을 문의해 주세요.</p>
-            </div>
-            <div className="landing__cta">
-              <ViewerLink size="lg" />
-              {CONTACT_EMAIL ? (
-                <ButtonAnchor href={`mailto:${CONTACT_EMAIL}`} variant="secondary" size="lg"><Mail size={18} aria-hidden />도입 문의</ButtonAnchor>
-              ) : (
-                <p className="landing__contact-note">도입 문의 창구는 준비 중입니다.</p>
-              )}
-            </div>
+            </dl>
           </div>
         </section>
       </main>
 
-      <footer className="landing__footer">
-        <div className="landing__container landing__footer-inner">
+      <footer className="lp-footer">
+        <div className="lp-wrap lp-footer__inner">
           <Logo />
-          <nav aria-label="하단 메뉴">
-            <ul className="landing__footer-links">
-              {NAV.map((item) => <li key={item.href}><a href={item.href}>{item.label}</a></li>)}
-            </ul>
-          </nav>
-          <p className="landing__copyright">© {new Date().getFullYear()} XCube</p>
+          <p className="lp-footer__credit">화면 속 위성 자료: Copernicus Sentinel-1·2 · 참조 수면: JRC Global Surface Water · 배경지도 © OpenStreetMap 기여자</p>
+          <p className="lp-footer__meta">
+            <span>© {new Date().getFullYear()} XCube</span>
+            {VERSION && <span className="tabular">버전 {VERSION}</span>}
+          </p>
         </div>
       </footer>
-    </div>
-  );
-}
-
-function ViewerLink({ size }: { size: 'md' | 'lg' }) {
-  return (
-    <ButtonAnchor href={VIEWER_PATH} target="_blank" rel="noopener" size={size}>
-      Viewer 열기
-      <ArrowUpRight size={size === 'lg' ? 18 : 16} aria-hidden />
-      <span className="sr-only">(새 탭)</span>
-    </ButtonAnchor>
-  );
-}
-
-function SectionHeading({ id, eyebrow, title }: { id: string; eyebrow: string; title: string }) {
-  return (
-    <div className="landing__heading">
-      <p className="landing__eyebrow">{eyebrow}</p>
-      <h2 id={id} className="landing__section-title">{title}</h2>
-    </div>
-  );
-}
-
-function UseCaseTabs() {
-  const [active, setActive] = useState(0);
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
-    event.preventDefault();
-    const next = (active + (event.key === 'ArrowRight' ? 1 : -1) + USE_CASES.length) % USE_CASES.length;
-    setActive(next);
-    document.getElementById(`use-case-tab-${USE_CASES[next].id}`)?.focus();
-  };
-  const current = USE_CASES[active];
-  const Icon = current.icon;
-  return (
-    <div className="landing__usecases">
-      <div role="tablist" aria-label="활용 분야" className="landing__tabs">
-        {USE_CASES.map((item, index) => (
-          <button
-            key={item.id}
-            id={`use-case-tab-${item.id}`}
-            type="button"
-            role="tab"
-            aria-selected={index === active}
-            aria-controls={`use-case-panel-${item.id}`}
-            tabIndex={index === active ? 0 : -1}
-            className="landing__tab"
-            onClick={() => setActive(index)}
-            onKeyDown={onKeyDown}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-      <div role="tabpanel" id={`use-case-panel-${current.id}`} aria-labelledby={`use-case-tab-${current.id}`} className="landing__usecase" tabIndex={0}>
-        <span className="landing__usecase-icon" aria-hidden><Icon size={26} /></span>
-        <div>
-          <h3 className="landing__usecase-title">{current.title}</h3>
-          <p className="landing__usecase-text">{current.text}</p>
-        </div>
-        <ul className="landing__checks landing__checks--grid">
-          {current.items.map((item) => <li key={item}>{item}</li>)}
-        </ul>
-      </div>
-    </div>
-  );
-}
-
-/* ---------- Illustrations (decorative; real product captures replace them before release) ---------- */
-
-const RIVER = 'M-10 250 C60 230 110 270 170 245 S280 190 340 210 S450 260 520 228';
-
-function ProductPreview() {
-  return (
-    <figure className="preview">
-      <div className="preview__frame" aria-hidden>
-        <div className="preview__bar">
-          <span className="preview__dots"><i /><i /><i /></span>
-          <span className="preview__crumb">프로젝트 없음 / 저수지_Sentinel-2</span>
-          <span className="preview__mode"><b>단일</b><span>스와이프</span><span>나란히</span></span>
-        </div>
-        <div className="preview__body">
-          <div className="preview__panel">
-            <p className="preview__label">레이어</p>
-            <div className="preview__row"><i className="preview__check preview__check--on" />원본 · B8</div>
-            <div className="preview__ramp" />
-            <div className="preview__row"><i className="preview__check preview__check--on" />AI 수체</div>
-            <div className="preview__row"><i className="preview__check" />융합 결과</div>
-          </div>
-          <div className="preview__map">
-            <svg viewBox="0 0 500 320" preserveAspectRatio="xMidYMid slice">
-              <rect width="500" height="320" fill="#e7ece4" />
-              <path d="M0 80 C90 60 160 100 250 80 S420 40 500 70 V0 H0Z" fill="#dfe6da" />
-              <path d="M0 320 V270 C120 250 220 300 330 270 S460 240 500 255 V320Z" fill="#dde4d6" />
-              <path d={RIVER} fill="none" stroke="#7dd3fc" strokeWidth="18" strokeLinecap="round" />
-              <path d={RIVER} fill="none" stroke="var(--color-water)" strokeWidth="9" strokeLinecap="round" />
-              <path d="M150 120 C185 98 245 104 262 132 S240 186 200 182 128 150 150 120Z" fill="var(--color-water)" opacity=".8" />
-              <path d="M330 110 C352 98 392 104 398 124 S380 152 356 148 318 126 330 110Z" fill="var(--color-water)" opacity=".55" />
-              <g stroke="#cbd5c4" strokeWidth="1">
-                <path d="M0 160 H500M250 0 V320" />
-              </g>
-              <circle cx="214" cy="146" r="7" fill="var(--color-primary)" stroke="#fff" strokeWidth="3" />
-            </svg>
-            <div className="preview__tools"><i /><i /><i /></div>
-          </div>
-        </div>
-        <div className="preview__chart">
-          <svg viewBox="0 0 600 70" preserveAspectRatio="none">
-            <path d="M0 50 L50 44 L100 47 L150 30 L200 22 L250 26 L300 18 L350 28 L400 40 L450 36 L500 24 L550 30 L600 26" fill="none" stroke="var(--color-primary)" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
-            <path d="M300 0 V70" stroke="var(--color-text-tertiary)" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
-          </svg>
-        </div>
-        <div className="preview__timeline">
-          <span className="preview__play" />
-          <span className="preview__track"><span className="preview__thumb" /></span>
-          <span className="preview__date tabular">2024-07-15</span>
-        </div>
-      </div>
-      <figcaption className="preview__caption">예시 화면: 지도·레이어·픽셀 시계열·시점 재생</figcaption>
-    </figure>
-  );
-}
-
-function FeatureVisual({ kind }: { kind: 'generate' | 'viewer' | 'ai' | 'compare' }) {
-  return (
-    <div className={`visual visual--${kind}`} aria-hidden>
-      {kind === 'generate' && (
-        <div className="visual__generate">
-          <div className="visual__files">
-            {['scene_0612.tif', 'reservoir.zip', 'COPERNICUS/S2_SR'].map((name) => (
-              <span key={name} className="visual__file"><FileStack size={16} />{name}</span>
-            ))}
-          </div>
-          <span className="visual__arrow" />
-          <div className="visual__cube">
-            <Boxes size={44} />
-            <span>dataset.zarr</span>
-            <small className="tabular">time · lat · lon</small>
-          </div>
-        </div>
-      )}
-      {kind === 'viewer' && (
-        <div className="visual__viewer">
-          <div className="visual__chart-head"><ChartLine size={16} />픽셀 시계열 · B8</div>
-          <svg className="visual__plot" viewBox="0 0 320 140">
-            <g stroke="var(--color-border)">{[30, 65, 100].map((y) => <path key={y} d={`M0 ${y} H320`} />)}</g>
-            <path d="M0 100 L30 92 L60 96 L90 70 L120 58 L150 64 L180 44 L210 52 L240 76 L270 68 L300 50 L320 56" fill="none" stroke="var(--color-primary)" strokeWidth="2.5" />
-            {[[90, 70], [180, 44], [270, 68]].map(([x, y]) => <circle key={x} cx={x} cy={y} r="3.5" fill="var(--color-primary)" />)}
-            <path d="M180 0 V140" stroke="var(--color-text-tertiary)" strokeDasharray="4 4" />
-          </svg>
-          <div className="visual__ticks tabular"><span>1월</span><span>4월</span><span>7월</span><span>10월</span></div>
-        </div>
-      )}
-      {kind === 'ai' && (
-        <div className="visual__pair">
-          <div className="visual__tile">
-            <svg className="visual__plot" viewBox="0 0 160 120"><rect width="160" height="120" fill="#e7ece4" /><path d="M20 60 C40 30 90 30 110 55 S120 100 80 98 10 90 20 60Z" fill="#8fb3a8" /><path d="M0 105 C50 95 100 115 160 100" stroke="#8fb3a8" strokeWidth="8" fill="none" /></svg>
-            <span>원본</span>
-          </div>
-          <div className="visual__tile">
-            <svg className="visual__plot" viewBox="0 0 160 120"><rect width="160" height="120" fill="#f1f5f9" /><path d="M20 60 C40 30 90 30 110 55 S120 100 80 98 10 90 20 60Z" fill="var(--color-water)" /><path d="M0 105 C50 95 100 115 160 100" stroke="var(--color-water)" strokeWidth="8" fill="none" /></svg>
-            <span>수체 추출 결과</span>
-          </div>
-        </div>
-      )}
-      {kind === 'compare' && (
-        <div className="visual__compare">
-          <svg className="visual__plot" viewBox="0 0 200 130">
-            <rect width="200" height="130" fill="#f1f5f9" />
-            <path d="M30 70 C50 30 120 28 150 60 S150 112 100 110 18 104 30 70Z" fill="var(--cmp-agree)" opacity=".85" />
-            <path d="M150 60 C160 72 166 90 152 104 L140 96 C150 86 150 74 142 66Z" fill="var(--cmp-only-a)" />
-            <path d="M30 70 C24 84 26 96 38 104 L44 98 C36 92 34 82 38 72Z" fill="var(--cmp-only-b)" />
-          </svg>
-          <ul className="visual__legend">
-            <li><i style={{ background: 'var(--cmp-agree)' }} />둘 다 수체</li>
-            <li><i style={{ background: 'var(--cmp-only-a)' }} />결과 A만</li>
-            <li><i style={{ background: 'var(--cmp-only-b)' }} />결과 B만</li>
-          </ul>
-          <div className="visual__metrics">
-            <span><GitCompareArrows size={16} />일치도·면적 지표</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
