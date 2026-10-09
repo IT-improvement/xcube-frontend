@@ -4,9 +4,9 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, CloudDownload, Database, Dr
 import { ChangeEvent, DragEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, userMessage } from '../../api/httpClient';
-import { ColorBarOption, GeeCollection, GenerationJob, InspectionField, SpatialInspection } from '../../api/generationApi';
+import { ColorBarOption, GeeCollection, GenerationJob, InspectionField, JobSummary, SpatialInspection } from '../../api/generationApi';
 import { Alert, Button, ButtonLink, TextField } from '../../components/ui';
-import { Badge, Card, PageHeader, Skeleton } from '../../components/ui/kit';
+import { Badge, Card, PageHeader, RadioGroup, Skeleton } from '../../components/ui/kit';
 import { appApi, canEditProject, generation, viewerHref } from '../api';
 import { BBoxMap } from '../pages/DatasetDetailPage';
 import AreaStep, { EstimatePanel } from './AreaStep';
@@ -59,8 +59,23 @@ const sarSummary = (sar: SarState) => `Sentinel-1 VV·VH · 날짜 차이 최대
 
 const fieldsOf = (inspection: SpatialInspection | null): InspectionField[] =>
   inspection ? inspection.fields ?? inspection.bands.map((name) => ({ name })) : [];
+/** The estimate does not depend on the dataset name, so it uses a fixed one: typing the name never re-estimates. */
+const ESTIMATE_NAME = '새 데이터';
+/** After a job succeeds, keep asking for a while until the Backoffice registration (the new dataset id) shows up. */
+const REGISTRATION_POLLS = 20;
+/** Dataset id of a finished generation job, once the Backoffice registered it. */
+export const registeredDatasetId = (job: GenerationJob | null) => {
+  const id = (job as Partial<JobSummary> | null)?.registration?.datacubeId;
+  return id == null || id === '' ? '' : String(id);
+};
 
+/** S4 data add wizard. "다른 데이터 추가" starts a fresh wizard (new state) without reloading the page. */
 export default function AddDataPage() {
+  const [run, setRun] = useState(0);
+  return <AddDataWizard key={run} onRestart={() => setRun((value) => value + 1)} />;
+}
+
+function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const [step, setStep] = useState(0);
   const [method, setMethod] = useState<Method | null>(null);
   const [rasterKind, setRasterKind] = useState<RasterKind>('geotiff');
@@ -94,6 +109,7 @@ export default function AddDataPage() {
   const collections = useLoad<GeeCollection[]>(() => (method === 'gee' ? generation.collections() : Promise.resolve([])), [method]);
   const projects = useLoad(() => appApi.listProjects());
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const registrationPolls = useRef(0);
   const done = !!job || !!registeredId;
 
   // Leaving the tab mid-way loses the inputs; ask first.
@@ -105,9 +121,13 @@ export default function AddDataPage() {
   }, [step, done]);
   useEffect(() => { headingRef.current?.focus(); }, [step]);
 
-  // Poll the generation job until it finishes.
+  // Poll the generation job until it finishes and, when it succeeded, until the new dataset is registered.
   useEffect(() => {
-    if (!job || TERMINAL.includes(job.status)) return;
+    if (!job) return;
+    const awaitingRegistration = job.status === 'SUCCEEDED' && !registeredDatasetId(job)
+      && !(job as Partial<JobSummary>).registration?.error && registrationPolls.current < REGISTRATION_POLLS;
+    if (TERMINAL.includes(job.status) && !awaitingRegistration) return;
+    if (awaitingRegistration) registrationPolls.current += 1;
     const timer = window.setTimeout(() => {
       generation.getJob(job.id).then(setJob).catch(() => undefined);
     }, 3000);
@@ -125,7 +145,7 @@ export default function AddDataPage() {
   const sarFields = method === 'gee' ? sarRequest(collectionId, sar) : {};
   const estimateBands = choices.length ? choices.map((item) => item.source) : fields.map((field) => field.name);
   const estimateBody = method === 'gee' && step >= 1 && collectionId && datesOk && resolved.request && resolved.bbox
-    ? { name: name.trim() || '새 데이터', collectionId, bands: estimateBands, startDate: gee.startDate, endDate: gee.endDate, maxCloudPercent: Number(gee.maxCloudPercent), scaleMeters: Number(gee.scaleMeters), bounds: bboxBounds(resolved.bbox), area: resolved.request, bandStyles: [], ...sarFields }
+    ? { name: ESTIMATE_NAME, collectionId, bands: estimateBands, startDate: gee.startDate, endDate: gee.endDate, maxCloudPercent: Number(gee.maxCloudPercent), scaleMeters: Number(gee.scaleMeters), bounds: bboxBounds(resolved.bbox), area: resolved.request, bandStyles: [], ...sarFields }
     : null;
   const estimate = useGeeEstimate(estimateBody);
   const blockers = method === 'gee' ? withPairingBlockers(estimate.data, pairing) : [];
@@ -276,14 +296,14 @@ export default function AddDataPage() {
       }
     } catch (cause) {
       setSubmitError(cause instanceof ApiError && cause.status === 404 && method !== 'gee' && method !== 'zarr'
-        ? '파일 생성 API가 아직 서버에 연결되지 않았습니다. (M1 진행 중) 입력한 설정은 그대로 남아 있습니다.'
+        ? '지금은 서버에서 파일로 데이터를 만들 수 없습니다. 입력한 설정은 그대로 남아 있으니 잠시 후 다시 시도하거나 관리자에게 알려 주세요.'
         : userMessage(cause));
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (done) return <Result job={job} registeredId={registeredId} name={name} projectLinked={!!projectId && method !== 'zarr'} />;
+  if (done) return <Result job={job} registeredId={registeredId} name={name} projectLinked={!!projectId && method !== 'zarr'} onRestart={onRestart} />;
   const problem = showErrors ? stepValid(step) : '';
 
   return (
@@ -303,7 +323,7 @@ export default function AddDataPage() {
           <h2 className="wizard-title" ref={headingRef} tabIndex={-1}>{STEPS[step]}</h2>
 
           {step === 0 && (
-            <div className="method-grid" role="radiogroup" aria-label="데이터 추가 방식">
+            <RadioGroup className="method-grid" label="데이터 추가 방식">
               {METHODS.map((item) => (
                 <button key={item.id} type="button" role="radio" aria-checked={method === item.id} className={`method-card ${method === item.id ? 'is-on' : ''}`} onClick={() => chooseMethod(item.id)}>
                   <span className="method-card__icon" aria-hidden>{item.icon}</span>
@@ -312,10 +332,10 @@ export default function AddDataPage() {
                     <span>{item.text}</span>
                     <small>{item.hint}</small>
                   </span>
-                  <span className="method-card__check" aria-hidden>{method === item.id && <Check size={16} />}</span>
+                  <span className="method-card__check" aria-hidden>{method === item.id && <Check size={12} strokeWidth={3} />}</span>
                 </button>
               ))}
-            </div>
+            </RadioGroup>
           )}
 
           {step === 1 && (method === 'geotiff' || method === 'shape') && (
@@ -345,10 +365,7 @@ export default function AddDataPage() {
           {step === 1 && method === 'gee' && (
             <div className="wizard-section">
               <div className="catalog">
-                <div className="catalog__tabs segmented" role="group" aria-label="카탈로그 범위">
-                  <button type="button" aria-pressed="true">검증된 목록</button>
-                  <button type="button" aria-pressed="false" disabled title="GEE 카탈로그 API(M1) 연결 후 제공">전체 검색 <small>준비 중</small></button>
-                </div>
+                <p className="xc-hint">처리 방법을 확인한 위성 자료만 고를 수 있습니다.</p>
                 <label className="toolbar__search" style={{ maxWidth: 'none' }}>
                   <Search size={16} aria-hidden />
                   <input type="search" value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="컬렉션 이름·ID 검색" aria-label="GEE 컬렉션 검색" />
@@ -356,7 +373,7 @@ export default function AddDataPage() {
                 {collections.loading ? <Skeleton lines={3} label="GEE 컬렉션을 불러오는 중" /> : collections.error ? (
                   <Alert tone="danger">GEE 목록을 불러오지 못했습니다. {collections.error}</Alert>
                 ) : (
-                  <div className="catalog__list" role="radiogroup" aria-label="GEE 컬렉션">
+                  <RadioGroup className="catalog__list" label="GEE 컬렉션">
                     {(collections.data ?? []).some((item) => item.id === S2_COLLECTION) && [WATER_PRESET.title, WATER_PRESET.text, '수체 S1 S2 water'].some((text) => text.toLowerCase().includes(catalogQuery.trim().toLowerCase())) && (
                       <>
                         <button type="button" role="radio" aria-checked={preset} className={`catalog__item ${preset ? 'is-on' : ''}`} onClick={choosePreset}>
@@ -372,7 +389,7 @@ export default function AddDataPage() {
                         <Badge>band {item.bands.length}</Badge>
                       </button>
                     ))}
-                  </div>
+                  </RadioGroup>
                 )}
               </div>
               {isS2(collectionId) && <SarOptions sar={sar} onChange={changeSar} showErrors={showErrors} />}
@@ -388,7 +405,7 @@ export default function AddDataPage() {
 
           {step === 1 && method === 'zarr' && (
             <div className="wizard-section">
-              <TextField label="Zarr 경로 / URI" placeholder="/data/sample.zarr 또는 s3://bucket/sample.zarr" value={storageUri} onChange={(event) => setStorageUri(event.target.value)} help="파일 전송(대용량 업로드)은 Data Uploading 서비스 연결 후 추가됩니다." />
+              <TextField label="Zarr 경로 / URI" placeholder="/data/sample.zarr 또는 s3://bucket/sample.zarr" value={storageUri} onChange={(event) => setStorageUri(event.target.value)} help="서버가 읽을 수 있는 폴더 경로나 s3:// 주소를 입력하세요." />
             </div>
           )}
 
@@ -596,31 +613,36 @@ function InspectionSummary({ method, rasterKind, inspection, collection, gee, re
       {fields.some((field) => autoRange(field.approxStats)) ? (
         <Alert tone="success">GDAL이 값 범위를 계산했습니다. 다음 단계에서 표시 범위가 자동으로 채워집니다.</Alert>
       ) : (
-        <Alert>값 범위 자동 계산은 서버 검사 기능(M1) 연결 후 제공됩니다. 다음 단계에서 범위를 직접 입력하세요.</Alert>
+        <Alert>이 파일은 값 범위를 미리 계산하지 못했습니다. 다음 단계에서 표시 범위를 직접 입력하세요.</Alert>
       )}
     </div>
   );
 }
 
-function Result({ job, registeredId, name, projectLinked }: { job: GenerationJob | null; registeredId: string; name: string; projectLinked: boolean }) {
+function Result({ job, registeredId, name, projectLinked, onRestart }: { job: GenerationJob | null; registeredId: string; name: string; projectLinked: boolean; onRestart: () => void }) {
   const status = job?.status;
   const finished = status === 'SUCCEEDED';
   const failed = status === 'FAILED' || status === 'CANCELLED';
+  // Zarr registration answers with the id at once; a generation job gets it when the Backoffice registers the result.
+  const datasetId = registeredId || registeredDatasetId(job);
+  const registrationError = (job as Partial<JobSummary> | null)?.registration?.error;
   return (
     <div className="page-stack wizard">
       <PageHeader title="데이터 추가" />
       <Card>
         <div className="wizard-result">
-          <span className={`wizard-result__icon ${failed ? 'is-failed' : ''}`} aria-hidden>{registeredId || finished ? <CheckCircle2 size={28} /> : failed ? '!' : <Loader2 size={28} className="spin" />}</span>
+          <span className={`wizard-result__icon ${failed ? 'is-failed' : registeredId || finished ? '' : 'is-running'}`} aria-hidden>{registeredId || finished ? <CheckCircle2 size={28} /> : failed ? '!' : <Loader2 size={28} className="spin" />}</span>
           <h2 className="wizard-title">{registeredId ? '등록을 요청했습니다' : finished ? '생성이 끝났습니다' : failed ? '생성에 실패했습니다' : '생성 작업을 시작했습니다'}</h2>
           <p role="status">
             “{name}” {registeredId ? '등록이 완료되었습니다. 시각화 서버 동기화가 끝나면 Viewer에서 볼 수 있습니다.' : <>작업 {String(job?.id)} · <strong>{STATUS_LABEL[status ?? ''] ?? status}</strong>{!finished && !failed ? ' · 이 화면을 닫아도 작업은 계속됩니다.' : ''}</>}
           </p>
+          {finished && !datasetId && !registrationError && <p className="xc-hint" role="status">데이터 목록에 등록하는 중입니다…</p>}
+          {finished && registrationError && <Alert tone="warning">데이터 목록 등록에 실패했습니다: {registrationError}</Alert>}
           {projectLinked && !registeredId && <p className="xc-hint">프로젝트 연결은 생성이 끝난 뒤 데이터 화면에서 확인하세요.</p>}
           <div className="wizard-result__actions">
-            {registeredId ? <ButtonLink to={`/app/data/${encodeURIComponent(registeredId)}`}>데이터 보기</ButtonLink> : <ButtonLink to="/app/jobs">작업 센터에서 보기</ButtonLink>}
-            {(registeredId || finished) && <a className="xc-btn xc-btn--secondary" href={viewerHref(registeredId || undefined)} target="_blank" rel="noopener noreferrer">Viewer에서 열기<span className="sr-only">(새 탭)</span></a>}
-            <Button variant="ghost" onClick={() => window.location.reload()}>다른 데이터 추가</Button>
+            {datasetId ? <ButtonLink to={`/app/data/${encodeURIComponent(datasetId)}`}>데이터 보기</ButtonLink> : <ButtonLink to="/app/jobs">작업 센터에서 보기</ButtonLink>}
+            {datasetId && <a className="xc-btn xc-btn--line" href={viewerHref(datasetId)} target="_blank" rel="noopener noreferrer">Viewer에서 열기<span className="sr-only">(새 탭)</span></a>}
+            <Button variant="quiet" onClick={onRestart}>다른 데이터 추가</Button>
           </div>
         </div>
       </Card>

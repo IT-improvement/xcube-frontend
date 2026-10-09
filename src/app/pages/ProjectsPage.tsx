@@ -3,7 +3,7 @@ import { FormEvent, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { userMessage } from '../../api/httpClient';
 import { Alert, Button, TextField } from '../../components/ui';
-import { Badge, Card, Dialog, EmptyState, PageHeader, Skeleton, Tabs, useToast } from '../../components/ui/kit';
+import { Badge, Card, ConfirmDialog, Dialog, EmptyState, PageHeader, Skeleton, TabPanel, Tabs, useToast } from '../../components/ui/kit';
 import { useAuth } from '../../auth/AuthProvider';
 import { appApi, canEditProject, formatDate, isOwned, memberLabel, MemberRole, Project, ProjectMember, roleLabel, viewerHref, ZarrDataset } from '../api';
 import { useLoad } from '../useLoad';
@@ -140,11 +140,11 @@ export function ProjectDetailPage() {
       />
       <Card>
         <div style={{ padding: '0 20px' }}>
-          <Tabs label="프로젝트 상세" value={tab} onChange={setTab} items={[{ id: 'data', label: '데이터' }, { id: 'members', label: '멤버' }]} />
+          <Tabs label="프로젝트 상세" idPrefix="project-detail" value={tab} onChange={setTab} items={[{ id: 'data', label: '데이터' }, { id: 'members', label: '멤버' }]} />
         </div>
-        <div role="tabpanel">
+        <TabPanel idPrefix="project-detail" value={tab}>
           {tab === 'data' ? <ProjectData project={current} editable={editable} onToast={toast.show} /> : <ProjectMembers project={current} owner={owner} onToast={toast.show} />}
-        </div>
+        </TabPanel>
       </Card>
       {editing && <ProjectFormDialog project={current} onClose={() => setEditing(false)} onSaved={(saved) => { project.setData(() => ({ ...current, ...saved })); setEditing(false); toast.show('변경사항을 저장했습니다.'); }} />}
       {deleting && <DeleteProjectDialog project={current} onClose={() => setDeleting(false)} onDeleted={() => navigate('/app/projects', { replace: true })} />}
@@ -171,15 +171,13 @@ function DeleteProjectDialog({ project, onClose, onDeleted }: { project: Project
 function ProjectData({ project, editable, onToast }: { project: Project; editable: boolean; onToast: (text: string) => void }) {
   const linked = useLoad(() => appApi.projectDatasets(project.id), [project.id]);
   const [picking, setPicking] = useState(false);
-  const [error, setError] = useState('');
+  const [unlinking, setUnlinking] = useState<ZarrDataset | null>(null);
+  // Errors stay in the confirmation dialog (ConfirmDialog shows them).
   const unlink = async (dataset: ZarrDataset) => {
-    if (!window.confirm(`“${dataset.name}” 연결을 해제할까요? 프로젝트에서만 빠지고 데이터 원본은 삭제되지 않습니다.`)) return;
-    setError('');
-    try {
-      await appApi.unlinkDataset(project.id, dataset.id);
-      linked.setData((items) => items?.filter((item) => item.id !== dataset.id) ?? null);
-      onToast('연결을 해제했습니다.');
-    } catch (cause) { setError(userMessage(cause)); }
+    await appApi.unlinkDataset(project.id, dataset.id);
+    linked.setData((items) => items?.filter((item) => item.id !== dataset.id) ?? null);
+    setUnlinking(null);
+    onToast('연결을 해제했습니다.');
   };
   const items = linked.data ?? [];
   return (
@@ -189,7 +187,6 @@ function ProjectData({ project, editable, onToast }: { project: Project; editabl
         <span className="toolbar__spacer" />
         {editable && <Button size="sm" onClick={() => setPicking(true)}><Link2 size={16} aria-hidden />데이터 연결</Button>}
       </div>
-      {error && <div className="inline-error"><Alert tone="danger">{error}</Alert></div>}
       {linked.loading ? <Skeleton lines={3} label="연결된 데이터를 불러오는 중" /> : linked.error ? (
         <div className="inline-error"><Alert tone="danger">{linked.error}</Alert></div>
       ) : !items.length ? (
@@ -206,7 +203,7 @@ function ProjectData({ project, editable, onToast }: { project: Project; editabl
                   <td>
                     <div className="row-actions">
                       <a className="xc-icon-btn" href={viewerHref(dataset.id)} target="_blank" rel="noopener noreferrer" aria-label={`${dataset.name} Viewer에서 열기 (새 탭)`} title="Viewer에서 열기"><ExternalLink size={16} aria-hidden /></a>
-                      {editable && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => unlink(dataset)} aria-label={`${dataset.name} 연결 해제`}><Unlink size={14} aria-hidden />연결 해제</button>}
+                      {editable && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => setUnlinking(dataset)} aria-label={`${dataset.name} 연결 해제`}><Unlink size={14} aria-hidden />연결 해제</button>}
                     </div>
                   </td>
                 </tr>
@@ -224,6 +221,17 @@ function ProjectData({ project, editable, onToast }: { project: Project; editabl
             linked.setData((current) => (current?.some((item) => item.id === dataset.id) ? current : [...(current ?? []), dataset]));
             onToast(`“${dataset.name}”을 연결했습니다.`);
           }}
+        />
+      )}
+      {unlinking && (
+        <ConfirmDialog
+          title="연결을 해제할까요?"
+          description={<>“{unlinking.name}”이 이 프로젝트 목록에서만 빠집니다. 데이터 원본은 삭제되지 않습니다.</>}
+          confirmLabel="연결 해제"
+          busyLabel="해제하는 중…"
+          tone="ink"
+          onConfirm={() => unlink(unlinking)}
+          onClose={() => setUnlinking(null)}
         />
       )}
     </>
@@ -273,6 +281,7 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
   const [role, setRole] = useState<MemberRole>('VIEWER');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [removing, setRemoving] = useState<ProjectMember | null>(null);
   if (!owner) return <EmptyState icon={<Lock size={22} />} title="소유자만 멤버를 관리할 수 있습니다" text="멤버 추가와 권한 변경은 프로젝트 소유자에게 요청하세요." />;
   const add = async (event: FormEvent) => {
     event.preventDefault();
@@ -301,13 +310,10 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
     } catch (cause) { setError(userMessage(cause)); }
   };
   const remove = async (member: ProjectMember) => {
-    if (!window.confirm(`${memberLabel(member)}의 프로젝트 접근 권한을 제거할까요?`)) return;
-    setError('');
-    try {
-      await appApi.removeMember(project.id, member.userId);
-      members.setData((items) => items?.filter((item) => item.userId !== member.userId) ?? null);
-      onToast('멤버를 제거했습니다.');
-    } catch (cause) { setError(userMessage(cause)); }
+    await appApi.removeMember(project.id, member.userId);
+    members.setData((items) => items?.filter((item) => item.userId !== member.userId) ?? null);
+    setRemoving(null);
+    onToast('멤버를 제거했습니다.');
   };
   const items = members.data ?? [];
   return (
@@ -321,7 +327,7 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
             <option value="EDITOR">편집</option>
           </select>
         </label>
-        <Button type="submit" disabled={busy} style={{ height: 40 }}>{busy ? '추가 중…' : '멤버 추가'}</Button>
+        <Button type="submit" disabled={busy} className="member-form__submit">{busy ? '추가 중…' : '멤버 추가'}</Button>
       </form>
       {error && <div className="inline-error"><Alert tone="danger">{error}</Alert></div>}
       {members.loading ? <Skeleton lines={3} label="멤버를 불러오는 중" /> : members.error ? (
@@ -335,19 +341,29 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
                 <tr key={member.userId}>
                   <td><strong>{member.role === 'OWNER' && String(user?.id) === member.userId ? `${user?.name ?? '나'} (나)` : memberLabel(member)}</strong></td>
                   <td>{member.role === 'OWNER' ? <RoleBadge role="OWNER" /> : (
-                    <select className="xc-select" style={{ width: 110, height: 34 }} aria-label={`${memberLabel(member)} 권한`} value={member.role} onChange={(event) => change(member, event.target.value as MemberRole)}>
+                    <select className="xc-select" style={{ width: 110 }} aria-label={`${memberLabel(member)} 권한`} value={member.role} onChange={(event) => change(member, event.target.value as MemberRole)}>
                       <option value="VIEWER">보기</option>
                       <option value="EDITOR">편집</option>
                     </select>
                   )}</td>
                   <td className="hide-sm">{formatDate(member.createdAt)}</td>
-                  <td className="num">{member.role !== 'OWNER' && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => remove(member)} aria-label={`${memberLabel(member)} 제거`}>제거</button>}</td>
+                  <td className="num">{member.role !== 'OWNER' && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => setRemoving(member)} aria-label={`${memberLabel(member)} 제거`}>제거</button>}</td>
                 </tr>
               ))}
               {!items.length && <tr><td colSpan={4} className="xc-hint">아직 공유한 사용자가 없습니다.</td></tr>}
             </tbody>
           </table>
         </div>
+      )}
+      {removing && (
+        <ConfirmDialog
+          title="멤버를 제거할까요?"
+          description={<>{memberLabel(removing)}님은 이 프로젝트를 더 이상 볼 수 없습니다. 데이터 원본은 그대로 남습니다.</>}
+          confirmLabel="제거"
+          busyLabel="제거하는 중…"
+          onConfirm={() => remove(removing)}
+          onClose={() => setRemoving(null)}
+        />
       )}
     </>
   );

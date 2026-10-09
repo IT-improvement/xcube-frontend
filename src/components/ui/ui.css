@@ -1,105 +1,142 @@
-/* Shared UI for the redesigned screens. Scoped under .xc so the existing Viewer styles are untouched. */
+/* Shared UI for the app, landing and auth screens, drawn in the field-book system (DESIGN.md).
+   Scoped under .xc so the Viewer (.vx) keeps its own rules. Tokens: src/styles/fieldbook.css. */
 .xc {
   min-height: 100%;
-  background: var(--color-bg);
-  color: var(--color-text);
+  background: var(--fb-ground);
+  color: var(--fb-ink);
   font: var(--text-body);
+  word-break: keep-all;
+  overflow-wrap: break-word;
   -webkit-font-smoothing: antialiased;
 }
 .xc *, .xc *::before, .xc *::after { box-sizing: border-box; }
 .xc :where(h1, h2, h3, h4, p, ul, ol, figure) { margin: 0; }
 .xc :where(ul, ol) { padding: 0; list-style: none; }
-/* Zero-specificity link color so button variants (.xc-btn--*) keep their own colors. */
-.xc :where(a) { color: var(--color-primary); }
+.xc :where(button, select, input, textarea) { font-family: inherit; }
+/* Links are ink with an underline; zero specificity so button-styled links keep their own look. */
+.xc :where(a) { color: var(--fb-ink); text-underline-offset: 2px; }
+.xc ::selection { background: var(--fb-overprint-soft); color: var(--fb-ink); }
 .xc :focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
-.xc .tabular { font-variant-numeric: tabular-nums; }
+.xc .tabular, .xc .num { font-variant-numeric: tabular-nums; }
+.xc .nowrap { white-space: nowrap; }
 .xc .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 .xc .skip-link {
   position: absolute; left: var(--space-4); top: -48px; z-index: 100;
-  padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm);
-  background: var(--color-primary); color: #fff; text-decoration: none;
+  padding: var(--space-2) var(--space-4); border-radius: var(--fb-radius);
+  background: var(--fb-ink); color: var(--fb-on-ink); text-decoration: none;
 }
 .xc .skip-link:focus { top: var(--space-4); }
 
-/* Button */
+/* Button: ink (primary) / line / quiet, plus danger for destructive confirmations.
+   32px on desktop, 40px where the pointer is a finger. Pressing scales to .97. */
 .xc-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
-  height: 36px; padding: 0 var(--space-4);
-  border: 1px solid transparent; border-radius: var(--radius-sm);
-  font: 600 14px/1 var(--font-sans); white-space: nowrap; text-decoration: none;
-  cursor: pointer; transition: background-color 120ms, border-color 120ms, color 120ms;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; padding: 0 12px;
+  border: 1px solid transparent; border-radius: var(--fb-radius);
+  font: 600 13px/1 var(--fb-font); white-space: nowrap; text-decoration: none;
+  cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out,
+    transform var(--fb-press) var(--fb-ease-out);
 }
-.xc-btn:disabled, .xc-btn[aria-disabled='true'] { opacity: 0.55; cursor: not-allowed; }
+.xc-btn:active:not(:disabled):not([aria-disabled='true']) { transform: scale(0.97); }
+.xc-btn:disabled, .xc-btn[aria-disabled='true'] {
+  cursor: not-allowed; background: var(--fb-sunken); border-color: var(--fb-rule); color: var(--fb-ink-3);
+}
 .xc-btn svg { flex: none; }
-.xc-btn--sm { height: 32px; padding: 0 var(--space-3); font-size: 13px; }
-.xc-btn--lg { height: 44px; padding: 0 var(--space-5); font-size: 15px; }
+.xc-btn--sm { height: 28px; padding: 0 10px; }
+.xc-btn--lg { height: 40px; padding: 0 16px; font-size: 14px; }
 .xc-btn--block { width: 100%; }
-.xc-btn--primary { background: var(--color-primary); color: #fff; }
-.xc-btn--primary:hover:not(:disabled) { background: var(--color-primary-hover); }
-.xc-btn--secondary { background: var(--color-surface); border-color: var(--color-border-strong); color: var(--color-text); }
-.xc-btn--secondary:hover:not(:disabled) { background: var(--color-surface-subtle); }
-.xc-btn--ghost { background: transparent; color: var(--color-text-secondary); }
-.xc-btn--ghost:hover:not(:disabled) { background: var(--color-surface-subtle); color: var(--color-text); }
-.xc-btn--danger { background: var(--color-danger); color: #fff; }
+.xc-btn--ink, .xc-btn--primary { background: var(--fb-ink); color: var(--fb-on-ink); }
+.xc-btn--ink:hover:not(:disabled), .xc-btn--primary:hover:not(:disabled) { background: color-mix(in srgb, var(--fb-ink) 86%, var(--fb-surface)); }
+.xc-btn--line, .xc-btn--secondary { background: var(--fb-surface); border-color: var(--fb-rule-strong); color: var(--fb-ink); }
+.xc-btn--line:hover:not(:disabled), .xc-btn--secondary:hover:not(:disabled) { background: var(--fb-sunken); }
+.xc-btn--line[aria-pressed='true'], .xc-btn--secondary[aria-pressed='true'] { border-color: var(--fb-ink); background: var(--fb-sunken); }
+.xc-btn--quiet, .xc-btn--ghost { background: transparent; color: var(--fb-ink-2); }
+.xc-btn--quiet:hover:not(:disabled), .xc-btn--ghost:hover:not(:disabled) { background: var(--fb-sunken); color: var(--fb-ink); }
+.xc-btn--quiet:disabled, .xc-btn--ghost:disabled { background: transparent; border-color: transparent; }
+.xc-btn--danger { background: var(--fb-bad); color: #fff; }
+.xc-btn--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--fb-bad) 86%, var(--fb-ink)); }
 
 /* Text field */
-.xc-field { display: grid; gap: var(--space-2); }
-.xc-field__label { font: 600 13px/1.4 var(--font-sans); color: var(--color-text); }
+.xc-field { display: grid; gap: 6px; align-content: start; }
+.xc-field__label { font: var(--text-label); color: var(--fb-ink); }
 .xc-field__control { position: relative; display: flex; }
 .xc-field__input {
-  width: 100%; height: 44px; padding: 0 var(--space-3);
-  border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);
-  background: var(--color-surface); color: var(--color-text); font: 400 15px/1 var(--font-sans);
+  width: 100%; height: 36px; padding: 0 10px;
+  border: 1px solid var(--fb-input-border); border-radius: var(--fb-radius);
+  background: var(--fb-surface); color: var(--fb-ink); font: 400 14px/1.2 var(--fb-font);
 }
-.xc-field__input::placeholder { color: var(--color-text-tertiary); }
-.xc-field__input:hover { border-color: var(--color-text-tertiary); }
-.xc-field__input:focus { outline: var(--focus-ring); outline-offset: 0; border-color: var(--color-primary); }
-.xc-field--invalid .xc-field__input { border-color: var(--color-danger); }
-.xc-field__input--with-action { padding-right: 48px; }
+.xc-field__input::placeholder { color: var(--fb-ink-3); }
+.xc-field__input:hover:not(:disabled) { border-color: var(--fb-ink-2); }
+.xc-field__input:focus { outline: 2px solid var(--fb-focus); outline-offset: 0; border-color: var(--fb-ink); }
+.xc-field__input:disabled { background: var(--fb-sunken); color: var(--fb-ink-3); cursor: not-allowed; }
+.xc-field--invalid .xc-field__input, .xc-field__input[aria-invalid='true'] { border-color: var(--fb-bad); }
+.xc-field__input--with-action { padding-right: 44px; }
 .xc-field__action {
-  position: absolute; right: 4px; top: 4px; width: 36px; height: 36px;
-  display: grid; place-items: center; border: 0; border-radius: var(--radius-sm);
-  background: transparent; color: var(--color-text-secondary); cursor: pointer;
+  position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px;
+  display: grid; place-items: center; border: 0; border-radius: var(--fb-radius);
+  background: transparent; color: var(--fb-ink-2); cursor: pointer;
 }
-.xc-field__action:hover { background: var(--color-surface-subtle); }
-.xc-field__help { font: var(--text-caption); color: var(--color-text-secondary); }
-.xc-field__error { display: flex; gap: var(--space-1); align-items: center; font: var(--text-caption); color: var(--color-danger); }
+.xc-field__action:hover { background: var(--fb-sunken); color: var(--fb-ink); }
+.xc-field__help { font: var(--text-caption); color: var(--fb-ink-3); }
+.xc-field__error { display: flex; gap: 4px; align-items: flex-start; font: 500 12.5px/1.45 var(--fb-font); color: var(--fb-bad); }
+.xc-field__error svg { flex: none; margin-top: 2px; }
 
-/* Alert */
+/* Alert: words first; the tone colours the icon and a faint wash, never the text. */
 .xc-alert {
-  display: flex; gap: var(--space-3); align-items: flex-start;
-  padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); border: 1px solid;
-  font: 400 14px/1.5 var(--font-sans);
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px; border-radius: var(--fb-radius); border: 1px solid var(--fb-rule);
+  background: var(--fb-sunken); color: var(--fb-ink);
+  font: 400 14px/1.5 var(--fb-font);
 }
 .xc-alert svg { flex: none; margin-top: 2px; }
-.xc-alert--info { background: var(--color-primary-subtle); border-color: #c7d6fb; color: #1e3a8a; }
-.xc-alert--success { background: #ecfdf3; border-color: #bbe5cb; color: #14532d; }
-.xc-alert--warning { background: #fff7ed; border-color: #f5d0a9; color: #7c2d12; }
-.xc-alert--danger { background: #fef2f2; border-color: #f4c7c7; color: #7f1d1d; }
+.xc-alert--info { background: var(--fb-water-soft); border-color: color-mix(in srgb, var(--fb-water) 22%, var(--fb-surface)); }
+.xc-alert--info > svg { color: var(--fb-water); }
+.xc-alert--success { background: color-mix(in srgb, var(--fb-ok) 8%, var(--fb-surface)); border-color: color-mix(in srgb, var(--fb-ok) 30%, var(--fb-surface)); }
+.xc-alert--success > svg { color: var(--fb-ok); }
+.xc-alert--warning { background: color-mix(in srgb, var(--fb-warn) 8%, var(--fb-surface)); border-color: color-mix(in srgb, var(--fb-warn) 32%, var(--fb-surface)); }
+.xc-alert--warning > svg { color: var(--fb-warn); }
+.xc-alert--danger { background: color-mix(in srgb, var(--fb-bad) 7%, var(--fb-surface)); border-color: color-mix(in srgb, var(--fb-bad) 40%, var(--fb-surface)); }
+.xc-alert--danger > svg { color: var(--fb-bad); }
 
-/* Logo */
-.xc-logo { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--color-text); text-decoration: none; }
-.xc-logo__mark { width: 28px; height: 28px; flex: none; }
-.xc-logo__text { font: 700 18px/1 var(--font-sans); letter-spacing: -0.01em; }
+/* Logo: the Viewer's outline cube in ink. */
+.xc-logo { display: inline-flex; align-items: center; gap: 7px; color: var(--fb-ink); text-decoration: none; }
+.xc-logo__mark { width: 22px; height: 22px; flex: none; }
+.xc-logo__text { font: 700 16px/1 var(--fb-font); letter-spacing: -0.01em; }
 
 /* Full-page status (checking session, server unavailable) */
 .xc-status {
   min-height: 100vh; display: grid; place-items: center; padding: var(--space-6);
-  background: var(--color-bg);
+  background: var(--fb-ground);
 }
 .xc-status__box { display: grid; justify-items: center; gap: var(--space-4); max-width: 420px; text-align: center; }
 .xc-status__title { font: var(--text-h2); }
-.xc-status__text { color: var(--color-text-secondary); }
+.xc-status__text { color: var(--fb-ink-2); }
 .xc-spinner {
-  width: 28px; height: 28px; border-radius: 50%;
-  border: 3px solid var(--color-border); border-top-color: var(--color-primary);
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 2px solid var(--fb-rule); border-top-color: var(--fb-ink);
   animation: xc-spin 0.8s linear infinite;
 }
 @keyframes xc-spin { to { transform: rotate(360deg); } }
+
+/* Fingers get 40px targets; phones get 16px inputs so iOS does not zoom on focus. */
+@media (pointer: coarse), (max-width: 767px) {
+  .xc-btn, .xc-btn--sm { height: 40px; padding: 0 14px; }
+  .xc-btn--lg { height: 44px; }
+  .xc-field__input { height: 40px; }
+  .xc-field__action { width: 36px; height: 36px; }
+}
+@media (max-width: 767px) {
+  .xc input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  .xc select:not([multiple]),
+  .xc textarea { font-size: 16px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .xc-spinner { animation-duration: 2.4s; }
   .xc-btn { transition: none; }
+  .xc-btn:active:not(:disabled) { transform: none; }
 }

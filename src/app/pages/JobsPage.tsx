@@ -4,8 +4,8 @@ import { Link } from 'react-router-dom';
 import { userMessage } from '../../api/httpClient';
 import { JobSummary } from '../../api/generationApi';
 import { Alert, Button, ButtonLink } from '../../components/ui';
-import { Card, EmptyState, PageHeader, Skeleton, useToast } from '../../components/ui/kit';
-import { aiViewerHref, formatDate, jobs as jobService } from '../api';
+import { Card, ConfirmDialog, EmptyState, PageHeader, Skeleton, useToast } from '../../components/ui/kit';
+import { aiViewerHref, formatDateTime, jobs as jobService } from '../api';
 import { elapsed, isActive, JOB_TYPE_LABEL, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
 import { useLoad } from '../useLoad';
 
@@ -20,10 +20,13 @@ export default function JobsPage() {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [tick, setTick] = useState(0);
+  const [cancelling, setCancelling] = useState<JobSummary | null>(null);
   const toast = useToast();
   const jobs = useLoad(() => jobService.list({ type, status }), [type, status, tick]);
   const items = useMemo(() => jobs.data ?? [], [jobs.data]);
   const anyActive = items.some(isActive);
+  const [refreshedAt, setRefreshedAt] = useState('');
+  useEffect(() => { if (jobs.data) setRefreshedAt(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })); }, [jobs.data]);
 
   // While something is processing, refresh every 10 seconds (FR-JOB-03).
   useEffect(() => {
@@ -34,14 +37,22 @@ export default function JobsPage() {
 
   // Ids are unique per service only, so rows are keyed by type too.
   const keyOf = (job: JobSummary) => `${job.type === 'FUSION' || job.type === 'AI_WATER' ? job.type : 'GEN'}:${job.id}`;
-  const act = async (job: JobSummary, action: 'cancel' | 'retry') => {
+  const retry = async (job: JobSummary) => {
     setBusy(keyOf(job));
     setError('');
     try {
-      if (action === 'cancel') { await jobService.cancel(job); toast.show('작업을 취소했습니다.'); }
-      else { const again = await jobService.retry(job); setOpen(keyOf(again)); toast.show('같은 설정으로 다시 실행했습니다.'); }
+      const again = await jobService.retry(job);
+      setOpen(keyOf(again));
+      toast.show('같은 설정으로 다시 실행했습니다.');
       setTick((value) => value + 1);
     } catch (cause) { setError(userMessage(cause)); } finally { setBusy(''); }
+  };
+  // Cancelling stops work that cannot be resumed, so it is confirmed first; a failure stays in the dialog.
+  const cancel = async (job: JobSummary) => {
+    await jobService.cancel(job);
+    setCancelling(null);
+    toast.show('작업을 취소했습니다.');
+    setTick((value) => value + 1);
   };
 
   return (
@@ -55,6 +66,7 @@ export default function JobsPage() {
             ))}
           </div>
           <span className="toolbar__spacer" />
+          {anyActive && refreshedAt && <span className="xc-hint tabular" aria-live="off">{refreshedAt} 갱신</span>}
           <label>
             <span className="sr-only">상태</span>
             <select className="xc-select" aria-label="상태" value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}>
@@ -69,12 +81,12 @@ export default function JobsPage() {
         {jobs.loading && !jobs.data ? (
           <Skeleton lines={4} label="작업을 불러오는 중" />
         ) : jobs.error ? (
-          <div className="inline-error"><Alert tone="danger">작업 목록을 불러오지 못했습니다. {jobs.error}</Alert><Button variant="secondary" size="sm" onClick={jobs.reload} style={{ marginTop: 12 }}>다시 시도</Button></div>
+          <div className="inline-error"><Alert tone="danger">작업 목록을 불러오지 못했습니다. {jobs.error}</Alert><Button variant="line" size="sm" onClick={jobs.reload} className="inline-error__retry">다시 시도</Button></div>
         ) : !items.length ? (
           <EmptyState icon={<ListChecks size={22} />} title={type || status ? '조건에 맞는 작업이 없습니다' : '아직 작업이 없습니다'} text="데이터 추가, 수식 융합, AI 수체 추출을 실행하면 이곳에 진행 상황이 표시됩니다." />
         ) : (
           <div className="xc-table-wrap">
-            <table className="xc-table">
+            <table className="xc-table xc-table--cards jobs-table">
               <thead>
                 <tr>
                   <th scope="col"><span className="sr-only">펼치기</span></th>
@@ -91,7 +103,7 @@ export default function JobsPage() {
                 {items.map((job) => {
                   const key = keyOf(job);
                   const expanded = open === key;
-                  const percent = Math.round((job.progress ?? (job.status === 'SUCCEEDED' ? 1 : 0)) * 100);
+                  const percent = Math.round((job.progress ?? 0) * 100);
                   return (
                     <Fragment key={key}>
                       <tr>
@@ -100,18 +112,22 @@ export default function JobsPage() {
                             {expanded ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
                           </button>
                         </td>
-                        <td><span className="xc-cell-main"><strong>{job.name || '이름 없음'}</strong>{job.errorMessage && <small className="job-error">{job.errorMessage}</small>}</span></td>
-                        <td style={{ whiteSpace: 'nowrap' }}>{JOB_TYPE_LABEL[job.type] ?? job.type}</td>
+                        <td className="cell-main"><span className="xc-cell-main"><strong>{job.name || '이름 없음'}</strong>{job.errorMessage && <small className="job-error">{job.errorMessage}</small>}</span></td>
+                        <td className="nowrap jobs-table__type">{JOB_TYPE_LABEL[job.type] ?? job.type}</td>
                         <td><JobStatusBadge job={job} /></td>
-                        <td className="hide-sm">
-                          <span className="job-progress" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label={`${job.name} 진행률`}>
-                            <i style={{ width: `${percent}%` }} className={job.status === 'FAILED' ? 'is-failed' : ''} />
-                          </span>
-                          <small className="tabular xc-hint">{percent}%</small>
+                        <td className="jobs-table__progress">
+                          {job.status === 'RUNNING' && (
+                            <span className="job-progress-cell">
+                              <span className="job-progress" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label={`${job.name} 진행률`}>
+                                <i style={{ width: `${percent}%` }} />
+                              </span>
+                              <small className="tabular xc-hint">{percent}%</small>
+                            </span>
+                          )}
                         </td>
-                        <td className="hide-sm tabular">{elapsed(job)}</td>
-                        <td className="hide-sm">{formatDate(job.createdAt)}</td>
-                        <td>
+                        <td className="hide-sm tabular nowrap">{elapsed(job)}</td>
+                        <td className="hide-sm date">{formatDateTime(job.createdAt)}</td>
+                        <td className="cell-actions">
                           <div className="row-actions">
                             {job.registration?.datacubeId != null && job.status === 'SUCCEEDED' && (
                               <Link className="xc-btn xc-btn--ghost xc-btn--sm" to={`/app/data/${job.registration.datacubeId}`}>데이터 보기</Link>
@@ -119,14 +135,14 @@ export default function JobsPage() {
                             {job.type === 'AI_WATER' && job.status === 'SUCCEEDED' && job.input?.datacubeId != null && (
                               <a className="xc-btn xc-btn--ghost xc-btn--sm" href={aiViewerHref(String(job.input.datacubeId), job.id)} target="_blank" rel="noopener noreferrer" aria-label={`${job.name} Viewer에서 원본과 비교 (새 탭)`}>Viewer 비교</a>
                             )}
-                            {isActive(job) && <Button size="sm" variant="ghost" disabled={busy === key} onClick={() => act(job, 'cancel')} aria-label={`${job.name} 취소`}><Square size={14} aria-hidden />취소</Button>}
-                            {(job.status === 'FAILED' || job.status === 'CANCELLED') && <Button size="sm" variant="secondary" disabled={busy === key} onClick={() => act(job, 'retry')} aria-label={`${job.name} 다시 시도`}><RotateCcw size={14} aria-hidden />다시 시도</Button>}
+                            {isActive(job) && <Button size="sm" variant="quiet" disabled={busy === key} onClick={() => setCancelling(job)} aria-label={`${job.name} 취소`}><Square size={14} aria-hidden />취소</Button>}
+                            {(job.status === 'FAILED' || job.status === 'CANCELLED') && <Button size="sm" variant="line" disabled={busy === key} onClick={() => retry(job)} aria-label={`${job.name} 다시 시도`}><RotateCcw size={14} aria-hidden />다시 시도</Button>}
                           </div>
                         </td>
                       </tr>
                       {expanded && (
                         <tr className="job-detail-row">
-                          <td colSpan={8}>
+                          <td colSpan={8} className="cell-full">
                             <div className="job-detail">
                               <JobSteps job={job} />
                               {job.status === 'FAILED' && <Alert tone="danger">실패 사유: {job.errorMessage || job.errorCode || '알 수 없음'}</Alert>}
@@ -144,6 +160,17 @@ export default function JobsPage() {
           </div>
         )}
       </Card>
+      {cancelling && (
+        <ConfirmDialog
+          title="작업을 취소할까요?"
+          description={<>“{cancelling.name || '이름 없음'}” 작업을 멈춥니다. 지금까지 처리한 결과는 남지 않으며, 다시 하려면 처음부터 실행해야 합니다.</>}
+          confirmLabel="작업 취소"
+          busyLabel="취소하는 중…"
+          cancelLabel="계속 진행"
+          onConfirm={() => cancel(cancelling)}
+          onClose={() => setCancelling(null)}
+        />
+      )}
       {toast.node}
     </div>
   );

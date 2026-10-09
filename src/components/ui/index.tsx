@@ -3,11 +3,12 @@ import { AnchorHTMLAttributes, ButtonHTMLAttributes, InputHTMLAttributes, ReactN
 import { Link, LinkProps } from 'react-router-dom';
 import './ui.css';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+/** ink = primary, line = secondary, quiet = ghost (DESIGN.md names; the old names stay as aliases). */
+type Variant = 'ink' | 'line' | 'quiet' | 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md' | 'lg';
 type ButtonStyle = { variant?: Variant; size?: Size; block?: boolean };
 
-function buttonClass({ variant = 'primary', size = 'md', block }: ButtonStyle, extra?: string) {
+function buttonClass({ variant = 'ink', size = 'md', block }: ButtonStyle, extra?: string) {
   return ['xc-btn', `xc-btn--${variant}`, size !== 'md' && `xc-btn--${size}`, block && 'xc-btn--block', extra]
     .filter(Boolean)
     .join(' ');
@@ -32,7 +33,9 @@ type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & { label: string; h
 export function TextField({ label, help, error, type = 'text', id, className, ...props }: TextFieldProps) {
   const generated = useId();
   const inputId = id ?? generated;
-  const describedBy = [help && `${inputId}-help`, error && `${inputId}-error`].filter(Boolean).join(' ') || undefined;
+  // While an error shows, it replaces the help line (the help usually repeats the same rule).
+  const showHelp = !!help && !error;
+  const describedBy = [showHelp && `${inputId}-help`, error && `${inputId}-error`].filter(Boolean).join(' ') || undefined;
   const [revealed, setRevealed] = useState(false);
   const isPassword = type === 'password';
   return (
@@ -59,7 +62,7 @@ export function TextField({ label, help, error, type = 'text', id, className, ..
           </button>
         )}
       </div>
-      {help && <p id={`${inputId}-help`} className="xc-field__help">{help}</p>}
+      {showHelp && <p id={`${inputId}-help`} className="xc-field__help">{help}</p>}
       {error && (
         <p id={`${inputId}-error`} className="xc-field__error">
           <AlertCircle size={14} aria-hidden />
@@ -86,10 +89,9 @@ export function Alert({ tone = 'info', children, role }: { tone?: keyof typeof a
 export function Logo({ to = '/', href, label = 'XCube 홈', newTab }: { to?: string; href?: string; label?: string; newTab?: boolean }) {
   const content = (
     <>
-      <svg className="xc-logo__mark" viewBox="0 0 28 28" aria-hidden>
-        <rect width="28" height="28" rx="7" fill="var(--color-primary)" />
-        <path d="M14 6.5 21 10.5v7L14 21.5 7 17.5v-7L14 6.5Z" fill="none" stroke="#fff" strokeWidth="1.6" strokeLinejoin="round" />
-        <path d="M7 10.5 14 14.5l7-4M14 14.5v7" fill="none" stroke="#fff" strokeWidth="1.6" strokeLinejoin="round" />
+      <svg className="xc-logo__mark" viewBox="0 0 24 24" aria-hidden>
+        <path d="M12 3.2 19.6 7.6v8.8L12 20.8 4.4 16.4V7.6L12 3.2Z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+        <path d="M4.4 7.6 12 12l7.6-4.4M12 12v8.8" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
       </svg>
       <span className="xc-logo__text" aria-hidden>XCube</span>
     </>

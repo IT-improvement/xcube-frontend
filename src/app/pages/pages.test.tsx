@@ -16,6 +16,7 @@ const generation = require('../../api/generationApi').generationApi as Record<st
 const analysis = require('../../api/analysisApi').analysisApi as Record<string, jest.Mock>;
 const aiService = require('../../api/aiApi').aiApi as Record<string, jest.Mock>;
 const { ApiError } = require('../../api/httpClient');
+const { formatDateTime } = require('../api');
 const DashboardPage = require('./DashboardPage').default;
 const DataLibraryPage = require('./DataLibraryPage').default;
 const DatasetDetailPage = require('./DatasetDetailPage').default;
@@ -81,6 +82,22 @@ describe('S6 프로젝트', () => {
     expect(screen.getByText('이영희 (lee)님을 추가했습니다.')).toBeInTheDocument();
   });
 
+  test('멤버 제거는 앱의 확인 대화상자를 거치고, 실패하면 대화상자 안에 이유를 남긴다', async () => {
+    backoffice.getProjectMembers.mockResolvedValue([{ userId: '1', role: 'OWNER' }, { userId: '22', role: 'VIEWER', username: 'kim', name: '김철수' }]);
+    backoffice.removeProjectMember.mockRejectedValueOnce(new ApiError(500, 'INTERNAL', '권한 정보를 바꾸지 못했습니다.')).mockResolvedValueOnce(undefined);
+    renderAt('/app/projects/4');
+    fireEvent.click(await screen.findByRole('tab', { name: '멤버' }));
+    fireEvent.click(await screen.findByRole('button', { name: '김철수 (kim) 제거' }));
+    const confirm = await screen.findByRole('alertdialog', { name: '멤버를 제거할까요?' });
+    fireEvent.click(within(confirm).getByRole('button', { name: '제거' }));
+    expect(await within(confirm).findByText('권한 정보를 바꾸지 못했습니다.')).toBeInTheDocument();
+    fireEvent.click(within(confirm).getByRole('button', { name: '제거' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(screen.queryByText('김철수 (kim)')).not.toBeInTheDocument();
+    expect(backoffice.removeProjectMember).toHaveBeenCalledWith('4', '22');
+    expect(window.confirm).not.toHaveBeenCalled();
+  });
+
   test('없는 아이디와 빈 입력은 이유를 알려 준다', async () => {
     backoffice.addProjectMember.mockRejectedValue(new ApiError(404, 'USER_NOT_FOUND', 'No user with that ID'));
     renderAt('/app/projects/4');
@@ -124,8 +141,15 @@ describe('S6 프로젝트', () => {
     fireEvent.click(within(dialog).getAllByRole('button', { name: '닫기' })[0]);
     expect(screen.queryByRole('dialog', { name: '데이터 연결' })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '연결된 Zarr 연결 해제' }));
+    // The app's own confirmation dialog, not the browser's confirm().
+    const confirm = await screen.findByRole('alertdialog', { name: '연결을 해제할까요?' });
+    expect(confirm).toHaveAccessibleDescription(expect.stringContaining('원본은 삭제되지 않습니다'));
+    expect(within(confirm).getByRole('button', { name: '취소' })).toHaveFocus();
+    expect(backoffice.unlinkProjectDataset).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole('button', { name: '연결 해제' }));
     await waitFor(() => expect(backoffice.unlinkProjectDataset).toHaveBeenCalledWith('4', '77'));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('원본은 삭제되지 않습니다'));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(window.confirm).not.toHaveBeenCalled();
   });
 
   test('프로젝트가 없으면 빈 상태와 새 프로젝트 버튼을 보여 준다', async () => {
@@ -253,19 +277,20 @@ describe('S4 데이터 추가 (FR-GEN-10·11)', () => {
     expect(screen.queryByRole('button', { name: '생성 시작' })).not.toBeInTheDocument();
   });
 
-  test('파일 생성 API가 없으면(404) 준비 중이라고 알리고 입력을 유지한다', async () => {
+  test('파일 생성 API가 없으면(404) 개발 단계 용어 없이 알리고 입력을 유지한다', async () => {
     generation.createFileJob.mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'missing'));
     await toSettings();
     fireEvent.click(screen.getByRole('checkbox', { name: /area_km2/ }));
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
     fireEvent.click(await screen.findByRole('button', { name: '생성 시작' }));
-    expect(await screen.findByText(/파일 생성 API가 아직 서버에 연결되지 않았습니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/지금은 서버에서 파일로 데이터를 만들 수 없습니다/)).toBeInTheDocument();
+    expect(screen.queryByText(/M1/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '생성 시작' })).toBeEnabled();
   });
 
   test('GEE는 고른 band만 요청하고 band별 색상·범위를 보낸다', async () => {
     generation.getCollections.mockResolvedValue([{ id: 'COPERNICUS/S2', name: 'Sentinel-2', bands: ['B2', 'B3', 'B4', 'B8'] }]);
-    generation.createGeeJob.mockResolvedValue({ id: 5, status: 'QUEUED' });
+    generation.createGeeJob.mockResolvedValue({ id: 5, status: 'SUCCEEDED', registration: { datacubeId: 93, xcubeDatasetId: 'u1-d93' } });
     renderAt('/app/data/new');
     fireEvent.click(await screen.findByRole('radio', { name: /Google Earth Engine/ }));
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
@@ -280,6 +305,9 @@ describe('S4 데이터 추가 (FR-GEN-10·11)', () => {
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
     fireEvent.click(await screen.findByRole('button', { name: /다음/ }));
     fireEvent.change(screen.getByLabelText('데이터 이름'), { target: { value: '서울 S2' } });
+    // The typed name never reaches the estimate (typing it must not re-estimate).
+    await waitFor(() => expect(generation.estimateGee).toHaveBeenCalled());
+    for (const [body] of generation.estimateGee.mock.calls) expect(body.name).toBe('새 데이터');
     fireEvent.click(screen.getByRole('checkbox', { name: /B8/ }));
     expect(screen.queryByLabelText('B8 변수 이름')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('B8 표시 최솟값'), { target: { value: '0' } });
@@ -291,6 +319,26 @@ describe('S4 데이터 추가 (FR-GEN-10·11)', () => {
       bounds: { west: 126.5, south: 35, east: 127, north: 35.5 },
       area: { mode: 'box', box: { west: 126.5, south: 35, east: 127, north: 35.5 }, clip: 'bbox', fullCoverOnly: false, maskVariable: false },
     })));
+    // The result opens the new dataset, and "다른 데이터 추가" starts over without reloading the page.
+    expect(await screen.findByText('생성이 끝났습니다')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Viewer에서 열기/ })).toHaveAttribute('href', '/app/viewer?dataset=93');
+    expect(screen.getByRole('link', { name: '데이터 보기' })).toHaveAttribute('href', '/app/data/93');
+    fireEvent.click(screen.getByRole('button', { name: '다른 데이터 추가' }));
+    expect(screen.getByRole('heading', { name: '방식 선택' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Google Earth Engine/ })).toHaveAttribute('aria-checked', 'false');
+  });
+
+  test('방식 카드는 하나의 탭 정지점과 방향키 선택을 쓴다', async () => {
+    renderAt('/app/data/new');
+    const cards = await screen.findAllByRole('radio');
+    expect(cards.map((card) => card.tabIndex)).toEqual([0, -1, -1, -1]);
+    cards[0].focus();
+    fireEvent.keyDown(cards[0], { key: 'ArrowRight' });
+    expect(cards[1]).toHaveFocus();
+    expect(cards[1]).toHaveAttribute('aria-checked', 'true');
+    expect(cards.map((card) => card.tabIndex)).toEqual([-1, 0, -1, -1]);
+    fireEvent.keyDown(cards[1], { key: 'End' });
+    expect(cards[3]).toHaveAttribute('aria-checked', 'true');
   });
 
   test('일반 GeoTIFF는 위성·센서가 필요하고, 날짜 없는 파일은 관측 날짜를 받아 함께 보낸다', async () => {
@@ -344,8 +392,19 @@ describe('M4 작업 센터·대시보드·생성 이력', () => {
     fireEvent.click(screen.getByRole('button', { name: '울산 Shape 다시 시도' }));
     await waitFor(() => expect(generation.retryJob).toHaveBeenCalledWith('j1'));
     expect(await screen.findByText('같은 설정으로 다시 실행했습니다.')).toBeInTheDocument();
+    expect(screen.getByText(formatDateTime(running.createdAt))).toHaveClass('date');
     fireEvent.click(screen.getByRole('button', { name: '제주 GeoTIFF 취소' }));
+    const confirm = await screen.findByRole('alertdialog', { name: '작업을 취소할까요?' });
+    expect(generation.cancelJob).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole('button', { name: '작업 취소' }));
     await waitFor(() => expect(generation.cancelJob).toHaveBeenCalledWith('j2'));
+  });
+
+  test('진행 막대는 처리 중일 때만 보인다', async () => {
+    generation.listJobs.mockResolvedValue([running, failed, done]);
+    renderAt('/app/jobs');
+    await screen.findByText('울산 Shape');
+    expect(screen.getAllByRole('progressbar').map((bar) => bar.getAttribute('aria-label'))).toEqual(['제주 GeoTIFF 진행률']);
   });
 
   test('필터를 바꾸면 그 조건으로 다시 조회한다', async () => {
@@ -403,6 +462,7 @@ describe('M6 수식 융합 작업·데이터 표시', () => {
     await waitFor(() => expect(analysis.retryJob).toHaveBeenCalledWith('f2'));
     expect(generation.retryJob).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '제주 GeoTIFF 취소' }));
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: '작업 취소' }));
     await waitFor(() => expect(generation.cancelJob).toHaveBeenCalledWith('g1'));
     expect(analysis.cancelJob).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'NDWI 융합 상세 펼치기' }));
@@ -479,6 +539,7 @@ describe('M7 AI 수체 추출 작업·결과 표시', () => {
     expect(within(rows[1]).getByRole('link', { name: '데이터 보기' })).toHaveAttribute('href', '/app/data/95');
     expect(within(rows[1]).getByRole('link', { name: /Viewer에서 원본과 비교/ })).toHaveAttribute('href', '/app/viewer?dataset=77&ai=a2');
     fireEvent.click(screen.getByRole('button', { name: '연결된 Zarr_수체_U-Net 취소' }));
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: '작업 취소' }));
     await waitFor(() => expect(aiService.cancelJob).toHaveBeenCalledWith('a1'));
     expect(generation.cancelJob).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '끝난 수체 추출 상세 펼치기' }));

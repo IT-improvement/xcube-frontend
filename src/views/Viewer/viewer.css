@@ -2,63 +2,39 @@
    instead of cards. Data owns the hues (water blue); one overprint magenta marks only what
    the user placed: the time cursor, the A/B flags and the pixel reticle. */
 
+/* Colours, shadows and radii come from the shared field-book tokens (src/styles/fieldbook.css),
+   which also carry the dark theme. Only the Viewer's own layout measures live here. */
 .vx {
-  --vx-ground: #f3f5f2;
-  --vx-surface: #ffffff;
-  --vx-sunken: #eceee9;
-  --vx-rule: #d8ddd5;
-  --vx-rule-strong: #b3bbb0;
-  --vx-ink: #1b201d;
-  --vx-ink-2: #454d47;
-  --vx-ink-3: #5f6862;
-  --vx-on-ink: #ffffff;
-  --vx-mark: #b8166f;
-  --vx-mark-text: #a3135f;
-  --vx-mark-soft: #f8e3ee;
-  --vx-on-mark: #ffffff;
-  --vx-water: #1769aa;
-  --vx-water-soft: #e2eef8;
-  --vx-result: #0f7a6e;
-  --vx-base: #7f9a7f;
-  --vx-ok: #2e7a3c;
-  --vx-warn: #94580a;
-  --vx-bad: #b42318;
-  --vx-focus: #1b201d;
-  --vx-lift: 0 1px 2px rgba(27, 32, 29, 0.07), 0 6px 16px rgba(27, 32, 29, 0.09);
-  --vx-lift-high: 0 2px 4px rgba(27, 32, 29, 0.08), 0 16px 36px rgba(27, 32, 29, 0.16);
-  --vx-radius: 6px;
-  --vx-radius-lg: 8px;
-  --vx-font: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --vx-ground: var(--fb-ground);
+  --vx-surface: var(--fb-surface);
+  --vx-sunken: var(--fb-sunken);
+  --vx-rule: var(--fb-rule);
+  --vx-rule-strong: var(--fb-rule-strong);
+  --vx-ink: var(--fb-ink);
+  --vx-ink-2: var(--fb-ink-2);
+  --vx-ink-3: var(--fb-ink-3);
+  --vx-on-ink: var(--fb-on-ink);
+  --vx-mark: var(--fb-overprint);
+  --vx-mark-text: var(--fb-overprint-text);
+  --vx-mark-soft: var(--fb-overprint-soft);
+  --vx-on-mark: var(--fb-on-overprint);
+  --vx-water: var(--fb-water);
+  --vx-water-soft: var(--fb-water-soft);
+  --vx-result: var(--fb-result);
+  --vx-base: var(--fb-basemap);
+  --vx-ok: var(--fb-ok);
+  --vx-warn: var(--fb-warn);
+  --vx-bad: var(--fb-bad);
+  --vx-focus: var(--fb-focus);
+  --vx-lift: var(--fb-lift);
+  --vx-lift-high: var(--fb-lift-high);
+  --vx-radius: var(--fb-radius);
+  --vx-radius-lg: var(--fb-radius-lg);
+  --vx-font: var(--fb-font);
   --vx-lead: 276px;
   --vx-tail: 344px;
   --vx-plot-left: 56px;
   --vx-plot-right: 16px;
-}
-:root[data-theme='dark'] { color-scheme: dark; }
-:root[data-theme='dark'] .vx {
-  --vx-ground: #111412;
-  --vx-surface: #181c19;
-  --vx-sunken: #222723;
-  --vx-rule: #2d3430;
-  --vx-rule-strong: #46504a;
-  --vx-ink: #e7ebe7;
-  --vx-ink-2: #bcc4be;
-  --vx-ink-3: #99a29c;
-  --vx-on-ink: #111412;
-  --vx-mark: #ff6fb3;
-  --vx-mark-text: #ff8cc2;
-  --vx-mark-soft: #3d1b2d;
-  --vx-on-mark: #1a0712;
-  --vx-water: #6db3ec;
-  --vx-water-soft: #172b3c;
-  --vx-result: #4fc4b4;
-  --vx-base: #7d977d;
-  --vx-ok: #6fcf7f;
-  --vx-warn: #f0b45a;
-  --vx-bad: #ff8a80;
-  --vx-focus: #e7ebe7;
-  --vx-lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 16px rgba(0, 0, 0, 0.4);
-  --vx-lift-high: 0 2px 4px rgba(0, 0, 0, 0.45), 0 16px 36px rgba(0, 0, 0, 0.55);
 }
 
 /* Root */

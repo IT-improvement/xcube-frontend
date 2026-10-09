@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import App from './App';
 
@@ -54,13 +54,62 @@ test('회원가입 화면으로 전환해 이름까지 전송하고, 로그인 �
   expect(screen.getByLabelText('아이디')).toHaveValue('user');
 });
 
-test('비밀번호 확인이 다르면 회원가입을 보내지 않는다', () => {
+test('비밀번호 확인이 다르면 회원가입을 보내지 않고, 입력 아래 오류와 함께 첫 오류 칸으로 이동한다', () => {
   window.history.replaceState({}, '', '/signup');
   render(<App />);
+  expect(screen.getByLabelText('이름')).toHaveAccessibleDescription('이름은 화면 표시에만 씁니다.');
+  fireEvent.change(screen.getByLabelText('이름'), { target: { value: '홍길동' } });
+  fireEvent.change(screen.getByLabelText('아이디'), { target: { value: 'user' } });
   fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password123' } });
   fireEvent.change(screen.getByLabelText('비밀번호 확인'), { target: { value: 'password999' } });
-  expect(screen.getByText('비밀번호가 일치하지 않습니다.')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '회원가입' })).toBeDisabled();
+  // The button stays enabled; the reason appears on submit, next to the field.
+  const submit = screen.getByRole('button', { name: '회원가입' });
+  expect(submit).toBeEnabled();
+  fireEvent.click(submit);
+  expect(mockSignup).not.toHaveBeenCalled();
+  const confirm = screen.getByLabelText('비밀번호 확인');
+  expect(confirm).toHaveAttribute('aria-invalid', 'true');
+  expect(confirm).toHaveAccessibleDescription('비밀번호가 일치하지 않습니다.');
+  expect(confirm).toHaveFocus();
+});
+
+test('회원가입 아이디 규칙은 입력 아래에 알리고, 아이디 칸은 자동 대문자·맞춤법을 끈다', () => {
+  window.history.replaceState({}, '', '/signup');
+  render(<App />);
+  const id = screen.getByLabelText('아이디');
+  expect(id).toHaveAttribute('autocapitalize', 'none');
+  expect(id).toHaveAttribute('autocorrect', 'off');
+  expect(id).toHaveAttribute('spellcheck', 'false');
+  expect(id).not.toHaveAttribute('pattern');
+  fireEvent.change(id, { target: { value: 'a b' } });
+  fireEvent.blur(id);
+  expect(screen.getByText(/영문·숫자·밑줄\(_\)·점\(\.\)·하이픈\(-\)으로 3~50자를 입력하세요/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '회원가입' }));
+  expect(screen.getByLabelText('이름')).toHaveFocus();
+});
+
+test('로그인은 빈 칸만 확인한다: 옛 규칙 밖의 아이디·짧은 비밀번호도 서버로 보낸다', async () => {
+  window.history.replaceState({}, '', '/login');
+  mockLogin.mockRejectedValue(new Error('x'));
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: '로그인' }));
+  expect(mockLogin).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('아이디')).toHaveFocus();
+  expect(screen.getByText('아이디를 입력하세요.')).toBeInTheDocument();
+  expect(screen.getByText('비밀번호를 입력하세요.')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('아이디'), { target: { value: 'Old User' } });
+  fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'pw' } });
+  fireEvent.click(screen.getByRole('button', { name: '로그인' }));
+  await waitFor(() => expect(mockLogin).toHaveBeenCalledWith({ email: 'Old User', password: 'pw' }));
+});
+
+test('로그인 화면의 소개 영역은 그림만 숨기고 로고 링크는 이름을 가진다', () => {
+  window.history.replaceState({}, '', '/login');
+  render(<App />);
+  // The intro panel stays in the accessibility tree; only its illustration is hidden.
+  const intro = screen.getByRole('complementary', { name: 'XCube 소개' });
+  expect(within(intro).getByRole('link', { name: 'XCube 홈' })).toBeInTheDocument();
+  expect(within(intro).getByText(/물의 변화를 읽습니다/)).toBeInTheDocument();
 });
 
 test('로그인하지 않고 Viewer 주소로 오면 redirect를 붙여 로그인으로 보내고, 로그인 후 되돌아간다', async () => {
