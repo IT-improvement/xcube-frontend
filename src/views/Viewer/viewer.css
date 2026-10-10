@@ -364,7 +364,9 @@
 
 /* Layer sheet: floats over the map, top left */
 .vx-panel {
-  position: absolute; z-index: 12; left: 12px; top: 12px; width: 312px; max-height: calc(100% - 76px);
+  position: absolute; z-index: 12; left: 12px; top: 12px; width: 312px;
+  /* stops 8px above the legend stack (--vx-legend-space, measured in index.tsx), never less than the old 64px */
+  max-height: calc(100% - 12px - max(64px, var(--vx-legend-space, 0px) + 8px));
   display: flex; flex-direction: column; min-height: 0;
   background: var(--vx-surface); border: 1px solid var(--vx-rule); border-radius: var(--vx-radius-lg); box-shadow: var(--vx-lift);
 }
@@ -801,7 +803,7 @@
   .vx .dataset-popover { position: fixed; left: 8px; right: 8px; top: 92px; width: auto; }
   .vx-pmenu__panel, .vx-menu { position: fixed; left: 8px; right: 8px; top: 92px; width: auto; }
   .vx-menu { top: 48px; }
-  .vx-panel { left: 8px; right: 8px; top: 8px; width: auto; max-height: calc(100% - 16px); }
+  .vx-panel { left: 8px; right: 8px; top: 8px; width: auto; max-height: calc(100% - 8px - max(8px, var(--vx-legend-space, 0px) + 6px)); }
   .vx-sheet-open { left: 8px; top: 8px; }
   .vx-tools { right: 8px; top: 8px; }
   .vx-tools button { width: 36px; height: 36px; }

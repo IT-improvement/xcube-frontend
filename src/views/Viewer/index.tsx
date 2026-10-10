@@ -210,6 +210,9 @@ export default function Viewer({
   const [pickerRequest, setPickerRequest] = useState(0);
   // Keyboard pixel query: a reticle moved with the arrow keys, queried with Enter.
   const mapBoxRef = useRef<HTMLElement>(null);
+  /** Bottom-left legend stack; the layer sheet stops above it so the legend is never hidden (S7). */
+  const legendsRef = useRef<HTMLDivElement>(null);
+  const [legendSpace, setLegendSpace] = useState(0);
   const probeRef = useRef<HTMLButtonElement>(null);
   const focusProbeRef = useRef(false);
   const [probe, setProbe] = useState<[number, number] | null>(null);
@@ -1131,6 +1134,28 @@ export default function Viewer({
         ? ""
         : "등록된 Zarr가 없습니다. 데이터를 추가해 시작하세요.");
   const pickHint = !selected && !loading && !apiError && datasets.length > 0 && !pickHintHidden;
+  // Keep the layer sheet's bottom above the legend stack: measure the stack (its size and its
+  // compare-mode offset) and hand the space it takes to the sheet as --vx-legend-space.
+  useEffect(() => {
+    const legends = legendsRef.current;
+    const box = mapBoxRef.current;
+    if (!legends || !box) {
+      setLegendSpace(0);
+      return;
+    }
+    const measure = () => {
+      const top = legends.getBoundingClientRect().top;
+      const bottom = box.getBoundingClientRect().bottom;
+      setLegendSpace(legends.childElementCount ? Math.max(0, Math.round(bottom - top)) : 0);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(legends);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [selected, compareActive, displayMode, panelOpen]);
+
   return (
     <main className="viewer vx" aria-label="XCube 시계열 GIS Viewer">
       <header className="vx-top">
@@ -1285,6 +1310,7 @@ export default function Viewer({
       </header>
 
       <div
+        style={{ "--vx-legend-space": `${legendSpace}px` } as React.CSSProperties}
         className={`vx-body ${panelOpen ? "panel-open" : ""} ${drawer && !rightCollapsed ? "drawer-open" : ""} ${drawer && rightCollapsed ? "rail-open" : ""}`}
       >
         <section
@@ -1480,7 +1506,7 @@ export default function Viewer({
           )}
           {/* Legends stack bottom-left: the source colour bar, and the AI result above it when shown (S7). */}
           {selected && (
-            <div className="vx-legends">
+            <div className="vx-legends" ref={legendsRef}>
               {selectedResult && (resultVisible || aiCompare) && !(aiCompare && displayMode === "swipe") && (
                 <AiLegend
                   entry={selectedResult}
