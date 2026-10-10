@@ -1,6 +1,7 @@
 // Korean screen text: the source of truth. Every key here must exist in en.ts (checked by its type
 // and by i18n.test). Placeholders are written {name}; values only, never markup.
 // Stage 1 (UR-53): shared UI, landing, login/signup, app top bar, 404s and tab titles.
+// Stage 2: request errors here; the management screens under /app are in ./app/ko.ts (loaded with the app pages).
 const ko = {
   common: {
     close: '닫기',
@@ -194,6 +195,18 @@ const ko = {
       network: '서버에 연결할 수 없습니다. 실행 상태를 확인해 주세요.',
       unexpected: '예상하지 못한 오류가 발생했습니다.',
     },
+  },
+  // ---- Stage 2: request errors (userMessage) used by every screen. The management screens' own text is in ./app/ ----
+  /** userMessage(): HTTP problems in plain words. A server sentence without a known status is shown as given. */
+  errors: {
+    unexpected: '예상하지 못한 오류가 발생했습니다.',
+    network: '서버에 연결할 수 없습니다. 실행 상태를 확인해 주세요.',
+    sessionExpired: '세션이 만료되었습니다. 다시 로그인해 주세요.',
+    syncing: 'XCube 등록을 동기화하는 중입니다. 잠시 후 다시 시도해 주세요.',
+    conflict: '이미 존재하거나 현재 상태와 충돌합니다.',
+    xcubeUnavailable: 'XCube Server를 사용할 수 없습니다.',
+    xcubeTimeout: 'XCube Server 응답 시간이 초과되었습니다.',
+    failed: '요청을 처리하지 못했습니다.',
   },
 };
 

@@ -3,7 +3,7 @@
 import { X } from 'lucide-react';
 import { KeyboardEvent, ReactNode, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { userMessage } from '../../api/httpClient';
-import { useT } from '../../i18n';
+import { useLanguage, useT } from '../../i18n';
 import { Alert, Button } from '.';
 import './kit.css';
 
@@ -157,7 +157,7 @@ export function ConfirmDialog({ title, description, confirmLabel, busyLabel, can
   title: string; description?: ReactNode; confirmLabel: string; busyLabel?: string; cancelLabel?: string; tone?: 'danger' | 'ink';
   onConfirm: () => Promise<unknown> | void; onClose: () => void;
 }) {
-  const t = useT();
+  const { lang, t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const mounted = useRef(true);
@@ -166,7 +166,7 @@ export function ConfirmDialog({ title, description, confirmLabel, busyLabel, can
     setBusy(true);
     setError('');
     try { await onConfirm(); }
-    catch (cause) { if (mounted.current) setError(userMessage(cause)); }
+    catch (cause) { if (mounted.current) setError(userMessage(cause, lang)); }
     finally { if (mounted.current) setBusy(false); }
   };
   return (

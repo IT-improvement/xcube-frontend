@@ -9,13 +9,14 @@ import { AdminArea, AdminLevel, AdminSearch, AreaPick, AreaUpload, ColorBarOptio
 import { areaDemo } from './areaDemo';
 import { aiApi, AiCheck, AiJobRequest, AiModel, AiWaterJob } from '../api/aiApi';
 import { createAiDemo } from './aiDemo';
-import { formatDate as i18nFormatDate, formatDateTime as i18nFormatDateTime } from '../i18n';
+import { formatDate as i18nFormatDate, getLanguage, translate } from '../i18n';
+import type { Lang } from '../i18n';
 
 export type { Project, ZarrDataset, ProjectMember };
 export type MemberRole = 'EDITOR' | 'VIEWER';
-/** "김철수 (kim)" when the server knows the name, otherwise "사용자 22". */
-export const memberLabel = (member: { userId: string; username?: string; name?: string }) =>
-  member.username ? (member.name && member.name !== member.username ? `${member.name} (${member.username})` : member.username) : `사용자 ${member.userId}`;
+/** "김철수 (kim)" when the server knows the name, otherwise "사용자 22" / "User 22". */
+export const memberLabel = (member: { userId: string; username?: string; name?: string }, lang: Lang = getLanguage()) =>
+  member.username ? (member.name && member.name !== member.username ? `${member.name} (${member.username})` : member.username) : translate(lang, 'members.userFallback', { id: member.userId });
 
 const manage = useMockApi ? demoManagement : backofficeAdapter;
 
@@ -143,7 +144,11 @@ const newestFirst = (a: JobSummary, b: JobSummary) => (b.createdAt ?? '').locale
 
 export type JobListResult = { items: JobSummary[]; unavailable: Array<'FUSION' | 'AI_WATER'> };
 /** Notice for services whose jobs are missing from the merged list. */
-export const unavailableJobsNotice = (unavailable: JobListResult['unavailable']) => (unavailable.length ? `${unavailable.map((type) => (type === 'FUSION' ? '수식 융합' : 'AI')).join('·')} 작업 목록을 불러오지 못했습니다. 나머지 작업만 표시합니다.` : '');
+export const unavailableJobsNotice = (unavailable: JobListResult['unavailable'], lang: Lang = getLanguage()) => {
+  if (!unavailable.length) return '';
+  const services = unavailable.map((type) => translate(lang, type === 'FUSION' ? 'jobs.serviceFusion' : 'jobs.serviceAi')).join(translate(lang, 'jobs.serviceSeparator'));
+  return translate(lang, 'jobs.unavailable', { services });
+};
 /** Job center view: generation, fusion and AI jobs together, routed to the service that owns each job. */
 export const jobs: { list(filter?: { status?: string; type?: string }): Promise<JobSummary[]>; listWithStatus(filter?: { status?: string; type?: string }): Promise<JobListResult>; cancel(job: JobSummary): Promise<unknown>; retry(job: JobSummary): Promise<JobSummary> } = {
   /**
@@ -176,22 +181,31 @@ export const jobs: { list(filter?: { status?: string; type?: string }): Promise<
   retry: (job: JobSummary) => (isFusionJob(job) ? fusion.retryJob(job.id) : isAiJob(job) ? ai.retryJob(job.id) : generation.retryJob(job.id)),
 };
 
-export const roleLabel = (role?: string) => (role === 'OWNER' ? '소유자' : role === 'EDITOR' ? '편집' : '보기');
+/** OWNER / EDITOR / anything else (VIEWER): 소유자·편집·보기, Owner·Editor·Viewer. */
+export const roleLabel = (role?: string, lang: Lang = getLanguage()) =>
+  translate(lang, role === 'OWNER' ? 'roles.OWNER' : role === 'EDITOR' ? 'roles.EDITOR' : 'roles.VIEWER');
 export const canEditProject = (project?: Project) => project?.accessRole === 'OWNER' || project?.accessRole === 'EDITOR';
 export const isOwned = (dataset: ZarrDataset) => dataset.accessType !== 'SHARED';
 
-// The app pages are still Korean (UR-53 stage 2 translates them), so their dates stay Korean too.
-// Stage 2 drops the 'ko' argument and the helpers follow the screen language.
-/** "2024. 8. 14." */
-export const formatDate = (value?: string) => i18nFormatDate(value, {}, 'ko');
-/** "10. 8. 14:05" — month, day and 24-hour time for job rows (set on one line with `.date`). */
-export const formatDateTime = (value?: string | null) => i18nFormatDateTime(value, 'ko');
+// Dates on the management screens follow the screen language (UR-53 stage 2). Pass `lang` to pin one;
+// the add-data wizard and the Viewer (still Korean) do not use these helpers.
+const DATE_EN: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric' };
+const DATE_TIME: Intl.DateTimeFormatOptions = { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+const DATE_TIME_EN: Intl.DateTimeFormatOptions = { ...DATE_TIME, month: 'short' };
+/** ko "2024. 8. 14.", en "Aug 14, 2024". */
+export const formatDate = (value?: string | Date | null, lang: Lang = getLanguage()) => i18nFormatDate(value, lang === 'ko' ? {} : DATE_EN, lang);
+/** ko "10. 8. 14:05", en "Oct 8, 14:05" — month, day and 24-hour time for job rows (set on one line with `.date`). */
+export const formatDateTime = (value?: string | Date | null, lang: Lang = getLanguage()) => i18nFormatDate(value, lang === 'ko' ? DATE_TIME : DATE_TIME_EN, lang);
 
-/** "2025.07.03 ~ 2025.10.22" from the dataset's time labels. */
-export function periodLabel(dataset: ZarrDataset) {
+/**
+ * First and last time of a dataset. Korean keeps the catalog's time labels ("2025. 7. 3. ~ 2025. 10. 22.");
+ * other languages format the ISO times ("Jul 3, 2025 – Oct 22, 2025").
+ */
+export function periodLabel(dataset: ZarrDataset, lang: Lang = getLanguage()) {
   const times = dataset.times;
   if (!times.length) return '—';
-  return times.length === 1 ? times[0].label : `${times[0].label} ~ ${times[times.length - 1].label}`;
+  const label = (time: ZarrDataset['times'][number]) => (lang === 'ko' || !time.iso ? time.label : formatDate(time.iso, lang));
+  return times.length === 1 ? label(times[0]) : translate(lang, 'app.range', { start: label(times[0]), end: label(times[times.length - 1]) });
 }
 
 /** Viewer opens in a new tab, preselecting the dataset. */

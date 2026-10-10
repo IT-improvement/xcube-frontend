@@ -6,49 +6,63 @@ import { Badge, BadgeTone } from '../components/ui/kit';
 import { jobs as allJobs } from './api';
 import { AGG_LABEL, asFusionRequest, EXTENT_LABEL, GRID_LABEL, normalizationLabel, PERIOD_LABEL, RESAMPLING_LABEL, TIME_LABEL } from './fusion';
 import { FusionRequest } from '../api/analysisApi';
+import { getLanguage, translate, useLanguage } from '../i18n';
+import type { Lang, TKey } from '../i18n';
 
-export const JOB_TYPE_LABEL: Record<string, string> = {
+/** Source types are product names in every language; fusion and AI are translated (jobType.*). */
+const SOURCE_TYPE_LABEL: Record<string, string> = {
   GEE_TO_ZARR: 'GEE',
   GEOTIFF_BANDS: 'GeoTIFF',
   CAS500: 'CAS500',
   SHAPEFILE: 'Shapefile',
-  FUSION: '수식 융합',
-  AI_WATER: 'AI 수체 추출',
 };
-/** Model names for job rows when the model list is not loaded (ids from the M7 contract). */
+/** "GEE", "수식 융합" / "Band math", "AI 수체 추출" / "AI water extraction"; unknown types as given. */
+export const jobTypeLabel = (type: string, lang: Lang = getLanguage()) =>
+  type === 'FUSION' || type === 'AI_WATER' ? translate(lang, `jobType.${type}`) : SOURCE_TYPE_LABEL[type] ?? type;
+
+/**
+ * Model names for job rows when the model list is not loaded (ids from the M7 contract). Korean, for the
+ * Viewer (still Korean); the management screens use `aiModelLabel`.
+ */
 export const AI_MODEL_LABEL: Record<string, string> = {
   'ndwi-baseline': 'NDWI 기준선',
   'unet-s1s2-10ch': 'U-Net (S1+S2 10채널)',
   'deeplabv3plus-s1s2-10ch': 'DeepLabV3+ (S1+S2 10채널)',
 };
-const STATUS: Record<string, { label: string; tone: BadgeTone }> = {
-  QUEUED: { label: '대기 중', tone: 'neutral' },
-  RUNNING: { label: '처리 중', tone: 'warning' },
-  SUCCEEDED: { label: '완료', tone: 'success' },
-  FAILED: { label: '실패', tone: 'danger' },
-  CANCELLED: { label: '취소됨', tone: 'neutral' },
+const AI_MODEL_KEY: Record<string, TKey> = {
+  'ndwi-baseline': 'aiModels.ndwiBaseline',
+  'unet-s1s2-10ch': 'aiModels.unet',
+  'deeplabv3plus-s1s2-10ch': 'aiModels.deeplab',
 };
+/** Known model ids in the screen language; anything else as given. */
+export const aiModelLabel = (modelId: string, lang: Lang = getLanguage()) => (AI_MODEL_KEY[modelId] ? translate(lang, AI_MODEL_KEY[modelId]) : modelId);
+
+const STATUS_TONE: Record<string, BadgeTone> = { QUEUED: 'neutral', RUNNING: 'warning', SUCCEEDED: 'success', FAILED: 'danger', CANCELLED: 'neutral' };
+/** 대기 중·처리 중·완료·실패·취소됨 / Queued·Running·Done·Failed·Cancelled; unknown statuses as given. */
+export const jobStatusLabel = (status: string, lang: Lang = getLanguage()) => (status in STATUS_TONE ? translate(lang, `jobStatus.${status}` as TKey) : status);
 export const isActive = (job: JobSummary) => job.status === 'QUEUED' || job.status === 'RUNNING';
 
 export function JobStatusBadge({ job }: { job: JobSummary }) {
-  const status = STATUS[job.status] ?? { label: job.status, tone: 'neutral' as BadgeTone };
-  return <Badge tone={status.tone}>{status.label}</Badge>;
+  const { lang } = useLanguage();
+  return <Badge tone={STATUS_TONE[job.status] ?? 'neutral'}>{jobStatusLabel(job.status, lang)}</Badge>;
 }
 
-/** "3분 20초" between start and end (or now while running). */
-export function elapsed(job: JobSummary, now = Date.now()) {
+/** "3분 20초" / "3m 20s" between start and end (or now while running). */
+export function elapsed(job: JobSummary, now = Date.now(), lang: Lang = getLanguage()) {
   const start = job.startedAt ?? job.createdAt;
   if (!start) return '—';
   const end = job.finishedAt ? new Date(job.finishedAt).getTime() : now;
   const seconds = Math.max(0, Math.round((end - new Date(start).getTime()) / 1000));
-  if (seconds < 60) return `${seconds}초`;
+  if (seconds < 60) return translate(lang, 'duration.seconds', { s: seconds });
   const minutes = Math.floor(seconds / 60);
-  return minutes < 60 ? `${minutes}분 ${seconds % 60}초` : `${Math.floor(minutes / 60)}시간 ${minutes % 60}분`;
+  return minutes < 60
+    ? translate(lang, 'duration.minutes', { m: minutes, s: seconds % 60 })
+    : translate(lang, 'duration.hours', { h: Math.floor(minutes / 60), m: minutes % 60 });
 }
 
 type StepState = 'done' | 'current' | 'failed' | 'todo';
 /** 검사 → 변환 → 검증 → 등록 → XCube 반영, derived from status, stage and the Backoffice registration. */
-export function jobSteps(job: JobSummary): Array<{ label: string; state: StepState }> {
+export function jobSteps(job: JobSummary, lang: Lang = getLanguage()): Array<{ label: string; state: StepState }> {
   const registered = !!job.registration?.datacubeId || !!job.registration?.xcubeDatasetId;
   const registrationFailed = !!job.registration?.error;
   const converting = job.status === 'RUNNING' && job.stage !== 'validate';
@@ -60,18 +74,23 @@ export function jobSteps(job: JobSummary): Array<{ label: string; state: StepSta
     registered ? 'done' : registrationFailed ? 'failed' : job.status === 'SUCCEEDED' ? 'current' : 'todo',
     registered ? 'done' : 'todo',
   ];
-  const labels = job.type === 'FUSION' ? ['입력 확인', '계산', '검증', '등록', 'XCube 반영'] : job.type === 'AI_WATER' ? ['입력 확인', '추론', '검증', '등록', 'XCube 반영'] : ['검사', '변환', '검증', '등록', 'XCube 반영'];
-  return labels.map((label, index) => ({ label, state: states[index] }));
+  const keys: TKey[] = job.type === 'FUSION'
+    ? ['jobs.steps.checkInputs', 'jobs.steps.compute', 'jobs.steps.validate', 'jobs.steps.register', 'jobs.steps.publish']
+    : job.type === 'AI_WATER'
+      ? ['jobs.steps.checkInputs', 'jobs.steps.infer', 'jobs.steps.validate', 'jobs.steps.register', 'jobs.steps.publish']
+      : ['jobs.steps.inspect', 'jobs.steps.convert', 'jobs.steps.validate', 'jobs.steps.register', 'jobs.steps.publish'];
+  return keys.map((key, index) => ({ label: translate(lang, key), state: states[index] }));
 }
 
 export function JobSteps({ job }: { job: JobSummary }) {
+  const { lang, t } = useLanguage();
   return (
-    <ol className="job-steps" aria-label="처리 단계">
-      {jobSteps(job).map((step) => (
+    <ol className="job-steps" aria-label={t('jobs.steps.label')}>
+      {jobSteps(job, lang).map((step) => (
         <li key={step.label} className={`is-${step.state}`}>
           <span aria-hidden>{step.state === 'done' ? '✓' : step.state === 'failed' ? '!' : ''}</span>
           {step.label}
-          <span className="sr-only">{step.state === 'done' ? ' 완료' : step.state === 'current' ? ' 진행 중' : step.state === 'failed' ? ' 실패' : ' 대기'}</span>
+          <span className="sr-only">{` ${t(step.state === 'done' ? 'jobs.steps.done' : step.state === 'current' ? 'jobs.steps.current' : step.state === 'failed' ? 'jobs.steps.failed' : 'jobs.steps.todo')}`}</span>
         </li>
       ))}
     </ol>
@@ -82,31 +101,40 @@ type VariableIn = { source?: string; name?: string; variable?: string; kind?: st
 
 /** Formula, bindings and rules of a fusion request (job input or dataset history). */
 export function FusionRequestSummary({ request, names }: { request: Partial<FusionRequest>; names?: Record<string, string> }) {
+  const { lang, t } = useLanguage();
+  const label = <K extends string>(keys: Record<K, TKey>, value: string | null | undefined) => (value == null ? '—' : value in keys ? t(keys[value as K]) : value);
   const bindings = Object.entries(request.bindings ?? {});
   const grid = request.grid;
   const time = request.time;
   const rules: Array<[string, string]> = [];
-  if (grid) rules.push(['격자', `${GRID_LABEL[grid.reference] ?? grid.reference}${grid.reference === 'datacube' && grid.datacubeId != null ? ` (${names?.[String(grid.datacubeId)] ?? `#${grid.datacubeId}`})` : ''} · 리샘플링 ${RESAMPLING_LABEL[grid.resampling] ?? grid.resampling}`]);
-  if (request.extent) rules.push(['범위', EXTENT_LABEL[request.extent] ?? request.extent]);
-  if (time) rules.push(['시간', `${TIME_LABEL[time.mode] ?? time.mode}${time.mode === 'nearest' && time.toleranceDays != null ? ` (±${time.toleranceDays}일)` : ''}${time.mode === 'aggregate' ? ` (${time.period ? PERIOD_LABEL[time.period] : '—'} 단위 ${time.agg ? AGG_LABEL[time.agg] : '—'})` : ''}`]);
-  if (request.outputVariable) rules.push(['결과 변수', request.outputVariable]);
+  if (grid) {
+    const gridText = `${label(GRID_LABEL, grid.reference)}${grid.reference === 'datacube' && grid.datacubeId != null ? ` (${names?.[String(grid.datacubeId)] ?? `#${grid.datacubeId}`})` : ''}`;
+    rules.push([t('fusion.summary.grid'), t('fusion.summary.gridValue', { grid: gridText, resampling: label(RESAMPLING_LABEL, grid.resampling) })]);
+  }
+  if (request.extent) rules.push([t('fusion.summary.extent'), label(EXTENT_LABEL, request.extent)]);
+  if (time) {
+    const tolerance = time.mode === 'nearest' && time.toleranceDays != null ? t('fusion.summary.tolerance', { days: time.toleranceDays }) : '';
+    const aggregate = time.mode === 'aggregate' ? t('fusion.summary.aggregate', { period: label(PERIOD_LABEL, time.period), agg: label(AGG_LABEL, time.agg) }) : '';
+    rules.push([t('fusion.summary.time'), `${label(TIME_LABEL, time.mode)}${tolerance}${aggregate}`]);
+  }
+  if (request.outputVariable) rules.push([t('fusion.summary.outputVariable'), request.outputVariable]);
   return (
     <div className="job-input">
       <dl className="meta-list" style={{ padding: 0 }}>
-        <dt>수식</dt><dd><code className="fusion-code">{request.formula}</code></dd>
+        <dt>{t('fusion.summary.formula')}</dt><dd><code className="fusion-code">{request.formula}</code></dd>
         {rules.map(([label, value]) => (<Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>))}
       </dl>
       {bindings.length > 0 && (
         <table className="xc-table job-vars">
-          <caption className="sr-only">입력 변수</caption>
-          <thead><tr><th scope="col">문자</th><th scope="col">데이터</th><th scope="col">변수</th><th scope="col">정규화</th></tr></thead>
+          <caption className="sr-only">{t('fusion.summary.inputVariables')}</caption>
+          <thead><tr><th scope="col">{t('fusion.summary.letter')}</th><th scope="col">{t('fusion.summary.data')}</th><th scope="col">{t('fusion.summary.variable')}</th><th scope="col">{t('fusion.summary.normalization')}</th></tr></thead>
           <tbody>
             {bindings.map(([letter, binding]) => (
               <tr key={letter}>
                 <td><strong>{letter}</strong></td>
                 <td>{names?.[String(binding.datacubeId)] ?? `#${binding.datacubeId}`}</td>
                 <td>{binding.variable}</td>
-                <td>{normalizationLabel(binding.normalization)}</td>
+                <td>{normalizationLabel(binding.normalization, lang)}</td>
               </tr>
             ))}
           </tbody>
@@ -118,16 +146,17 @@ export function FusionRequestSummary({ request, names }: { request: Partial<Fusi
 
 /** What the job was asked to do: inputs, chosen variables with colour range, parameters. */
 export function JobInputSummary({ job }: { job: JobSummary }) {
+  const { lang, t } = useLanguage();
   const fusionRequest = job.type === 'FUSION' ? asFusionRequest(job.input) : null;
   if (fusionRequest) return <FusionRequestSummary request={fusionRequest} />;
   const input = job.input ?? {};
   if (job.type === 'AI_WATER') {
     const modelId = String(input.modelId ?? '');
     const rows: Array<[string, string]> = [
-      ['입력 데이터', input.datacubeId != null ? `#${input.datacubeId}` : '—'],
-      ['모델', AI_MODEL_LABEL[modelId] ?? (modelId || '—')],
-      ['임계값', input.threshold != null ? String(input.threshold) : '모델 기본값'],
-      ['기간', input.timeStart || input.timeEnd ? `${input.timeStart ?? '처음'} ~ ${input.timeEnd ?? '끝'}` : '전체 시점'],
+      [t('jobs.input.inputData'), input.datacubeId != null ? `#${input.datacubeId}` : '—'],
+      [t('jobs.input.model'), modelId ? aiModelLabel(modelId, lang) : '—'],
+      [t('jobs.input.threshold'), input.threshold != null ? String(input.threshold) : t('jobs.input.modelDefault')],
+      [t('jobs.input.period'), input.timeStart || input.timeEnd ? t('app.range', { start: String(input.timeStart ?? t('jobs.input.start')), end: String(input.timeEnd ?? t('jobs.input.end')) }) : t('jobs.input.allTimes')],
     ];
     return (
       <div className="job-input">
@@ -140,13 +169,13 @@ export function JobInputSummary({ job }: { job: JobSummary }) {
   const variables = ((input.variables as VariableIn[] | undefined) ?? (input.bandStyles as VariableIn[] | undefined) ?? []);
   const params = (input.params as Record<string, unknown> | undefined) ?? {};
   const rows: Array<[string, string]> = [];
-  if (input.collectionId) rows.push(['GEE 컬렉션', String(input.collectionId)]);
-  if (input.startDate) rows.push(['기간', `${input.startDate} ~ ${input.endDate}`]);
-  if (Array.isArray(input.files)) rows.push(['파일', (input.files as string[]).join(', ') || '—']);
-  if (input.scaleMeters) rows.push(['픽셀 크기', `${input.scaleMeters} m`]);
-  for (const [key, label] of [['sensor', '위성·센서'], ['date', '관측 날짜'], ['nodata', 'nodata'], ['resolution', '해상도(도)']] as const)
-    if (params[key] != null) rows.push([label, String(params[key])]);
-  if (job.zarrUri) rows.push(['저장 위치', String(job.zarrUri).replace('file://', '')]);
+  if (input.collectionId) rows.push([t('jobs.input.geeCollection'), String(input.collectionId)]);
+  if (input.startDate) rows.push([t('jobs.input.period'), t('app.range', { start: String(input.startDate), end: String(input.endDate) })]);
+  if (Array.isArray(input.files)) rows.push([t('jobs.input.files'), (input.files as string[]).join(', ') || '—']);
+  if (input.scaleMeters) rows.push([t('jobs.input.pixelSize'), `${input.scaleMeters} m`]);
+  for (const [key, label] of [['sensor', 'jobs.input.sensor'], ['date', 'jobs.input.date'], ['nodata', 'jobs.input.nodata'], ['resolution', 'jobs.input.resolution']] as const)
+    if (params[key] != null) rows.push([t(label), String(params[key])]);
+  if (job.zarrUri) rows.push([t('jobs.input.storage'), String(job.zarrUri).replace('file://', '')]);
   return (
     <div className="job-input">
       <dl className="meta-list" style={{ padding: 0 }}>
@@ -154,7 +183,7 @@ export function JobInputSummary({ job }: { job: JobSummary }) {
       </dl>
       {variables.length > 0 && (
         <table className="xc-table job-vars">
-          <thead><tr><th scope="col">변수</th><th scope="col">표현</th><th scope="col">색상표</th><th scope="col">표시 범위</th></tr></thead>
+          <thead><tr><th scope="col">{t('jobs.input.variable')}</th><th scope="col">{t('jobs.input.display')}</th><th scope="col">{t('jobs.input.colorBar')}</th><th scope="col">{t('jobs.input.range')}</th></tr></thead>
           <tbody>
             {variables.map((variable, index) => {
               const name = variable.name ?? variable.variable ?? variable.source ?? `#${index + 1}`;
@@ -164,9 +193,9 @@ export function JobInputSummary({ job }: { job: JobSummary }) {
               return (
                 <tr key={name}>
                   <td><strong>{name}</strong>{variable.source && variable.source !== name ? <span className="xc-hint"> ← {variable.source}</span> : null}</td>
-                  <td>{variable.kind === 'categorical' ? '범주형' : '연속값'}</td>
+                  <td>{t(variable.kind === 'categorical' ? 'jobs.input.categorical' : 'jobs.input.continuous')}</td>
                   <td>{colorBar}</td>
-                  <td className="tabular">{min != null && max != null ? `${min} ~ ${max}` : '—'}</td>
+                  <td className="tabular">{min != null && max != null ? t('app.range', { start: min, end: max }) : '—'}</td>
                 </tr>
               );
             })}

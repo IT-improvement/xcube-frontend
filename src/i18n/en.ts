@@ -195,6 +195,17 @@ const en: Translation = {
       unexpected: 'Something went wrong. Please try again.',
     },
   },
+  // ---- Stage 2: request errors (userMessage) used by every screen. The management screens' own text is in ./app/ ----
+  errors: {
+    unexpected: 'Something went wrong.',
+    network: 'Can’t reach the server. Check that it’s running.',
+    sessionExpired: 'Your session has expired. Please sign in again.',
+    syncing: 'XCube registration is still syncing. Try again in a moment.',
+    conflict: 'This already exists or conflicts with the current state.',
+    xcubeUnavailable: 'XCube Server is unavailable.',
+    xcubeTimeout: 'XCube Server took too long to respond.',
+    failed: 'The request couldn’t be completed.',
+  },
 };
 
 export default en;

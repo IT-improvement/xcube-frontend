@@ -8,18 +8,22 @@ import { useAuth } from '../../auth/AuthProvider';
 import { appApi, canEditProject, formatDate, isOwned, memberLabel, MemberRole, Project, ProjectMember, roleLabel, viewerHref, ZarrDataset } from '../api';
 import { useLoad } from '../useLoad';
 import { DatasetStatus } from './DataLibraryPage';
-import { useT } from '../../i18n';
+import { useLanguage } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+// The management screens' text (UR-53 stage 2) loads with these pages, not with the main bundle.
+import '../../i18n/app';
 
 type Scope = 'all' | 'owned' | 'shared';
 
 function RoleBadge({ role }: { role?: string }) {
-  return <Badge tone={role === 'OWNER' ? 'primary' : role === 'EDITOR' ? 'success' : 'neutral'}>{roleLabel(role)}</Badge>;
+  const { lang } = useLanguage();
+  return <Badge tone={role === 'OWNER' ? 'primary' : role === 'EDITOR' ? 'success' : 'neutral'}>{roleLabel(role, lang)}</Badge>;
 }
 
 /** S6 list: project cards with search and owned/shared filter. */
 export function ProjectsPage() {
-  useDocumentTitle(useT()('titles.projects'));
+  const { lang, t } = useLanguage();
+  useDocumentTitle(t('titles.projects'));
   const projects = useLoad(() => appApi.listProjects());
   const [scope, setScope] = useState<Scope>('all');
   const [query, setQuery] = useState('');
@@ -31,26 +35,26 @@ export function ProjectsPage() {
     [project.name, project.description].some((text) => text?.toLowerCase().includes(query.trim().toLowerCase())));
   return (
     <div className="page-stack">
-      <PageHeader title="프로젝트" description="데이터큐브를 목적별로 묶고 팀과 공유합니다. 프로젝트는 데이터 목록(참조)만 담습니다." actions={<Button onClick={() => setCreating(true)}><Plus size={16} aria-hidden />새 프로젝트</Button>} />
+      <PageHeader title={t('titles.projects')} description={t('projects.description')} actions={<Button onClick={() => setCreating(true)}><Plus size={16} aria-hidden />{t('projects.new')}</Button>} />
       <div className="toolbar" style={{ padding: 0, border: 0 }}>
         <label className="toolbar__search">
           <Search size={16} aria-hidden />
-          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="프로젝트 검색" aria-label="프로젝트 검색" />
+          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('projects.search')} aria-label={t('projects.search')} />
         </label>
-        <div className="segmented" role="group" aria-label="프로젝트 구분">
+        <div className="segmented" role="group" aria-label={t('projects.scopeLabel')}>
           {(['all', 'owned', 'shared'] as Scope[]).map((value) => (
-            <button key={value} type="button" aria-pressed={scope === value} onClick={() => setScope(value)}>{value === 'all' ? '전체' : value === 'owned' ? '내 프로젝트' : '공유받음'}</button>
+            <button key={value} type="button" aria-pressed={scope === value} onClick={() => setScope(value)}>{t(value === 'all' ? 'app.all' : value === 'owned' ? 'projects.mine' : 'app.shared')}</button>
           ))}
         </div>
       </div>
       {projects.loading ? (
-        <Card><Skeleton lines={4} label="프로젝트를 불러오는 중" /></Card>
+        <Card><Skeleton lines={4} label={t('projects.loading')} /></Card>
       ) : projects.error ? (
-        <Card><div className="inline-error"><Alert tone="danger">프로젝트를 불러오지 못했습니다. {projects.error}</Alert><Button variant="secondary" size="sm" onClick={projects.reload} style={{ marginTop: 12 }}>다시 시도</Button></div></Card>
+        <Card><div className="inline-error"><Alert tone="danger">{t('projects.listFailed', { error: projects.error })}</Alert><Button variant="secondary" size="sm" onClick={projects.reload} style={{ marginTop: 12 }}>{t('common.retry')}</Button></div></Card>
       ) : !items.length ? (
-        <Card><EmptyState icon={<FolderKanban size={22} />} title="프로젝트가 없습니다" text="목적별로 데이터큐브를 묶을 프로젝트를 만들어 보세요." action={<Button onClick={() => setCreating(true)}><Plus size={16} aria-hidden />새 프로젝트</Button>} /></Card>
+        <Card><EmptyState icon={<FolderKanban size={22} />} title={t('projects.emptyTitle')} text={t('projects.emptyText')} action={<Button onClick={() => setCreating(true)}><Plus size={16} aria-hidden />{t('projects.new')}</Button>} /></Card>
       ) : !visible.length ? (
-        <Card><EmptyState icon={<Search size={22} />} title="검색 결과가 없습니다" /></Card>
+        <Card><EmptyState icon={<Search size={22} />} title={t('projects.noResults')} /></Card>
       ) : (
         <div className="project-grid">
           {visible.map((project) => (
@@ -59,10 +63,10 @@ export function ProjectsPage() {
                 <span className="project-card__name">{project.name}</span>
                 <RoleBadge role={project.accessRole} />
               </div>
-              <p className="project-card__desc">{project.description || '설명 없음'}</p>
+              <p className="project-card__desc">{project.description || t('app.noDescription')}</p>
               <div className="project-card__foot">
-                <span>{project.ownerUsername ? `소유자 ${project.ownerUsername}` : ''}</span>
-                <span>수정 {formatDate(project.updatedAt ?? project.createdAt)}</span>
+                <span>{project.ownerUsername ? t('projects.owner', { name: project.ownerUsername }) : ''}</span>
+                <span>{t('projects.updated', { date: formatDate(project.updatedAt ?? project.createdAt, lang) })}</span>
               </div>
             </Link>
           ))}
@@ -74,29 +78,30 @@ export function ProjectsPage() {
 }
 
 function ProjectFormDialog({ project, onClose, onSaved }: { project?: Project; onClose: () => void; onSaved: (project: Project) => void }) {
+  const { lang, t } = useLanguage();
   const [name, setName] = useState(project?.name ?? '');
   const [description, setDescription] = useState(project?.description ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!name.trim()) { setError('프로젝트 이름을 입력하세요.'); return; }
+    if (!name.trim()) { setError(t('projects.nameRequired')); return; }
     setBusy(true);
     setError('');
     try {
       const input = { name: name.trim(), description };
       onSaved(project ? await appApi.updateProject(project.id, input) : await appApi.createProject(input));
     } catch (cause) {
-      setError(userMessage(cause));
+      setError(userMessage(cause, lang));
       setBusy(false);
     }
   };
   return (
-    <Dialog title={project ? '프로젝트 편집' : '새 프로젝트'} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>취소</Button><Button type="submit" form="project-form" disabled={busy}>{busy ? '저장 중…' : project ? '저장' : '만들기'}</Button></>}>
+    <Dialog title={project ? t('projects.editTitle') : t('projects.new')} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button type="submit" form="project-form" disabled={busy}>{busy ? t('projects.saving') : project ? t('projects.save') : t('projects.create')}</Button></>}>
       <form id="project-form" onSubmit={submit} style={{ display: 'grid', gap: 16 }}>
-        <TextField label="이름" value={name} maxLength={150} required onChange={(event) => setName(event.target.value)} />
+        <TextField label={t('projects.name')} value={name} maxLength={150} required onChange={(event) => setName(event.target.value)} />
         <label className="xc-field">
-          <span className="xc-label">설명 <span className="xc-hint">(선택)</span></span>
+          <span className="xc-label">{t('projects.descriptionLabel')} <span className="xc-hint">{t('projects.optional')}</span></span>
           <textarea className="xc-textarea" value={description} maxLength={5000} onChange={(event) => setDescription(event.target.value)} />
           <span className="xc-hint" style={{ justifySelf: 'end' }}>{description.length} / 5000</span>
         </label>
@@ -113,19 +118,19 @@ export function ProjectDetailPage() {
   const { projectId = '' } = useParams();
   const navigate = useNavigate();
   const project = useLoad(() => appApi.getProject(projectId), [projectId]);
-  const t = useT();
+  const { t } = useLanguage();
   useDocumentTitle(project.data?.name ? t('titles.projectNamed', { name: project.data.name }) : t('titles.projects'));
   const [tab, setTab] = useState<DetailTab>('data');
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const toast = useToast();
-  const back = <Link className="page-back" to="/app/projects"><ArrowLeft size={16} aria-hidden />프로젝트</Link>;
-  if (project.loading) return <div className="page-stack">{back}<Card><Skeleton lines={5} label="프로젝트를 불러오는 중" /></Card></div>;
+  const back = <Link className="page-back" to="/app/projects"><ArrowLeft size={16} aria-hidden />{t('titles.projects')}</Link>;
+  if (project.loading) return <div className="page-stack">{back}<Card><Skeleton lines={5} label={t('projects.loading')} /></Card></div>;
   if (project.error || !project.data) {
     const forbidden = project.status === 403;
     return (
       <div className="page-stack">{back}
-        <Card><EmptyState icon={forbidden ? <Lock size={22} /> : <SearchX size={22} />} title={forbidden ? '이 프로젝트를 볼 권한이 없습니다' : project.status === 404 ? '프로젝트를 찾을 수 없습니다' : '프로젝트를 불러오지 못했습니다'} text={forbidden ? '소유자에게 공유를 요청하세요.' : project.error} action={<Button variant="secondary" onClick={project.reload}>다시 시도</Button>} /></Card>
+        <Card><EmptyState icon={forbidden ? <Lock size={22} /> : <SearchX size={22} />} title={forbidden ? t('projects.forbiddenTitle') : project.status === 404 ? t('projects.missingTitle') : t('projects.failedTitle')} text={forbidden ? t('dataset.askOwner') : project.error} action={<Button variant="secondary" onClick={project.reload}>{t('common.retry')}</Button>} /></Card>
       </div>
     );
   }
@@ -137,21 +142,21 @@ export function ProjectDetailPage() {
       <PageHeader
         back={back}
         title={current.name}
-        description={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><RoleBadge role={current.accessRole} />{current.description || '설명 없음'}</span>}
+        description={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><RoleBadge role={current.accessRole} />{current.description || t('app.noDescription')}</span>}
         actions={<>
-          {editable && <Button variant="secondary" onClick={() => setEditing(true)}><Pencil size={16} aria-hidden />편집</Button>}
-          {owner && <Button variant="ghost" onClick={() => setDeleting(true)}><Trash2 size={16} aria-hidden />삭제</Button>}
+          {editable && <Button variant="secondary" onClick={() => setEditing(true)}><Pencil size={16} aria-hidden />{t('projects.edit')}</Button>}
+          {owner && <Button variant="ghost" onClick={() => setDeleting(true)}><Trash2 size={16} aria-hidden />{t('app.delete')}</Button>}
         </>}
       />
       <Card>
         <div style={{ padding: '0 20px' }}>
-          <Tabs label="프로젝트 상세" idPrefix="project-detail" value={tab} onChange={setTab} items={[{ id: 'data', label: '데이터' }, { id: 'members', label: '멤버' }]} />
+          <Tabs label={t('projects.tabsLabel')} idPrefix="project-detail" value={tab} onChange={setTab} items={[{ id: 'data', label: t('projects.tabData') }, { id: 'members', label: t('projects.tabMembers') }]} />
         </div>
         <TabPanel idPrefix="project-detail" value={tab}>
           {tab === 'data' ? <ProjectData project={current} editable={editable} onToast={toast.show} /> : <ProjectMembers project={current} owner={owner} onToast={toast.show} />}
         </TabPanel>
       </Card>
-      {editing && <ProjectFormDialog project={current} onClose={() => setEditing(false)} onSaved={(saved) => { project.setData(() => ({ ...current, ...saved })); setEditing(false); toast.show('변경사항을 저장했습니다.'); }} />}
+      {editing && <ProjectFormDialog project={current} onClose={() => setEditing(false)} onSaved={(saved) => { project.setData(() => ({ ...current, ...saved })); setEditing(false); toast.show(t('projects.saved')); }} />}
       {deleting && <DeleteProjectDialog project={current} onClose={() => setDeleting(false)} onDeleted={() => navigate('/app/projects', { replace: true })} />}
       {toast.node}
     </div>
@@ -159,21 +164,23 @@ export function ProjectDetailPage() {
 }
 
 function DeleteProjectDialog({ project, onClose, onDeleted }: { project: Project; onClose: () => void; onDeleted: () => void }) {
+  const { lang, t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const remove = async () => {
     setBusy(true);
     try { await appApi.deleteProject(project.id); onDeleted(); }
-    catch (cause) { setError(userMessage(cause)); setBusy(false); }
+    catch (cause) { setError(userMessage(cause, lang)); setBusy(false); }
   };
   return (
-    <Dialog role="alertdialog" size="sm" title="프로젝트를 삭제할까요?" description={<>“{project.name}” 프로젝트와 연결 정보가 삭제됩니다. <strong>연결된 데이터큐브 원본은 삭제되지 않습니다.</strong></>} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>취소</Button><Button variant="danger" disabled={busy} onClick={remove}>{busy ? '삭제 중…' : '프로젝트 삭제'}</Button></>}>
+    <Dialog role="alertdialog" size="sm" title={t('projects.deleteTitle')} description={<>{t('projects.deleteText', { name: project.name })} <strong>{t('projects.deleteKeepsData')}</strong></>} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button variant="danger" disabled={busy} onClick={remove}>{busy ? t('app.deleting') : t('projects.deleteConfirm')}</Button></>}>
       {error ? <Alert tone="danger">{error}</Alert> : undefined}
     </Dialog>
   );
 }
 
 function ProjectData({ project, editable, onToast }: { project: Project; editable: boolean; onToast: (text: string) => void }) {
+  const { t } = useLanguage();
   const linked = useLoad(() => appApi.projectDatasets(project.id), [project.id]);
   const [picking, setPicking] = useState(false);
   const [unlinking, setUnlinking] = useState<ZarrDataset | null>(null);
@@ -182,24 +189,24 @@ function ProjectData({ project, editable, onToast }: { project: Project; editabl
     await appApi.unlinkDataset(project.id, dataset.id);
     linked.setData((items) => items?.filter((item) => item.id !== dataset.id) ?? null);
     setUnlinking(null);
-    onToast('연결을 해제했습니다.');
+    onToast(t('projects.unlinked'));
   };
   const items = linked.data ?? [];
   return (
     <>
       <div className="toolbar">
-        <span className="xc-hint">데이터는 이동하거나 복사되지 않고 프로젝트 목록에만 추가됩니다.</span>
+        <span className="xc-hint">{t('projects.dataHint')}</span>
         <span className="toolbar__spacer" />
-        {editable && <Button size="sm" onClick={() => setPicking(true)}><Link2 size={16} aria-hidden />데이터 연결</Button>}
+        {editable && <Button size="sm" onClick={() => setPicking(true)}><Link2 size={16} aria-hidden />{t('projects.linkData')}</Button>}
       </div>
-      {linked.loading ? <Skeleton lines={3} label="연결된 데이터를 불러오는 중" /> : linked.error ? (
+      {linked.loading ? <Skeleton lines={3} label={t('projects.loadingLinked')} /> : linked.error ? (
         <div className="inline-error"><Alert tone="danger">{linked.error}</Alert></div>
       ) : !items.length ? (
-        <EmptyState icon={<Database size={22} />} title="연결된 데이터가 없습니다" text={editable ? '데이터 연결로 내 데이터큐브를 추가하세요.' : '편집 권한이 있는 멤버가 데이터를 연결할 수 있습니다.'} />
+        <EmptyState icon={<Database size={22} />} title={t('projects.noLinkedTitle')} text={editable ? t('projects.noLinkedEditable') : t('projects.noLinkedReadonly')} />
       ) : (
         <div className="xc-table-wrap">
           <table className="xc-table">
-            <thead><tr><th scope="col">이름</th><th scope="col">상태</th><th scope="col"><span className="sr-only">동작</span></th></tr></thead>
+            <thead><tr><th scope="col">{t('app.name')}</th><th scope="col">{t('app.status')}</th><th scope="col"><span className="sr-only">{t('app.actions')}</span></th></tr></thead>
             <tbody>
               {items.map((dataset) => (
                 <tr key={dataset.id}>
@@ -207,8 +214,8 @@ function ProjectData({ project, editable, onToast }: { project: Project; editabl
                   <td><DatasetStatus dataset={dataset} /></td>
                   <td>
                     <div className="row-actions">
-                      <a className="xc-icon-btn" href={viewerHref(dataset.id)} target="_blank" rel="noopener noreferrer" aria-label={`${dataset.name} Viewer에서 열기 (새 탭)`} title="Viewer에서 열기"><ExternalLink size={16} aria-hidden /></a>
-                      {editable && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => setUnlinking(dataset)} aria-label={`${dataset.name} 연결 해제`}><Unlink size={14} aria-hidden />연결 해제</button>}
+                      <a className="xc-icon-btn" href={viewerHref(dataset.id)} target="_blank" rel="noopener noreferrer" aria-label={t('app.openInViewerNamed', { name: dataset.name })} title={t('app.openInViewer')}><ExternalLink size={16} aria-hidden /></a>
+                      {editable && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => setUnlinking(dataset)} aria-label={t('projects.unlinkNamed', { name: dataset.name })}><Unlink size={14} aria-hidden />{t('projects.unlink')}</button>}
                     </div>
                   </td>
                 </tr>
@@ -224,16 +231,16 @@ function ProjectData({ project, editable, onToast }: { project: Project; editabl
           onLink={async (dataset) => {
             await appApi.linkDataset(project.id, dataset.id);
             linked.setData((current) => (current?.some((item) => item.id === dataset.id) ? current : [...(current ?? []), dataset]));
-            onToast(`“${dataset.name}”을 연결했습니다.`);
+            onToast(t('projects.linked', { name: dataset.name }));
           }}
         />
       )}
       {unlinking && (
         <ConfirmDialog
-          title="연결을 해제할까요?"
-          description={<>“{unlinking.name}”이 이 프로젝트 목록에서만 빠집니다. 데이터 원본은 삭제되지 않습니다.</>}
-          confirmLabel="연결 해제"
-          busyLabel="해제하는 중…"
+          title={t('projects.unlinkTitle')}
+          description={t('projects.unlinkText', { name: unlinking.name })}
+          confirmLabel={t('projects.unlink')}
+          busyLabel={t('projects.unlinkBusy')}
           tone="ink"
           onConfirm={() => unlink(unlinking)}
           onClose={() => setUnlinking(null)}
@@ -244,6 +251,7 @@ function ProjectData({ project, editable, onToast }: { project: Project; editabl
 }
 
 function LinkDatasetDialog({ linkedIds, onClose, onLink }: { linkedIds: string[]; onClose: () => void; onLink: (dataset: ZarrDataset) => Promise<void> }) {
+  const { lang, t } = useLanguage();
   const candidates = useLoad(() => appApi.linkableDatasets());
   const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState('');
@@ -252,13 +260,13 @@ function LinkDatasetDialog({ linkedIds, onClose, onLink }: { linkedIds: string[]
   const link = async (dataset: ZarrDataset) => {
     setBusyId(dataset.id);
     setError('');
-    try { await onLink(dataset); } catch (cause) { setError(userMessage(cause)); } finally { setBusyId(''); }
+    try { await onLink(dataset); } catch (cause) { setError(userMessage(cause, lang)); } finally { setBusyId(''); }
   };
   return (
-    <Dialog title="데이터 연결" description="프로젝트에 추가할 데이터큐브를 고르세요." onClose={onClose} footer={<Button variant="secondary" onClick={onClose}>닫기</Button>}>
+    <Dialog title={t('projects.linkData')} description={t('projects.linkDialogText')} onClose={onClose} footer={<Button variant="secondary" onClick={onClose}>{t('common.close')}</Button>}>
       <label className="toolbar__search" style={{ maxWidth: 'none' }}>
         <Search size={16} aria-hidden />
-        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="데이터 검색" aria-label="연결할 데이터 검색" />
+        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('projects.linkSearch')} aria-label={t('projects.linkSearchLabel')} />
       </label>
       {error && <Alert tone="danger">{error}</Alert>}
       {candidates.loading ? <Skeleton lines={3} /> : candidates.error ? <Alert tone="danger">{candidates.error}</Alert> : (
@@ -267,12 +275,12 @@ function LinkDatasetDialog({ linkedIds, onClose, onLink }: { linkedIds: string[]
             const isLinked = linkedIds.includes(dataset.id);
             return (
               <div className="picker-row" key={dataset.id}>
-                <span className="xc-cell-main"><strong>{dataset.name}</strong><small>{isOwned(dataset) ? '내 데이터' : '공유받음'} · {dataset.subtitle}</small></span>
-                <Button size="sm" variant={isLinked ? 'ghost' : 'secondary'} disabled={isLinked || busyId === dataset.id} onClick={() => link(dataset)}>{isLinked ? '연결됨' : busyId === dataset.id ? '연결 중…' : '연결'}</Button>
+                <span className="xc-cell-main"><strong>{dataset.name}</strong><small>{isOwned(dataset) ? t('app.mine') : t('app.shared')} · {dataset.subtitle}</small></span>
+                <Button size="sm" variant={isLinked ? 'ghost' : 'secondary'} disabled={isLinked || busyId === dataset.id} onClick={() => link(dataset)}>{isLinked ? t('projects.alreadyLinked') : busyId === dataset.id ? t('app.linking') : t('app.link')}</Button>
               </div>
             );
           })}
-          {!visible.length && <p className="xc-hint">연결할 수 있는 데이터가 없습니다.</p>}
+          {!visible.length && <p className="xc-hint">{t('projects.nothingToLink')}</p>}
         </div>
       )}
     </Dialog>
@@ -282,28 +290,30 @@ function LinkDatasetDialog({ linkedIds, onClose, onLink }: { linkedIds: string[]
 function ProjectMembers({ project, owner, onToast }: { project: Project; owner: boolean; onToast: (text: string) => void }) {
   const members = useLoad<ProjectMember[]>(() => (owner ? appApi.members(project.id) : Promise.resolve([])), [project.id, owner]);
   const { user } = useAuth();
+  const { lang, t } = useLanguage();
+  const label = (member: ProjectMember) => memberLabel(member, lang);
   const [username, setUsername] = useState('');
   const [role, setRole] = useState<MemberRole>('VIEWER');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [removing, setRemoving] = useState<ProjectMember | null>(null);
-  if (!owner) return <EmptyState icon={<Lock size={22} />} title="소유자만 멤버를 관리할 수 있습니다" text="멤버 추가와 권한 변경은 프로젝트 소유자에게 요청하세요." />;
+  if (!owner) return <EmptyState icon={<Lock size={22} />} title={t('members.ownerOnlyTitle')} text={t('members.ownerOnlyText')} />;
   const add = async (event: FormEvent) => {
     event.preventDefault();
-    if (!username.trim()) { setError('공유할 사람의 로그인 아이디를 입력하세요.'); return; }
+    if (!username.trim()) { setError(t('members.usernameRequired')); return; }
     setBusy(true);
     setError('');
     try {
       const member = await appApi.addMember(project.id, { username: username.trim(), role }) as ProjectMember;
       members.setData((items) => [...(items ?? []).filter((item) => item.userId !== member.userId), member]);
       setUsername('');
-      onToast(`${memberLabel(member)}님을 추가했습니다.`);
+      onToast(t('members.added', { name: label(member) }));
     } catch (cause) {
       const status = (cause as { status?: number })?.status;
-      setError(status === 404 ? '해당 아이디의 사용자가 없습니다. 아이디를 정확히 입력했는지 확인하세요.'
-        : status === 429 ? '조회가 너무 많습니다. 1분 뒤 다시 시도하세요.'
-        : status === 503 ? '사용자 조회 서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.'
-        : userMessage(cause));
+      setError(status === 404 ? t('members.userNotFound')
+        : status === 429 ? t('members.tooMany')
+        : status === 503 ? t('members.lookupDown')
+        : userMessage(cause, lang));
     } finally { setBusy(false); }
   };
   const change = async (member: ProjectMember, next: MemberRole) => {
@@ -311,61 +321,61 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
     try {
       const saved = await appApi.updateMember(project.id, member.userId, next);
       members.setData((items) => items?.map((item) => (item.userId === member.userId ? { ...item, ...saved } as ProjectMember : item)) ?? null);
-      onToast('권한을 변경했습니다.');
-    } catch (cause) { setError(userMessage(cause)); }
+      onToast(t('members.roleChanged'));
+    } catch (cause) { setError(userMessage(cause, lang)); }
   };
   const remove = async (member: ProjectMember) => {
     await appApi.removeMember(project.id, member.userId);
     members.setData((items) => items?.filter((item) => item.userId !== member.userId) ?? null);
     setRemoving(null);
-    onToast('멤버를 제거했습니다.');
+    onToast(t('members.removed'));
   };
   const items = members.data ?? [];
   return (
     <>
       <form className="member-form" onSubmit={add}>
-        <TextField label="상대 로그인 아이디" help="상대가 로그인할 때 쓰는 아이디를 정확히 입력하세요." value={username} autoComplete="off" placeholder="예: kim" maxLength={150} onChange={(event) => setUsername(event.target.value)} />
+        <TextField label={t('members.username')} help={t('members.usernameHelp')} value={username} autoComplete="off" placeholder={t('members.placeholder')} maxLength={150} onChange={(event) => setUsername(event.target.value)} />
         <label className="xc-field">
-          <span className="xc-label">권한</span>
+          <span className="xc-label">{t('members.role')}</span>
           <select className="xc-select" value={role} onChange={(event) => setRole(event.target.value as MemberRole)}>
-            <option value="VIEWER">보기</option>
-            <option value="EDITOR">편집</option>
+            <option value="VIEWER">{t('roles.VIEWER')}</option>
+            <option value="EDITOR">{t('roles.EDITOR')}</option>
           </select>
         </label>
-        <Button type="submit" disabled={busy} className="member-form__submit">{busy ? '추가 중…' : '멤버 추가'}</Button>
+        <Button type="submit" disabled={busy} className="member-form__submit">{busy ? t('members.adding') : t('members.add')}</Button>
       </form>
       {error && <div className="inline-error"><Alert tone="danger">{error}</Alert></div>}
-      {members.loading ? <Skeleton lines={3} label="멤버를 불러오는 중" /> : members.error ? (
+      {members.loading ? <Skeleton lines={3} label={t('members.loading')} /> : members.error ? (
         <div className="inline-error"><Alert tone="danger">{members.error}</Alert></div>
       ) : (
         <div className="xc-table-wrap">
           <table className="xc-table">
-            <thead><tr><th scope="col">사용자</th><th scope="col">권한</th><th scope="col" className="hide-sm">추가일</th><th scope="col"><span className="sr-only">동작</span></th></tr></thead>
+            <thead><tr><th scope="col">{t('members.user')}</th><th scope="col">{t('members.role')}</th><th scope="col" className="hide-sm">{t('members.addedOn')}</th><th scope="col"><span className="sr-only">{t('app.actions')}</span></th></tr></thead>
             <tbody>
               {items.map((member) => (
                 <tr key={member.userId}>
-                  <td><strong>{member.role === 'OWNER' && String(user?.id) === member.userId ? `${user?.name ?? '나'} (나)` : memberLabel(member)}</strong></td>
+                  <td><strong>{member.role === 'OWNER' && String(user?.id) === member.userId ? t('members.me', { name: user?.name ?? t('members.meFallback') }) : label(member)}</strong></td>
                   <td>{member.role === 'OWNER' ? <RoleBadge role="OWNER" /> : (
-                    <select className="xc-select" style={{ width: 110 }} aria-label={`${memberLabel(member)} 권한`} value={member.role} onChange={(event) => change(member, event.target.value as MemberRole)}>
-                      <option value="VIEWER">보기</option>
-                      <option value="EDITOR">편집</option>
+                    <select className="xc-select" style={{ width: 110 }} aria-label={t('members.roleOf', { name: label(member) })} value={member.role} onChange={(event) => change(member, event.target.value as MemberRole)}>
+                      <option value="VIEWER">{t('roles.VIEWER')}</option>
+                      <option value="EDITOR">{t('roles.EDITOR')}</option>
                     </select>
                   )}</td>
-                  <td className="hide-sm">{formatDate(member.createdAt)}</td>
-                  <td className="num">{member.role !== 'OWNER' && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => setRemoving(member)} aria-label={`${memberLabel(member)} 제거`}>제거</button>}</td>
+                  <td className="hide-sm">{formatDate(member.createdAt, lang)}</td>
+                  <td className="num">{member.role !== 'OWNER' && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => setRemoving(member)} aria-label={t('members.removeNamed', { name: label(member) })}>{t('members.remove')}</button>}</td>
                 </tr>
               ))}
-              {!items.length && <tr><td colSpan={4} className="xc-hint">아직 공유한 사용자가 없습니다.</td></tr>}
+              {!items.length && <tr><td colSpan={4} className="xc-hint">{t('members.none')}</td></tr>}
             </tbody>
           </table>
         </div>
       )}
       {removing && (
         <ConfirmDialog
-          title="멤버를 제거할까요?"
-          description={<>{memberLabel(removing)}님은 이 프로젝트를 더 이상 볼 수 없습니다. 데이터 원본은 그대로 남습니다.</>}
-          confirmLabel="제거"
-          busyLabel="제거하는 중…"
+          title={t('members.removeTitle')}
+          description={t('members.removeText', { name: label(removing) })}
+          confirmLabel={t('members.remove')}
+          busyLabel={t('members.removeBusy')}
           onConfirm={() => remove(removing)}
           onClose={() => setRemoving(null)}
         />
