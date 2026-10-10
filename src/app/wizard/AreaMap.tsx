@@ -2,6 +2,8 @@
 // OpenLayers loads lazily; when it cannot (offline, tests) a plain SVG sketch is drawn instead.
 import { useEffect, useRef, useState } from 'react';
 import { AreaGeometry, Bbox } from '../../api/generationApi';
+import { useLanguage } from '../../i18n';
+import '../../i18n/wizard';
 import { bboxText } from './areaModel';
 
 export type PickMode = 'point' | 'box' | null;
@@ -35,9 +37,10 @@ export function AreaSketch({ bbox, geojson, width = 480, height = 280, className
   const frame = { w: target[0] - padX, e: target[2] + padX, s: target[1] - padY, n: target[3] + padY };
   const x = (lon: number) => ((lon - frame.w) / (frame.e - frame.w)) * width;
   const y = (lat: number) => ((frame.n - lat) / (frame.n - frame.s)) * height;
+  const { lang, t } = useLanguage();
   const path = ringsOf(geojson).map((ring) => `M${ring.map(([lon, lat]) => `${x(lon).toFixed(1)} ${y(lat).toFixed(1)}`).join('L')}Z`).join('');
   return (
-    <svg className={className} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label ?? (bbox ? `영역 미리보기: ${bboxText(bbox)}` : '영역을 지정하면 여기에 표시됩니다')}>
+    <svg className={className} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label ?? (bbox ? t('wizard.area.preview', { bbox: bboxText(bbox, lang) }) : t('wizard.area.sketchEmpty'))}>
       {bbox && <rect className="area-box" x={x(bbox[0])} y={y(bbox[3])} width={Math.max(2, x(bbox[2]) - x(bbox[0]))} height={Math.max(2, y(bbox[1]) - y(bbox[3]))} />}
       {path && <path className="area-poly" d={path} fillRule="evenodd" />}
     </svg>
@@ -45,6 +48,7 @@ export function AreaSketch({ bbox, geojson, width = 480, height = 280, className
 }
 
 export default function AreaMap({ bbox, geojson, pick, onPoint, onBox }: Props) {
+  const { lang, t } = useLanguage();
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<{ draw: (bbox?: Bbox, geojson?: AreaGeometry) => void; setPick: (mode: PickMode) => void } | null>(null);
   const handlers = useRef({ onPoint, onBox });
@@ -120,7 +124,7 @@ export default function AreaMap({ bbox, geojson, pick, onPoint, onBox }: Props) 
   useEffect(() => { api.current?.draw(bbox, geojson); }, [bbox, geojson]);
   useEffect(() => { api.current?.setPick(pick); }, [pick]);
 
-  const label = bbox ? `영역 미리보기: ${bboxText(bbox)}` : '영역을 지정하면 지도에 표시됩니다';
+  const label = bbox ? t('wizard.area.preview', { bbox: bboxText(bbox, lang) }) : t('wizard.area.previewEmpty');
   if (failed) return <AreaSketch bbox={bbox} geojson={geojson} label={label} />;
   return <div ref={host} className="area-map" role="img" aria-label={label} />;
 }

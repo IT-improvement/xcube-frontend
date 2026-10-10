@@ -34,6 +34,12 @@ const koApp = {
     dataListFailed: '데이터 목록을 불러오지 못했습니다. {error}',
     jobListFailed: '작업 목록을 불러오지 못했습니다. {error}',
   },
+  /** Sentinel-1 orbit direction (dataset detail and the add-data wizard). */
+  orbit: {
+    ANY: '상관없음',
+    ASCENDING: '상승',
+    DESCENDING: '하강',
+  },
   kinds: {
     original: '원본',
     fusion: '융합 결과',
@@ -149,6 +155,9 @@ const koApp = {
     datasetId: '데이터 ID',
     radarPairs: '레이더 짝',
     pairsLabel: '시점별 Sentinel-1 짝',
+    /** pairLine() in wizard/sarModel: one line per time of a paired Zarr. */
+    pairLine: 'S1 짝: {date} {orbit} ({days}일 차이)',
+    pairNone: 'S1 짝 없음 (레이더 값 비어 있음)',
     title: '제목',
     units: '단위',
     defaultShown: '기본 표시',

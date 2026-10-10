@@ -22,10 +22,12 @@ const TABS: Tab[] = ['overview', 'variables', 'history', 'ai', 'projects'];
 
 /**
  * Small extent sketch: the dataset bbox inside a padded lon/lat frame. The drawing is capped at 240px high and
- * the corner labels are HTML (fixed 11.5px), so neither grows with a wide column. Its label is Korean unless
- * `lang` is given: the add-data wizard (still Korean) uses it too.
+ * the corner labels are HTML (fixed 11.5px), so neither grows with a wide column. Its label follows the screen
+ * language unless `lang` is given (the add-data wizard uses it too).
  */
-export function BBoxMap({ bbox, lang = 'ko' }: { bbox: [number, number, number, number]; lang?: Lang }) {
+export function BBoxMap({ bbox, lang: given }: { bbox: [number, number, number, number]; lang?: Lang }) {
+  const screenLang = useLanguage().lang;
+  const lang = given ?? screenLang;
   const [west, south, east, north] = bbox;
   const padX = Math.max((east - west) * 0.6, 0.05);
   const padY = Math.max((north - south) * 0.6, 0.05);
@@ -131,7 +133,7 @@ export default function DatasetDetailPage() {
                 <dt>{t('dataset.defaultVariable')}</dt><dd>{item.defaultVariable || '—'}</dd>
                 <dt>{t('dataset.rgb')}</dt><dd>{item.rgbAvailable ? t('dataset.rgbYes') : '—'}</dd>
                 <dt>{t('dataset.datasetId')}</dt><dd>{item.xcubeDatasetId || '—'}</dd>
-                {item.pairs && <><dt>{t('dataset.radarPairs')}</dt><dd><ul className="tabular" style={{ display: 'grid', gap: 4, margin: 0, padding: 0, listStyle: 'none' }} aria-label={t('dataset.pairsLabel')}>{item.pairs.map((pair, index) => <li key={pair.time ?? index}>{pair.time ? <strong>{dateOnly(pair.time)}</strong> : null} {pairLine(pair)}</li>)}</ul></dd></>}
+                {item.pairs && <><dt>{t('dataset.radarPairs')}</dt><dd><ul className="tabular" style={{ display: 'grid', gap: 4, margin: 0, padding: 0, listStyle: 'none' }} aria-label={t('dataset.pairsLabel')}>{item.pairs.map((pair, index) => <li key={pair.time ?? index}>{pair.time ? <strong>{dateOnly(pair.time)}</strong> : null} {pairLine(pair, lang)}</li>)}</ul></dd></>}
               </dl>
             </div>
           )}

@@ -16,37 +16,44 @@ import { activeSelection, DateSelection, estimateDates, selectedDatesField, sele
 import { useLoad } from '../useLoad';
 import VariableStyleEditor, { autoRange, defaultChoice, toVariableSpecs, validateChoices, VariableChoice } from './VariableStyleEditor';
 import { FixedVariables, SarOptions } from './SarPairing';
-import { defaultSar, FIXED_NAMES, PRESET_GEE, isS2, ORBIT_OPTIONS, pairingActive, presetSar, S2_COLLECTION, sarError, sarRequest, SarState, WATER_BANDS, WATER_NAME, withPairingBlockers } from './sarModel';
+import { defaultSar, FIXED_NAMES, PRESET_GEE, isS2, orbitOption, pairingActive, presetSar, S2_COLLECTION, sarError, sarRequest, SarState, WATER_BANDS, WATER_NAME, withPairingBlockers } from './sarModel';
+import { withStrong } from './strong';
 import './wizard.css';
-import { useT } from '../../i18n';
+import { formatNumber, useLanguage, useT } from '../../i18n';
+import type { Lang, TFunction, TKey } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+// The wizard's text (UR-53 stage 3) loads with the wizard chunk only; it brings the management part along.
+import '../../i18n/wizard';
 
 type Method = 'geotiff' | 'shape' | 'gee' | 'zarr';
 type RasterKind = 'geotiff' | 'cas500';
 type GeeParams = { startDate: string; endDate: string; maxCloudPercent: string; scaleMeters: string };
 type Rgb = { red: string; green: string; blue: string };
 
-const STEPS = ['방식 선택', '원본 입력', '자동 검사 결과', '설정', '확인 및 생성'];
-const METHODS: Array<{ id: Method; title: string; text: string; hint: string; icon: ReactNode; group: '생성' | '등록' }> = [
-  { id: 'geotiff', title: 'GeoTIFF / CAS500', text: '위성 영상 파일로 Zarr를 만듭니다.', hint: '.tif 또는 밴드별 TIFF + Aux.xml ZIP', icon: <Image size={22} />, group: '생성' },
-  { id: 'shape', title: 'Shapefile', text: '벡터 속성을 격자로 바꿔 Zarr를 만듭니다.', hint: '.shp .shx .dbf .prj를 담은 ZIP', icon: <FileArchive size={22} />, group: '생성' },
-  { id: 'gee', title: 'Google Earth Engine', text: '위성 자료를 골라 기간·영역으로 받습니다.', hint: '컬렉션·기간·영역 선택 · 수 분 ~ 수십 분', icon: <Globe2 size={22} />, group: '생성' },
-  { id: 'zarr', title: 'Zarr 등록', text: '이미 만든 Zarr를 경로로 등록합니다.', hint: '서버 경로 또는 s3:// URI', icon: <Database size={22} />, group: '등록' },
+const STEPS = ['method', 'source', 'inspection', 'settings', 'confirm'] as const;
+/** Method cards; product names stay as they are, the rest comes from `wizard.method.*`. */
+const METHODS: Array<{ id: Method; title?: string; icon: ReactNode; register?: boolean }> = [
+  { id: 'geotiff', title: 'GeoTIFF / CAS500', icon: <Image size={22} /> },
+  { id: 'shape', title: 'Shapefile', icon: <FileArchive size={22} /> },
+  { id: 'gee', title: 'Google Earth Engine', icon: <Globe2 size={22} /> },
+  { id: 'zarr', icon: <Database size={22} />, register: true },
 ];
+const methodTitle = (item: (typeof METHODS)[number], t: TFunction) => item.title ?? t('wizard.method.zarrTitle');
 const REQUIRED_SHAPE = ['.shp', '.shx', '.dbf', '.prj'];
 const TERMINAL = ['SUCCEEDED', 'FAILED', 'CANCELLED'];
 // Sensor IDs known to the normalisation registry (Backend technical guide). Others can be typed in.
-const SENSORS = [
+const SENSORS: Array<{ id: string; label?: string }> = [
   { id: 'SENTINEL2_L2A', label: 'Sentinel-2 L2A' },
   { id: 'LANDSAT_C2_L2', label: 'Landsat Collection 2 L2' },
-  { id: 'CAS500_1_L2', label: '국토위성 CAS500-1' },
+  { id: 'CAS500_1_L2' },
 ];
+const sensorLabel = (item: (typeof SENSORS)[number], t: TFunction) => item.label ?? t('wizard.settings.sensorCas500');
 // Workers read the time from file names: 14 digits (YYYYMMDDHHMMSS) for rasters, 6 digits (YYYYMM) for Shapefiles.
 const hasTimeInName = (fileName: string, method: Method) => (method === 'shape' ? /\d{6}/ : /\d{14}/).test(fileName);
-const STATUS_LABEL: Record<string, string> = { QUEUED: '대기 중', RUNNING: '처리 중', SUCCEEDED: '완료', FAILED: '실패', CANCELLED: '취소됨' };
+const JOB_STATUSES = ['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED'];
 
-/** Preset "수체 분석용 S1+S2" (UR-41): S2 optical bands under the names the AI looks for, plus Sentinel-1 VV·VH and the JRC reference. */
-const WATER_PRESET = { title: '수체 분석용 (Sentinel-2 + Sentinel-1)', text: 'AI 수체 추출에 필요한 광학 5 band와 레이더 VV·VH를 같은 위치·비슷한 날짜로 받습니다' };
+/** Preset "수체 분석용 S1+S2" (UR-41): S2 optical bands under the names the AI looks for, plus Sentinel-1 VV·VH and the JRC reference.
+ *  Its title and text are `wizard.catalog.preset*`. */
 // S2 L2A reflectance is stored as DN (×10,000); 0~3,000 shows land and water well.
 const WATER_RANGE = { min: '0', max: '3000' };
 /** Pairing on: S2 bands take the AI names (blue…swir) unless the user already renamed them; off: back to the band names. */
@@ -57,11 +64,13 @@ const renameForPairing = (choices: VariableChoice[], on: boolean) => choices.map
   if (!on && choice.name === mapped) return { ...choice, name: choice.source };
   return choice;
 });
-const sarSummary = (sar: SarState) => `Sentinel-1 VV·VH · 날짜 차이 최대 ${sar.maxDaysApart}일 · 궤도 ${ORBIT_OPTIONS.find((item) => item.id === sar.orbitPass)?.label} · 짝 없는 날짜 ${sar.keepUnpaired ? '레이더 없이 남김' : '제외'}${sar.waterReference ? ' · 참조 수체(JRC)' : ''}`;
+const sarSummary = (sar: SarState, t: TFunction, lang: Lang) =>
+  t('wizard.sar.summary', { days: sar.maxDaysApart, orbit: orbitOption(sar.orbitPass, lang), unpaired: t(sar.keepUnpaired ? 'wizard.sar.summaryKept' : 'wizard.sar.summaryDropped') })
+  + (sar.waterReference ? t('wizard.sar.summaryWater') : '');
 
 const fieldsOf = (inspection: SpatialInspection | null): InspectionField[] =>
   inspection ? inspection.fields ?? inspection.bands.map((name) => ({ name })) : [];
-/** The estimate does not depend on the dataset name, so it uses a fixed one: typing the name never re-estimates. */
+/** The estimate does not depend on the dataset name, so it uses a fixed one: typing the name never re-estimates (request data, not shown). */
 const ESTIMATE_NAME = '새 데이터';
 /** After a job succeeds, keep asking for a while until the Backoffice registration (the new dataset id) shows up. */
 const REGISTRATION_POLLS = 20;
@@ -79,12 +88,12 @@ export default function AddDataPage() {
 }
 
 function AddDataWizard({ onRestart }: { onRestart: () => void }) {
+  const { lang, t } = useLanguage();
   const [step, setStep] = useState(0);
   const [method, setMethod] = useState<Method | null>(null);
   const [rasterKind, setRasterKind] = useState<RasterKind>('geotiff');
   const [inspection, setInspection] = useState<SpatialInspection | null>(null);
   const [inspecting, setInspecting] = useState(false);
-  const [inspectError, setInspectError] = useState('');
   const [collectionId, setCollectionId] = useState('');
   const [catalogQuery, setCatalogQuery] = useState('');
   const [gee, setGee] = useState<GeeParams>({ startDate: '', endDate: '', maxCloudPercent: '20', scaleMeters: '30' });
@@ -105,12 +114,16 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const [projectId, setProjectId] = useState('');
   const [showErrors, setShowErrors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
   const [job, setJob] = useState<GenerationJob | null>(null);
   const [registeredId, setRegisteredId] = useState('');
-  const colorBars = useLoad<ColorBarOption[]>(() => generation.colorBars(), [], 'ko'); // wizard stays Korean until UR-53 stage 3
-  const collections = useLoad<GeeCollection[]>(() => (method === 'gee' ? generation.collections() : Promise.resolve([])), [method], 'ko');
-  const projects = useLoad(() => appApi.listProjects(), [], 'ko');
+  const colorBars = useLoad<ColorBarOption[]>(() => generation.colorBars(), []);
+  const collections = useLoad<GeeCollection[]>(() => (method === 'gee' ? generation.collections() : Promise.resolve([])), [method]);
+  const projects = useLoad(() => appApi.listProjects(), []);
+  // Failures keep their cause and are worded at render, so they follow a language switch.
+  const [inspectFailure, setInspectFailure] = useState<{ cause: unknown } | null>(null);
+  const [submitFailure, setSubmitFailure] = useState<{ cause: unknown; noFileJobs: boolean } | null>(null);
+  const inspectError = inspectFailure ? userMessage(inspectFailure.cause, lang) : '';
+  const submitError = !submitFailure ? '' : submitFailure.noFileJobs ? t('wizard.file.serverUnavailable') : userMessage(submitFailure.cause, lang);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const registrationPolls = useRef(0);
   const done = !!job || !!registeredId;
@@ -142,7 +155,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
     if (method === 'gee') return (collection?.bands ?? []).map((band) => ({ name: typeof band === 'string' ? band : band.id ?? band.name }));
     return fieldsOf(inspection);
   }, [method, collection, inspection]);
-  const resolved = useMemo(() => resolveArea(area), [area]);
+  const resolved = useMemo(() => resolveArea(area, lang), [area, lang]);
   const datesOk = !!gee.startDate && !!gee.endDate && gee.startDate <= gee.endDate;
   const pairing = method === 'gee' && pairingActive(collectionId, sar);
   const sarFields = method === 'gee' ? sarRequest(collectionId, sar) : {};
@@ -159,16 +172,16 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   useEffect(() => { setDateSel(null); }, [dateScope]);
   const estimateDateList = method === 'gee' ? estimateDates(estimate.data) : null;
   const dateSelection = method === 'gee' ? activeSelection(dateSel, dateScope, estimateDateList) : null;
-  const dateProblem = selectionProblem(dateSelection, estimateDateList, pairing ? { keepUnpaired: sar.keepUnpaired } : null);
+  const dateProblem = selectionProblem(dateSelection, estimateDateList, pairing ? { keepUnpaired: sar.keepUnpaired } : null, lang);
   const pickDates = (picked: string[]) => { if (estimateDateList) setDateSel({ scope: dateScope, all: estimateDateList.map((item) => item.date), picked }); };
   // Dates and blockers come from the estimate, so a GEE request cannot go on before the estimate for these inputs is in.
   const estimatePending = method === 'gee' && step >= 1 && estimate.status !== 'ok';
-  const estimateWait = !estimatePending ? '' : estimate.status === 'loading' ? '예상 크기를 계산하는 중입니다.' : estimate.status === 'error' ? '예상 크기를 불러오지 못해 진행할 수 없습니다.' : '';
-  const estimateHint = !collectionId ? '컬렉션을 고르세요.' : !datesOk ? '기간을 입력하세요.' : resolved.error;
-  const noun = method === 'shape' ? '속성' : 'band';
+  const estimateWait = !estimatePending ? '' : estimate.status === 'loading' ? t('wizard.estimate.waiting') : estimate.status === 'error' ? t('wizard.estimate.waitFailed') : '';
+  const estimateHint = !collectionId ? t('wizard.catalog.required') : !datesOk ? t('wizard.gee.periodRequired') : resolved.error;
+  const noun = method === 'shape' ? 'attribute' : 'band';
   const continuous = choices.filter((choice) => choice.kind === 'continuous');
   const rgbPossible = (method === 'gee' || method === 'geotiff') && continuous.length >= 3;
-  const variableErrors = validateChoices(choices, colorBars.data ?? []);
+  const variableErrors = validateChoices(choices, colorBars.data ?? [], lang);
   const editableProjects = (projects.data ?? []).filter(canEditProject);
   // CAS500 and Shapefile get sensor/mode defaults on the server; a generic GeoTIFF needs them from the user.
   const genericRaster = method === 'geotiff' && rasterKind === 'geotiff';
@@ -178,20 +191,20 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
 
   const chooseMethod = (next: Method) => {
     if (next !== method) {
-      setInspection(null); setInspectError(''); setChoices([]); setCollectionId(''); setRgbOn(false); setName(''); setSar(defaultSar()); setPreset(false);
+      setInspection(null); setInspectFailure(null); setChoices([]); setCollectionId(''); setRgbOn(false); setName(''); setSar(defaultSar()); setPreset(false);
     }
     setMethod(next);
   };
   const inspectFile = async (file: File) => {
     if (!method || method === 'gee' || method === 'zarr') return;
     const type = method === 'shape' ? 'shapefile' : rasterKind;
-    setInspecting(true); setInspectError(''); setInspection(null); setChoices([]);
+    setInspecting(true); setInspectFailure(null); setInspection(null); setChoices([]);
     try {
       const result = await generation.inspect(type, file);
       setInspection(result);
       if (!name) setName(result.fileName.replace(/\.(zip|tiff?)$/i, ''));
     } catch (cause) {
-      setInspectError(userMessage(cause));
+      setInspectFailure({ cause });
     } finally {
       setInspecting(false);
     }
@@ -222,33 +235,33 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   };
 
   const stepValid = (index: number): string => {
-    if (index === 0) return method ? '' : '생성 방식을 고르세요.';
+    if (index === 0) return method ? '' : t('wizard.method.required');
     if (index === 1) {
       if (method === 'gee') {
-        if (!collectionId) return '컬렉션을 고르세요.';
-        if (!gee.startDate || !gee.endDate) return '기간을 입력하세요.';
-        if (gee.startDate > gee.endDate) return '시작 날짜가 끝 날짜보다 늦습니다.';
+        if (!collectionId) return t('wizard.catalog.required');
+        if (!gee.startDate || !gee.endDate) return t('wizard.gee.periodRequired');
+        if (gee.startDate > gee.endDate) return t('wizard.gee.periodOrder');
         if (resolved.error) return resolved.error;
-        if (pairing && sarError(sar)) return sarError(sar);
-        if (estimatePending) return estimateWait || '예상 크기를 아직 계산하지 않았습니다.';
-        if (blockers.length) return blockerText(blockers[0]);
+        if (pairing && sarError(sar, lang)) return sarError(sar, lang);
+        if (estimatePending) return estimateWait || t('wizard.estimate.notYet');
+        if (blockers.length) return blockerText(blockers[0], lang);
         if (dateProblem) return dateProblem;
         return '';
       }
-      if (method === 'zarr') return storageUri.trim() ? '' : 'Zarr 경로를 입력하세요.';
-      return inspection ? '' : inspecting ? '파일을 검사하고 있습니다.' : '파일을 올려 검사를 마치세요.';
+      if (method === 'zarr') return storageUri.trim() ? '' : t('wizard.zarr.required');
+      return inspection ? '' : t(inspecting ? 'wizard.file.busy' : 'wizard.file.required');
     }
     if (index === 3) {
-      if (!name.trim()) return '데이터 이름을 입력하세요.';
-      if (!choices.length) return `만들 ${noun}을 하나 이상 고르세요.`;
-      if (Object.keys(variableErrors).length) return '표시 설정을 확인하세요.';
-      if (pairing && choices.some((choice) => (FIXED_NAMES as readonly string[]).includes(choice.name.trim()))) return `${FIXED_NAMES.join('·')}는 레이더·참조 변수 이름이라 band 이름으로 쓸 수 없습니다.`;
-      if (method === 'shape' && !(Number(resolution) > 0)) return '출력 해상도를 확인하세요.';
-      if (genericRaster && !sensorValue) return '위성·센서를 고르거나 입력하세요.';
-      if (dateRequired && !obsDate) return '파일 이름에 날짜가 없어 관측 날짜가 필요합니다.';
-      if (nodata !== '' && !Number.isFinite(Number(nodata))) return 'nodata 값은 숫자로 입력하세요.';
-      if (rgbOn && rgbPossible && !(rgb.red && rgb.green && rgb.blue)) return 'RGB 세 채널을 모두 고르세요.';
-      if (method !== 'zarr' && !colorBars.data?.length) return '색상표를 불러오지 못했습니다.';
+      if (!name.trim()) return t('wizard.settings.nameRequired');
+      if (!choices.length) return t(noun === 'attribute' ? 'wizard.settings.pickAttributes' : 'wizard.settings.pickBands');
+      if (Object.keys(variableErrors).length) return t('wizard.settings.checkStyle');
+      if (pairing && choices.some((choice) => (FIXED_NAMES as readonly string[]).includes(choice.name.trim()))) return t('wizard.settings.fixedNames', { names: FIXED_NAMES.join('·') });
+      if (method === 'shape' && !(Number(resolution) > 0)) return t('wizard.settings.resolutionCheck');
+      if (genericRaster && !sensorValue) return t('wizard.settings.sensorRequired');
+      if (dateRequired && !obsDate) return t('wizard.settings.obsDateMissing');
+      if (nodata !== '' && !Number.isFinite(Number(nodata))) return t('wizard.settings.nodataNumber');
+      if (rgbOn && rgbPossible && !(rgb.red && rgb.green && rgb.blue)) return t('wizard.rgb.required');
+      if (method !== 'zarr' && !colorBars.data?.length) return t('wizard.settings.colorBarsMissing');
     }
     return '';
   };
@@ -261,7 +274,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const back = () => { setShowErrors(false); setStep((value) => Math.max(0, value - 1)); };
 
   const submit = async () => {
-    setSubmitting(true); setSubmitError('');
+    setSubmitting(true); setSubmitFailure(null);
     const specs = toVariableSpecs(choices);
     const channel = (source: string) => {
       const choice = choices.find((item) => item.source === source)!;
@@ -302,9 +315,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
         }));
       }
     } catch (cause) {
-      setSubmitError(cause instanceof ApiError && cause.status === 404 && method !== 'gee' && method !== 'zarr'
-        ? '지금은 서버에서 파일로 데이터를 만들 수 없습니다. 입력한 설정은 그대로 남아 있으니 잠시 후 다시 시도하거나 관리자에게 알려 주세요.'
-        : userMessage(cause));
+      setSubmitFailure({ cause, noFileJobs: cause instanceof ApiError && cause.status === 404 && method !== 'gee' && method !== 'zarr' });
     } finally {
       setSubmitting(false);
     }
@@ -315,29 +326,29 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
 
   return (
     <div className="page-stack wizard">
-      <PageHeader back={<Link className="page-back" to="/app/data"><ArrowLeft size={16} aria-hidden />데이터</Link>} title="데이터 추가" description="원본 데이터를 Zarr로 만들거나 이미 있는 Zarr를 등록합니다." />
-      <ol className="wizard-steps" aria-label="진행 단계">
-        {STEPS.map((label, index) => (
-          <li key={label} className={index === step ? 'is-current' : index < step ? 'is-done' : ''} aria-current={index === step ? 'step' : undefined}>
+      <PageHeader back={<Link className="page-back" to="/app/data"><ArrowLeft size={16} aria-hidden />{t('wizard.back')}</Link>} title={t('wizard.title')} description={t('wizard.description')} />
+      <ol className="wizard-steps" aria-label={t('wizard.steps.label')}>
+        {STEPS.map((id, index) => (
+          <li key={id} className={index === step ? 'is-current' : index < step ? 'is-done' : ''} aria-current={index === step ? 'step' : undefined}>
             <span className="wizard-steps__dot">{index < step ? <Check size={14} aria-hidden /> : index + 1}</span>
-            <span className="wizard-steps__label">{label}</span>
+            <span className="wizard-steps__label">{t(`wizard.steps.${id}`)}</span>
           </li>
         ))}
       </ol>
 
       <Card className="wizard-card">
         <div className="wizard-body">
-          <h2 className="wizard-title" ref={headingRef} tabIndex={-1}>{STEPS[step]}</h2>
+          <h2 className="wizard-title" ref={headingRef} tabIndex={-1}>{t(`wizard.steps.${STEPS[step]}`)}</h2>
 
           {step === 0 && (
-            <RadioGroup className="method-grid" label="데이터 추가 방식">
+            <RadioGroup className="method-grid" label={t('wizard.method.label')}>
               {METHODS.map((item) => (
                 <button key={item.id} type="button" role="radio" aria-checked={method === item.id} className={`method-card ${method === item.id ? 'is-on' : ''}`} onClick={() => chooseMethod(item.id)}>
                   <span className="method-card__icon" aria-hidden>{item.icon}</span>
                   <span className="method-card__text">
-                    <span className="method-card__title">{item.title} <Badge tone={item.group === '등록' ? 'neutral' : 'primary'}>{item.group}</Badge></span>
-                    <span>{item.text}</span>
-                    <small>{item.hint}</small>
+                    <span className="method-card__title">{methodTitle(item, t)} <Badge tone={item.register ? 'neutral' : 'primary'}>{t(item.register ? 'wizard.method.groupRegister' : 'wizard.method.groupCreate')}</Badge></span>
+                    <span>{t(`wizard.method.${item.id}Text` as TKey)}</span>
+                    <small>{t(`wizard.method.${item.id}Hint` as TKey)}</small>
                   </span>
                   <span className="method-card__check" aria-hidden>{method === item.id && <Check size={12} strokeWidth={3} />}</span>
                 </button>
@@ -349,22 +360,22 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
             <div className="wizard-section">
               {method === 'geotiff' && (
                 <div className="xc-field">
-                  <span className="xc-label">파일 종류</span>
-                  <div className="segmented" role="group" aria-label="파일 종류">
-                    <button type="button" aria-pressed={rasterKind === 'geotiff'} onClick={() => { setRasterKind('geotiff'); setInspection(null); setChoices([]); }}>일반 GeoTIFF</button>
-                    <button type="button" aria-pressed={rasterKind === 'cas500'} onClick={() => { setRasterKind('cas500'); setInspection(null); setChoices([]); }}>CAS500 (밴드별 TIFF ZIP)</button>
+                  <span className="xc-label">{t('wizard.file.kind')}</span>
+                  <div className="segmented" role="group" aria-label={t('wizard.file.kind')}>
+                    <button type="button" aria-pressed={rasterKind === 'geotiff'} onClick={() => { setRasterKind('geotiff'); setInspection(null); setChoices([]); }}>{t('wizard.file.geotiff')}</button>
+                    <button type="button" aria-pressed={rasterKind === 'cas500'} onClick={() => { setRasterKind('cas500'); setInspection(null); setChoices([]); }}>{t('wizard.file.cas500')}</button>
                   </div>
                 </div>
               )}
               <FileDrop
                 accept={method === 'shape' || rasterKind === 'cas500' ? '.zip,application/zip' : '.tif,.tiff,image/tiff'}
-                title={method === 'shape' ? 'Shapefile ZIP을 끌어 놓거나 선택하세요' : rasterKind === 'cas500' ? 'CAS500 ZIP을 끌어 놓거나 선택하세요' : 'GeoTIFF 파일을 끌어 놓거나 선택하세요'}
-                hint={method === 'shape' ? '같은 이름의 .shp · .shx · .dbf · .prj가 필요합니다.' : rasterKind === 'cas500' ? '밴드 TIFF(_B, _G, _R, _N)와 _Aux.xml을 함께 압축하세요.' : '.tif · .tiff · GDAL이 좌표와 밴드를 자동으로 읽습니다.'}
+                title={t(method === 'shape' ? 'wizard.file.dropShape' : rasterKind === 'cas500' ? 'wizard.file.dropCas500' : 'wizard.file.dropGeotiff')}
+                hint={t(method === 'shape' ? 'wizard.file.hintShape' : rasterKind === 'cas500' ? 'wizard.file.hintCas500' : 'wizard.file.hintGeotiff')}
                 busy={inspecting}
                 fileName={inspection?.fileName}
                 onFile={inspectFile}
               />
-              {inspectError && <Alert tone="danger">파일을 검사하지 못했습니다. {inspectError}</Alert>}
+              {inspectError && <Alert tone="danger">{t('wizard.file.inspectFailed', { error: inspectError })}</Alert>}
               {inspection && <Alert tone="success">{inspection.message}</Alert>}
             </div>
           )}
@@ -372,28 +383,28 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
           {step === 1 && method === 'gee' && (
             <div className="wizard-section">
               <div className="catalog">
-                <p className="xc-hint">처리 방법을 확인한 위성 자료만 고를 수 있습니다.</p>
+                <p className="xc-hint">{t('wizard.catalog.hint')}</p>
                 <label className="toolbar__search" style={{ maxWidth: 'none' }}>
                   <Search size={16} aria-hidden />
-                  <input type="search" value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="컬렉션 이름·ID 검색" aria-label="GEE 컬렉션 검색" />
+                  <input type="search" value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder={t('wizard.catalog.searchPlaceholder')} aria-label={t('wizard.catalog.searchLabel')} />
                 </label>
-                {collections.loading ? <Skeleton lines={3} label="GEE 컬렉션을 불러오는 중" /> : collections.error ? (
-                  <Alert tone="danger">GEE 목록을 불러오지 못했습니다. {collections.error}</Alert>
+                {collections.loading ? <Skeleton lines={3} label={t('wizard.catalog.loading')} /> : collections.error ? (
+                  <Alert tone="danger">{t('wizard.catalog.failed', { error: collections.error })}</Alert>
                 ) : (
-                  <RadioGroup className="catalog__list" label="GEE 컬렉션">
-                    {(collections.data ?? []).some((item) => item.id === S2_COLLECTION) && [WATER_PRESET.title, WATER_PRESET.text, '수체 S1 S2 water'].some((text) => text.toLowerCase().includes(catalogQuery.trim().toLowerCase())) && (
+                  <RadioGroup className="catalog__list" label={t('wizard.catalog.label')}>
+                    {(collections.data ?? []).some((item) => item.id === S2_COLLECTION) && [t('wizard.catalog.presetTitle'), t('wizard.catalog.presetText'), t('wizard.catalog.presetKeywords')].some((text) => text.toLowerCase().includes(catalogQuery.trim().toLowerCase())) && (
                       <>
                         <button type="button" role="radio" aria-checked={preset} className={`catalog__item ${preset ? 'is-on' : ''}`} onClick={choosePreset}>
-                          <span className="xc-cell-main"><strong>{WATER_PRESET.title}</strong><small>{WATER_PRESET.text}</small></span>
-                          <Badge><Droplets size={12} aria-hidden /> 프리셋</Badge>
+                          <span className="xc-cell-main"><strong>{t('wizard.catalog.presetTitle')}</strong><small>{t('wizard.catalog.presetText')}</small></span>
+                          <Badge><Droplets size={12} aria-hidden /> {t('wizard.catalog.preset')}</Badge>
                         </button>
-                        <p className="catalog__group" aria-hidden>컬렉션</p>
+                        <p className="catalog__group" aria-hidden>{t('wizard.catalog.group')}</p>
                       </>
                     )}
                     {(collections.data ?? []).filter((item) => [item.id, item.name, item.title].some((text) => text?.toLowerCase().includes(catalogQuery.trim().toLowerCase()))).map((item) => (
                       <button key={item.id} type="button" role="radio" aria-checked={!preset && collectionId === item.id} className={`catalog__item ${!preset && collectionId === item.id ? 'is-on' : ''}`} onClick={() => chooseCollection(item.id)}>
                         <span className="xc-cell-main"><strong>{item.title || item.name || item.id}</strong><small>{item.id}</small></span>
-                        <Badge>band {item.bands.length}</Badge>
+                        <Badge>{t('wizard.catalog.bandCount', { count: item.bands.length })}</Badge>
                       </button>
                     ))}
                   </RadioGroup>
@@ -401,10 +412,10 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
               </div>
               {isS2(collectionId) && <SarOptions sar={sar} onChange={changeSar} showErrors={showErrors} />}
               <div className="form-grid">
-                <TextField label="시작 날짜" type="date" value={gee.startDate} onChange={(event) => setGee({ ...gee, startDate: event.target.value })} />
-                <TextField label="끝 날짜" type="date" value={gee.endDate} onChange={(event) => setGee({ ...gee, endDate: event.target.value })} />
-                <TextField label="최대 구름량 (%)" type="number" min={0} max={100} value={gee.maxCloudPercent} onChange={(event) => setGee({ ...gee, maxCloudPercent: event.target.value })} />
-                <TextField label="픽셀 크기 (m)" type="number" min={10} max={10000} value={gee.scaleMeters} onChange={(event) => setGee({ ...gee, scaleMeters: event.target.value })} />
+                <TextField label={t('wizard.gee.startDate')} type="date" value={gee.startDate} onChange={(event) => setGee({ ...gee, startDate: event.target.value })} />
+                <TextField label={t('wizard.gee.endDate')} type="date" value={gee.endDate} onChange={(event) => setGee({ ...gee, endDate: event.target.value })} />
+                <TextField label={t('wizard.gee.maxCloud')} type="number" min={0} max={100} value={gee.maxCloudPercent} onChange={(event) => setGee({ ...gee, maxCloudPercent: event.target.value })} />
+                <TextField label={t('wizard.gee.pixelSize')} type="number" min={10} max={10000} value={gee.scaleMeters} onChange={(event) => setGee({ ...gee, scaleMeters: event.target.value })} />
               </div>
               <AreaStep area={area} onChange={setArea} resolved={resolved} estimate={estimate} estimateHint={estimateHint} showErrors={showErrors} pairing={pairing ? { keepUnpaired: sar.keepUnpaired } : undefined} dates={dateSelection ? { picked: dateSelection.picked, onChange: pickDates } : undefined} />
             </div>
@@ -412,49 +423,49 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
 
           {step === 1 && method === 'zarr' && (
             <div className="wizard-section">
-              <TextField label="Zarr 경로 / URI" placeholder="/data/sample.zarr 또는 s3://bucket/sample.zarr" value={storageUri} onChange={(event) => setStorageUri(event.target.value)} help="서버가 읽을 수 있는 폴더 경로나 s3:// 주소를 입력하세요." />
+              <TextField label={t('wizard.zarr.uri')} placeholder={t('wizard.zarr.placeholder')} value={storageUri} onChange={(event) => setStorageUri(event.target.value)} help={t('wizard.zarr.help')} />
             </div>
           )}
 
-          {step === 2 && <InspectionSummary method={method!} rasterKind={rasterKind} inspection={inspection} collection={collection} gee={gee} resolved={resolved} storageUri={storageUri} fields={fields} sarText={pairing ? sarSummary(sar) : ''} />}
+          {step === 2 && <InspectionSummary method={method!} rasterKind={rasterKind} inspection={inspection} collection={collection} gee={gee} resolved={resolved} storageUri={storageUri} fields={fields} sarText={pairing ? sarSummary(sar, t, lang) : ''} />}
 
           {step === 3 && (
             <div className="wizard-section">
               <div className="form-grid">
-                <TextField label="데이터 이름" value={name} maxLength={150} placeholder="예: 울산 행정구역 2026" onChange={(event) => setName(event.target.value)} error={showErrors && !name.trim() ? '데이터 이름을 입력하세요.' : undefined} />
+                <TextField label={t('wizard.settings.name')} value={name} maxLength={150} placeholder={t('wizard.settings.namePlaceholder')} onChange={(event) => setName(event.target.value)} error={showErrors && !name.trim() ? t('wizard.settings.nameRequired') : undefined} />
                 <label className="xc-field">
-                  <span className="xc-label">연결할 프로젝트 <span className="xc-hint">(선택)</span></span>
+                  <span className="xc-label">{t('wizard.settings.project')} <span className="xc-hint">{t('wizard.settings.optional')}</span></span>
                   <select className="xc-select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                    <option value="">프로젝트 없음</option>
+                    <option value="">{t('app.noProject')}</option>
                     {editableProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                   </select>
                 </label>
-                {method === 'shape' && <TextField label="출력 해상도 (도)" type="number" step="0.000001" min={0.000001} value={resolution} onChange={(event) => setResolution(event.target.value)} help="약 0.00025° ≈ 25m" />}
+                {method === 'shape' && <TextField label={t('wizard.settings.resolution')} type="number" step="0.000001" min={0.000001} value={resolution} onChange={(event) => setResolution(event.target.value)} help={t('wizard.settings.resolutionHelp')} />}
                 {genericRaster && (
                   <label className="xc-field">
-                    <span className="xc-label">위성·센서</span>
-                    <select className="xc-select" aria-label="위성·센서" value={sensor} onChange={(event) => setSensor(event.target.value)} aria-invalid={showErrors && !sensorValue ? true : undefined}>
-                      <option value="">선택하세요</option>
-                      {SENSORS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                      <option value="custom">기타 (직접 입력)</option>
+                    <span className="xc-label">{t('wizard.settings.sensor')}</span>
+                    <select className="xc-select" aria-label={t('wizard.settings.sensor')} value={sensor} onChange={(event) => setSensor(event.target.value)} aria-invalid={showErrors && !sensorValue ? true : undefined}>
+                      <option value="">{t('wizard.settings.choose')}</option>
+                      {SENSORS.map((item) => <option key={item.id} value={item.id}>{sensorLabel(item, t)}</option>)}
+                      <option value="custom">{t('wizard.settings.sensorOther')}</option>
                     </select>
-                    <span className="xc-hint">융합·AI에서 위성별 정규화식을 고를 때 씁니다.</span>
+                    <span className="xc-hint">{t('wizard.settings.sensorHint')}</span>
                   </label>
                 )}
-                {genericRaster && sensor === 'custom' && <TextField label="센서 이름" placeholder="예: PLANETSCOPE" value={customSensor} maxLength={64} onChange={(event) => setCustomSensor(event.target.value.toUpperCase())} error={showErrors && !customSensor.trim() ? '센서 이름을 입력하세요.' : undefined} />}
+                {genericRaster && sensor === 'custom' && <TextField label={t('wizard.settings.sensorName')} placeholder={t('wizard.settings.sensorNamePlaceholder')} value={customSensor} maxLength={64} onChange={(event) => setCustomSensor(event.target.value.toUpperCase())} error={showErrors && !customSensor.trim() ? t('wizard.settings.sensorNameRequired') : undefined} />}
                 {fileInputs && !(method === 'geotiff' && rasterKind === 'cas500') && (
                   <TextField
-                    label={dateRequired ? '관측 날짜' : '관측 날짜 (선택)'}
+                    label={t(dateRequired ? 'wizard.settings.obsDate' : 'wizard.settings.obsDateOptional')}
                     type="date"
                     value={obsDate}
                     onChange={(event) => setObsDate(event.target.value)}
-                    help={dateRequired ? `파일 이름에 ${method === 'shape' ? 'YYYYMM' : 'YYYYMMDDHHMMSS'} 날짜가 없어 꼭 입력해야 합니다.` : '비워 두면 파일 이름의 날짜를 씁니다.'}
-                    error={showErrors && dateRequired && !obsDate ? '관측 날짜를 입력하세요.' : undefined}
+                    help={dateRequired ? t('wizard.settings.obsDateNeeded', { pattern: method === 'shape' ? 'YYYYMM' : 'YYYYMMDDHHMMSS' }) : t('wizard.settings.obsDateHelp')}
+                    error={showErrors && dateRequired && !obsDate ? t('wizard.settings.obsDateRequired') : undefined}
                   />
                 )}
-                {fileInputs && <TextField label="nodata 값 (선택)" type="number" step="any" value={nodata} onChange={(event) => setNodata(event.target.value)} help="파일에 nodata가 없는 정수 데이터는 입력해야 합니다. 예: 0" />}
+                {fileInputs && <TextField label={t('wizard.settings.nodata')} type="number" step="any" value={nodata} onChange={(event) => setNodata(event.target.value)} help={t('wizard.settings.nodataHelp')} />}
               </div>
-              {colorBars.error && method !== 'zarr' && <Alert tone="danger">색상표를 불러오지 못했습니다. {colorBars.error}</Alert>}
+              {colorBars.error && method !== 'zarr' && <Alert tone="danger">{t('wizard.settings.colorBarsFailed', { error: colorBars.error })}</Alert>}
               <VariableStyleEditor
                 fields={method === 'zarr' ? [] : fields}
                 value={choices}
@@ -469,14 +480,14 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
               {pairing && <FixedVariables waterReference={sar.waterReference} />}
               {rgbPossible && (
                 <div className="rgb-box">
-                  <label className="xc-check"><input type="checkbox" checked={rgbOn} onChange={(event) => setRgbOn(event.target.checked)} /><span><strong>RGB 컬러 영상도 만들기</strong> <span className="xc-hint">고른 band 중 세 개를 빨강·초록·파랑에 배치합니다. 범위는 각 band의 표시 범위를 씁니다.</span></span></label>
+                  <label className="xc-check"><input type="checkbox" checked={rgbOn} onChange={(event) => setRgbOn(event.target.checked)} /><span><strong>{t('wizard.rgb.toggle')}</strong> <span className="xc-hint">{t('wizard.rgb.hint')}</span></span></label>
                   {rgbOn && (
                     <div className="form-grid">
                       {(['red', 'green', 'blue'] as const).map((channel) => (
                         <label className="xc-field" key={channel}>
-                          <span className="xc-label">{channel === 'red' ? '빨강 (R)' : channel === 'green' ? '초록 (G)' : '파랑 (B)'}</span>
+                          <span className="xc-label">{t(`wizard.rgb.${channel}`)}</span>
                           <select className="xc-select" value={rgb[channel]} onChange={(event) => setRgb({ ...rgb, [channel]: event.target.value })}>
-                            <option value="">band 선택</option>
+                            <option value="">{t('wizard.rgb.pick')}</option>
                             {continuous.map((choice) => <option key={choice.source} value={choice.source}>{choice.source}</option>)}
                           </select>
                         </label>
@@ -491,45 +502,45 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
           {step === 4 && (
             <div className="wizard-section">
               <dl className="meta-list summary-list">
-                <dt>방식</dt><dd>{METHODS.find((item) => item.id === method)?.title}{method === 'geotiff' ? ` · ${rasterKind === 'cas500' ? 'CAS500' : '일반 GeoTIFF'}` : ''}</dd>
-                <dt>원본</dt><dd>{method === 'gee' ? `${collection?.title || collection?.name || collectionId} · ${gee.startDate} ~ ${gee.endDate}` : method === 'zarr' ? storageUri : inspection?.fileName}</dd>
-                {pairing && <><dt>레이더 짝</dt><dd>{sarSummary(sar)}</dd></>}
+                <dt>{t('wizard.summary.method')}</dt><dd>{methodTitle(METHODS.find((item) => item.id === method)!, t)}{method === 'geotiff' ? ` · ${rasterKind === 'cas500' ? 'CAS500' : t('wizard.file.geotiff')}` : ''}</dd>
+                <dt>{t('wizard.summary.source')}</dt><dd>{method === 'gee' ? `${collection?.title || collection?.name || collectionId} · ${t('wizard.summary.period', { start: gee.startDate, end: gee.endDate })}` : method === 'zarr' ? storageUri : inspection?.fileName}</dd>
+                {pairing && <><dt>{t('wizard.summary.radarPair')}</dt><dd>{sarSummary(sar, t, lang)}</dd></>}
                 {method === 'gee' && dateSelection && (
                   <>
-                    <dt>날짜</dt>
+                    <dt>{t('wizard.summary.dates')}</dt>
                     <dd>
-                      <span className="tabular">선택 {dateSelection.picked.length} / 전체 {dateSelection.all.length}개 날짜</span>
+                      <span className="tabular">{t('wizard.summary.datesValue', { picked: dateSelection.picked.length, count: dateSelection.all.length })}</span>
                       {dateSelection.picked.length > 0 && (
                         <details className="summary-dates">
-                          <summary>고른 날짜 보기</summary>
-                          <ul aria-label="고른 날짜">{[...dateSelection.picked].sort().map((date) => <li key={date} className="tabular">{date}</li>)}</ul>
+                          <summary>{t('wizard.summary.showDates')}</summary>
+                          <ul aria-label={t('wizard.summary.pickedDates')}>{[...dateSelection.picked].sort().map((date) => <li key={date} className="tabular">{date}</li>)}</ul>
                         </details>
                       )}
                     </dd>
                   </>
                 )}
-                {method === 'gee' && <><dt>영역</dt><dd>{resolved.modeLabel} · {resolved.label}<br /><span className="xc-hint">{resolved.clipLabel}{resolved.request?.maskVariable ? ' · 경계선 표시 변수 저장' : ''}</span></dd></>}
-                <dt>이름</dt><dd>{name}</dd>
-                <dt>프로젝트</dt><dd>{editableProjects.find((item) => item.id === projectId)?.name ?? '프로젝트 없음'}</dd>
-                <dt>변수</dt>
+                {method === 'gee' && <><dt>{t('wizard.summary.area')}</dt><dd>{resolved.modeLabel} · {resolved.label}<br /><span className="xc-hint">{resolved.clipLabel}{resolved.request?.maskVariable ? ` · ${t('wizard.summary.maskSaved')}` : ''}</span></dd></>}
+                <dt>{t('wizard.summary.name')}</dt><dd>{name}</dd>
+                <dt>{t('wizard.summary.project')}</dt><dd>{editableProjects.find((item) => item.id === projectId)?.name ?? t('app.noProject')}</dd>
+                <dt>{t('wizard.summary.variables')}</dt>
                 <dd>
                   <ul className="summary-vars">
                     {choices.map((choice) => (
                       <li key={choice.source}>
                         <strong>{choice.name}</strong>
                         {choice.name !== choice.source && <span className="xc-hint"> ← {choice.source}</span>}
-                        <span className="xc-hint"> · {choice.colorBar} · {choice.kind === 'continuous' ? `${choice.min} ~ ${choice.max}` : '범주형'}</span>
+                        <span className="xc-hint"> · {choice.colorBar} · {choice.kind === 'continuous' ? t('wizard.summary.range', { min: choice.min, max: choice.max }) : t('wizard.summary.categorical')}</span>
                       </li>
                     ))}
                     {pairing && ['vv', 'vh', ...(sar.waterReference ? ['water_gt'] : [])].map((fixed) => (
-                      <li key={fixed}><strong>{fixed}</strong><span className="xc-hint"> · {fixed === 'water_gt' ? '참조 수체(JRC) · 범주형 · 비교용' : '레이더 · dB · 회색조'}</span></li>
+                      <li key={fixed}><strong>{fixed}</strong><span className="xc-hint"> · {t(fixed === 'water_gt' ? 'wizard.summary.waterRef' : 'wizard.summary.radar')}</span></li>
                     ))}
                   </ul>
                 </dd>
                 {rgbOn && rgbPossible && <><dt>RGB</dt><dd>R {rgb.red} · G {rgb.green} · B {rgb.blue}</dd></>}
-                {method === 'shape' && <><dt>해상도</dt><dd>{resolution}°</dd></>}
-                {genericRaster && <><dt>위성·센서</dt><dd>{SENSORS.find((item) => item.id === sensorValue)?.label ?? sensorValue}</dd></>}
-                {obsDate && <><dt>관측 날짜</dt><dd>{obsDate}</dd></>}
+                {method === 'shape' && <><dt>{t('wizard.summary.resolution')}</dt><dd>{resolution}°</dd></>}
+                {genericRaster && <><dt>{t('wizard.summary.sensor')}</dt><dd>{(() => { const known = SENSORS.find((item) => item.id === sensorValue); return known ? sensorLabel(known, t) : sensorValue; })()}</dd></>}
+                {obsDate && <><dt>{t('wizard.summary.obsDate')}</dt><dd>{obsDate}</dd></>}
                 {nodata !== '' && <><dt>nodata</dt><dd>{nodata}</dd></>}
               </dl>
               {method === 'gee' && <EstimatePanel estimate={estimate} compact pairing={pairing ? { keepUnpaired: sar.keepUnpaired } : undefined} picked={dateSelection?.picked} />}
@@ -541,18 +552,18 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
           {problem && <Alert tone="warning">{problem}</Alert>}
         </div>
         <div className="wizard-foot">
-          <Button variant="secondary" onClick={back} disabled={step === 0 || submitting}><ArrowLeft size={16} aria-hidden />이전</Button>
+          <Button variant="secondary" onClick={back} disabled={step === 0 || submitting}><ArrowLeft size={16} aria-hidden />{t('wizard.nav.prev')}</Button>
           <span className="xc-hint">{step + 1} / {STEPS.length}</span>
           {estimateWait && (step === 1 || step === STEPS.length - 1) && (
             <span className="xc-hint wizard-foot__wait" role="status" id="estimate-wait">
               {estimate.status === 'loading' && <Loader2 size={14} className="spin" aria-hidden />}{estimateWait}
-              {estimate.retry && <Button variant="line" size="sm" onClick={estimate.retry}>다시 계산</Button>}
+              {estimate.retry && <Button variant="line" size="sm" onClick={estimate.retry}>{t('wizard.estimate.recalculate')}</Button>}
             </span>
           )}
           {step < STEPS.length - 1 ? (
-            <Button onClick={next} disabled={inspecting || (step === 1 && !!estimateWait) || (step === 1 && (blockers.length > 0 || !!dateProblem))} aria-describedby={estimateWait ? 'estimate-wait' : undefined}>다음<ArrowRight size={16} aria-hidden /></Button>
+            <Button onClick={next} disabled={inspecting || (step === 1 && !!estimateWait) || (step === 1 && (blockers.length > 0 || !!dateProblem))} aria-describedby={estimateWait ? 'estimate-wait' : undefined}>{t('wizard.nav.next')}<ArrowRight size={16} aria-hidden /></Button>
           ) : (
-            <Button onClick={submit} disabled={submitting || estimatePending || blockers.length > 0 || !!dateProblem} aria-describedby={estimateWait ? 'estimate-wait' : undefined}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />요청 중…</> : method === 'zarr' ? '등록' : '생성 시작'}</Button>
+            <Button onClick={submit} disabled={submitting || estimatePending || blockers.length > 0 || !!dateProblem} aria-describedby={estimateWait ? 'estimate-wait' : undefined}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />{t('wizard.nav.submitting')}</> : t(method === 'zarr' ? 'wizard.nav.register' : 'wizard.nav.create')}</Button>
           )}
         </div>
       </Card>
@@ -561,6 +572,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
 }
 
 function FileDrop({ accept, title, hint, busy, fileName, onFile }: { accept: string; title: string; hint: string; busy: boolean; fileName?: string; onFile: (file: File) => void }) {
+  const t = useT();
   const [over, setOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const take = (file?: File) => { if (file) onFile(file); };
@@ -568,17 +580,18 @@ function FileDrop({ accept, title, hint, busy, fileName, onFile }: { accept: str
   return (
     <div className={`file-drop ${over ? 'is-over' : ''}`} onDragOver={(event) => { event.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
       <span className="file-drop__icon" aria-hidden>{busy ? <Loader2 size={24} className="spin" /> : <UploadCloud size={24} />}</span>
-      <strong>{busy ? 'GDAL로 검사하는 중…' : fileName ? fileName : title}</strong>
+      <strong>{busy ? t('wizard.file.inspecting') : fileName ? fileName : title}</strong>
       <small>{hint}</small>
-      <input ref={inputRef} type="file" accept={accept} hidden onChange={(event: ChangeEvent<HTMLInputElement>) => { take(event.target.files?.[0]); event.target.value = ''; }} aria-label="파일 선택" />
-      <Button variant="secondary" size="sm" disabled={busy} onClick={() => inputRef.current?.click()}>{fileName ? '다른 파일 선택' : '파일 선택'}</Button>
+      <input ref={inputRef} type="file" accept={accept} hidden onChange={(event: ChangeEvent<HTMLInputElement>) => { take(event.target.files?.[0]); event.target.value = ''; }} aria-label={t('wizard.file.choose')} />
+      <Button variant="secondary" size="sm" disabled={busy} onClick={() => inputRef.current?.click()}>{t(fileName ? 'wizard.file.chooseOther' : 'wizard.file.choose')}</Button>
     </div>
   );
 }
 
 function InspectionSummary({ method, rasterKind, inspection, collection, gee, resolved, storageUri, fields, sarText }: { method: Method; rasterKind: RasterKind; inspection: SpatialInspection | null; collection?: GeeCollection; gee: GeeParams; resolved: ResolvedArea; storageUri: string; fields: InspectionField[]; sarText: string }) {
+  const { lang, t } = useLanguage();
   if (method === 'zarr') {
-    return <div className="wizard-section"><Alert>등록하면 서버가 <strong>{storageUri}</strong>의 좌표계(EPSG:4326)·변수·시간 정보를 검사합니다. 문제가 있으면 데이터 목록에서 상태로 알려 드립니다.</Alert></div>;
+    return <div className="wizard-section"><Alert>{withStrong(t, 'wizard.inspect.zarrNote', 'path', storageUri)}</Alert></div>;
   }
   if (method === 'gee') {
     return (
@@ -586,47 +599,47 @@ function InspectionSummary({ method, rasterKind, inspection, collection, gee, re
         <div className="inspect-grid">
           {resolved.bbox && <BBoxMap bbox={resolved.bbox} />}
           <dl className="meta-list">
-            <dt>컬렉션</dt><dd>{collection?.title || collection?.name}<br /><span className="xc-hint">{collection?.id}</span></dd>
-            <dt>기간</dt><dd className="tabular">{gee.startDate} ~ {gee.endDate}</dd>
-            <dt>영역</dt><dd>{resolved.modeLabel} · {resolved.label}<br /><span className="xc-hint">{resolved.clipLabel}</span></dd>
-            <dt>픽셀 크기</dt><dd>{gee.scaleMeters} m · 구름 {gee.maxCloudPercent}% 이하</dd>
-            <dt>band</dt><dd>{fields.length}개</dd>
-            {sarText && <><dt>레이더 짝</dt><dd>{sarText}<br /><span className="xc-hint">같은 위치(영역을 99% 이상 덮음), 가까운 날짜의 레이더 영상</span></dd></>}
-            <dt>좌표계</dt><dd>EPSG:4326으로 저장</dd>
+            <dt>{t('wizard.inspect.collection')}</dt><dd>{collection?.title || collection?.name}<br /><span className="xc-hint">{collection?.id}</span></dd>
+            <dt>{t('wizard.inspect.period')}</dt><dd className="tabular">{t('wizard.summary.period', { start: gee.startDate, end: gee.endDate })}</dd>
+            <dt>{t('wizard.inspect.area')}</dt><dd>{resolved.modeLabel} · {resolved.label}<br /><span className="xc-hint">{resolved.clipLabel}</span></dd>
+            <dt>{t('wizard.inspect.pixelSize')}</dt><dd>{t('wizard.inspect.pixelValue', { scale: gee.scaleMeters, cloud: gee.maxCloudPercent })}</dd>
+            <dt>{t('wizard.inspect.bands')}</dt><dd>{t('wizard.inspect.bandCount', { count: fields.length })}</dd>
+            {sarText && <><dt>{t('wizard.inspect.radarPair')}</dt><dd>{sarText}<br /><span className="xc-hint">{t('wizard.inspect.radarPairHint')}</span></dd></>}
+            <dt>{t('wizard.inspect.crs')}</dt><dd>{t('wizard.inspect.crsStored')}</dd>
           </dl>
         </div>
-        <Alert>요청 크기가 GEE 한도를 넘으면 서버가 영역을 나눠 받습니다. 다음 단계에서 필요한 band만 고르면 시간이 줄어듭니다.</Alert>
+        <Alert>{t('wizard.inspect.geeNote')}</Alert>
       </div>
     );
   }
-  if (!inspection) return <Alert tone="warning">검사 결과가 없습니다. 이전 단계에서 파일을 다시 올려 주세요.</Alert>;
+  if (!inspection) return <Alert tone="warning">{t('wizard.inspect.missing')}</Alert>;
   const bounds = inspection.bounds;
   const lower = inspection.files.map((file) => file.toLowerCase());
   return (
     <div className="wizard-section">
       <div className="inspect-grid">
-        {bounds ? <BBoxMap bbox={[bounds.west, bounds.south, bounds.east, bounds.north]} /> : <div className="xc-hint" style={{ padding: 20 }}>범위 정보 없음</div>}
+        {bounds ? <BBoxMap bbox={[bounds.west, bounds.south, bounds.east, bounds.north]} /> : <div className="xc-hint" style={{ padding: 20 }}>{t('wizard.inspect.noBounds')}</div>}
         <dl className="meta-list">
-          <dt>파일</dt><dd>{inspection.fileName}</dd>
-          <dt>종류</dt><dd>{method === 'shape' ? 'Shapefile' : rasterKind === 'cas500' ? 'CAS500' : 'GeoTIFF'}</dd>
-          <dt>범위</dt><dd className="tabular">{bounds ? `${bounds.west.toFixed(4)}, ${bounds.south.toFixed(4)} → ${bounds.east.toFixed(4)}, ${bounds.north.toFixed(4)}` : '—'}</dd>
-          {inspection.width && <><dt>크기</dt><dd className="tabular">{inspection.width.toLocaleString()} × {inspection.height?.toLocaleString()} px</dd></>}
-          <dt>{method === 'shape' ? '속성' : 'band'}</dt><dd>{fields.length}개 · {fields.map((field) => field.name).join(', ')}</dd>
-          <dt>좌표계</dt><dd>EPSG:4326으로 변환해 저장</dd>
+          <dt>{t('wizard.inspect.file')}</dt><dd>{inspection.fileName}</dd>
+          <dt>{t('wizard.inspect.kind')}</dt><dd>{method === 'shape' ? 'Shapefile' : rasterKind === 'cas500' ? 'CAS500' : 'GeoTIFF'}</dd>
+          <dt>{t('wizard.inspect.extent')}</dt><dd className="tabular">{bounds ? `${bounds.west.toFixed(4)}, ${bounds.south.toFixed(4)} → ${bounds.east.toFixed(4)}, ${bounds.north.toFixed(4)}` : '—'}</dd>
+          {inspection.width && <><dt>{t('wizard.inspect.size')}</dt><dd className="tabular">{formatNumber(inspection.width, {}, lang)} × {inspection.height != null ? formatNumber(inspection.height, {}, lang) : ''} px</dd></>}
+          <dt>{t(method === 'shape' ? 'wizard.inspect.attributes' : 'wizard.inspect.bands')}</dt><dd>{t('wizard.inspect.fieldsValue', { count: fields.length, names: fields.map((field) => field.name).join(', ') })}</dd>
+          <dt>{t('wizard.inspect.crs')}</dt><dd>{t('wizard.inspect.crsConverted')}</dd>
         </dl>
       </div>
       {method === 'shape' && (
-        <ul className="checklist" aria-label="필수 구성파일">
+        <ul className="checklist" aria-label={t('wizard.inspect.requiredFiles')}>
           {REQUIRED_SHAPE.map((ext) => {
             const ok = lower.some((file) => file.endsWith(ext));
-            return <li key={ext} className={ok ? 'ok' : 'missing'}>{ok ? <CheckCircle2 size={16} aria-hidden /> : <CloudDownload size={16} aria-hidden />}{ext} {ok ? '있음' : '없음'}</li>;
+            return <li key={ext} className={ok ? 'ok' : 'missing'}>{ok ? <CheckCircle2 size={16} aria-hidden /> : <CloudDownload size={16} aria-hidden />}{t(ok ? 'wizard.inspect.present' : 'wizard.inspect.absent', { ext })}</li>;
           })}
         </ul>
       )}
       {fields.some((field) => autoRange(field.approxStats)) ? (
-        <Alert tone="success">GDAL이 값 범위를 계산했습니다. 다음 단계에서 표시 범위가 자동으로 채워집니다.</Alert>
+        <Alert tone="success">{t('wizard.inspect.rangeAuto')}</Alert>
       ) : (
-        <Alert>이 파일은 값 범위를 미리 계산하지 못했습니다. 다음 단계에서 표시 범위를 직접 입력하세요.</Alert>
+        <Alert>{t('wizard.inspect.rangeManual')}</Alert>
       )}
     </div>
   );
@@ -639,23 +652,25 @@ function Result({ job, registeredId, name, projectLinked, onRestart }: { job: Ge
   // Zarr registration answers with the id at once; a generation job gets it when the Backoffice registers the result.
   const datasetId = registeredId || registeredDatasetId(job);
   const registrationError = (job as Partial<JobSummary> | null)?.registration?.error;
+  const t = useT();
+  const statusText = status && JOB_STATUSES.includes(status) ? t(`jobStatus.${status}` as TKey) : status;
   return (
     <div className="page-stack wizard">
-      <PageHeader title="데이터 추가" />
+      <PageHeader title={t('wizard.title')} />
       <Card>
         <div className="wizard-result">
           <span className={`wizard-result__icon ${failed ? 'is-failed' : registeredId || finished ? '' : 'is-running'}`} aria-hidden>{registeredId || finished ? <CheckCircle2 size={28} /> : failed ? '!' : <Loader2 size={28} className="spin" />}</span>
-          <h2 className="wizard-title">{registeredId ? '등록을 요청했습니다' : finished ? '생성이 끝났습니다' : failed ? '생성에 실패했습니다' : '생성 작업을 시작했습니다'}</h2>
+          <h2 className="wizard-title">{t(registeredId ? 'wizard.result.registered' : finished ? 'wizard.result.finished' : failed ? 'wizard.result.failed' : 'wizard.result.started')}</h2>
           <p role="status">
-            “{name}” {registeredId ? '등록이 완료되었습니다. 시각화 서버 동기화가 끝나면 Viewer에서 볼 수 있습니다.' : <>작업 {String(job?.id)} · <strong>{STATUS_LABEL[status ?? ''] ?? status}</strong>{!finished && !failed ? ' · 이 화면을 닫아도 작업은 계속됩니다.' : ''}</>}
+            {registeredId ? t('wizard.result.registeredText', { name }) : <>{t('wizard.result.job', { name, id: String(job?.id) })}<strong>{statusText}</strong>{!finished && !failed ? t('wizard.result.keepsRunning') : ''}</>}
           </p>
-          {finished && !datasetId && !registrationError && <p className="xc-hint" role="status">데이터 목록에 등록하는 중입니다…</p>}
-          {finished && registrationError && <Alert tone="warning">데이터 목록 등록에 실패했습니다: {registrationError}</Alert>}
-          {projectLinked && !registeredId && <p className="xc-hint">프로젝트 연결은 생성이 끝난 뒤 데이터 화면에서 확인하세요.</p>}
+          {finished && !datasetId && !registrationError && <p className="xc-hint" role="status">{t('wizard.result.registering')}</p>}
+          {finished && registrationError && <Alert tone="warning">{t('wizard.result.registrationFailed', { error: registrationError })}</Alert>}
+          {projectLinked && !registeredId && <p className="xc-hint">{t('wizard.result.projectLater')}</p>}
           <div className="wizard-result__actions">
-            {datasetId ? <ButtonLink to={`/app/data/${encodeURIComponent(datasetId)}`}>데이터 보기</ButtonLink> : <ButtonLink to="/app/jobs">작업 센터에서 보기</ButtonLink>}
-            {datasetId && <a className="xc-btn xc-btn--line" href={viewerHref(datasetId)} target="_blank" rel="noopener noreferrer">Viewer에서 열기<span className="sr-only">(새 탭)</span></a>}
-            <Button variant="quiet" onClick={onRestart}>다른 데이터 추가</Button>
+            {datasetId ? <ButtonLink to={`/app/data/${encodeURIComponent(datasetId)}`}>{t('wizard.result.viewData')}</ButtonLink> : <ButtonLink to="/app/jobs">{t('app.inJobCenter')}</ButtonLink>}
+            {datasetId && <a className="xc-btn xc-btn--line" href={viewerHref(datasetId)} target="_blank" rel="noopener noreferrer">{t('app.openInViewer')}<span className="sr-only">{t('wizard.result.newTab')}</span></a>}
+            <Button variant="quiet" onClick={onRestart}>{t('wizard.result.again')}</Button>
           </div>
         </div>
       </Card>

@@ -1,6 +1,8 @@
 // "날짜 고르기" (UR-43, FR-GEE-14): the estimate lists every date of the period; the user checks the ones to make.
 // Pure rules shared by the wizard, the date table and the tests. Totals are computed here, without a new estimate request.
 import { EstimateDate, GeeEstimate } from '../../api/generationApi';
+import { getLanguage, translate } from '../../i18n';
+import type { Lang } from '../../i18n';
 
 /** Above this many minutes the estimate suggests picking fewer dates. */
 export const LONG_MINUTES = 10;
@@ -58,19 +60,20 @@ export function selectionTotals(data: GeeEstimate, picked: string[]): SelectionT
   };
 }
 
-/** "약 n분" (rounded up, at least 1 minute); "—" when nothing will be made. */
-export const minutesText = (seconds: number | null | undefined) => (seconds == null || !Number.isFinite(seconds) ? '—' : seconds <= 0 ? '—' : `약 ${Math.max(1, Math.ceil(seconds / 60))}분`);
+/** "약 n분" / "About n min" (rounded up, at least 1 minute); "—" when nothing will be made. */
+export const minutesText = (seconds: number | null | undefined, lang: Lang = getLanguage()) =>
+  (seconds == null || !Number.isFinite(seconds) || seconds <= 0 ? '—' : translate(lang, 'wizard.estimate.minutes', { count: Math.max(1, Math.ceil(seconds / 60)) }));
 export const isLong = (seconds: number | null | undefined) => seconds != null && seconds > LONG_MINUTES * 60;
 export const cloudText = (value: number | null | undefined) => (value == null || !Number.isFinite(value) ? '—' : String(Math.round(value * 10) / 10));
 
 /** Why the picked dates cannot be made, or ''. With "빼기", picking only dates without a radar pass leaves nothing. */
-export function selectionProblem(selection: DateSelection | null, dates: EstimateDate[] | null, pairing: { keepUnpaired: boolean } | null): string {
+export function selectionProblem(selection: DateSelection | null, dates: EstimateDate[] | null, pairing: { keepUnpaired: boolean } | null, lang: Lang = getLanguage()): string {
   if (!selection) return '';
-  if (!selection.picked.length) return '날짜를 하나 이상 고르세요.';
+  if (!selection.picked.length) return translate(lang, 'wizard.dates.required');
   if (pairing && !pairing.keepUnpaired && dates) {
     const chosen = new Set(selection.picked);
     const rows = dates.filter((item) => chosen.has(item.date));
-    if (rows.length && rows.every((item) => item.s1 === null)) return '고른 날짜에 레이더 짝이 없어 만들 시점이 없습니다. 짝이 있는 날짜를 고르세요.';
+    if (rows.length && rows.every((item) => item.s1 === null)) return translate(lang, 'wizard.dates.noPairPicked');
   }
   return '';
 }
