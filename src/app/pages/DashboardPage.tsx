@@ -3,7 +3,7 @@ import { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, ButtonLink } from '../../components/ui';
 import { Badge, Skeleton } from '../../components/ui/kit';
-import { aiViewerHref, appApi, formatDateTime, isOwned, jobs as jobService, periodLabel, viewerHref, ZarrDataset } from '../api';
+import { aiViewerHref, appApi, formatDateTime, isOwned, jobs as jobService, periodLabel, unavailableJobsNotice, viewerHref, ZarrDataset } from '../api';
 import { useLoad } from '../useLoad';
 import { isActive, JOB_TYPE_LABEL, JobStatusBadge } from '../jobs';
 import { DatasetStatus } from './DataLibraryPage';
@@ -36,9 +36,10 @@ function Section({ id, title, more, children }: { id: string; title: string; mor
 /** S2: where things stand (one line), what to do next (three rows), and the latest data and jobs. */
 export default function DashboardPage() {
   const datasets = useLoad(() => appApi.listDatasets());
-  const jobs = useLoad(() => jobService.list());
+  const jobs = useLoad(() => jobService.listWithStatus());
   const items = datasets.data ?? [];
-  const jobItems = jobs.data ?? [];
+  const jobItems = jobs.data?.items ?? [];
+  const partialNotice = unavailableJobsNotice(jobs.data?.unavailable ?? []);
   const owned = items.filter(isOwned).length;
   const running = jobItems.filter(isActive).length;
   const empty = !datasets.loading && !datasets.error && items.length === 0;
@@ -134,13 +135,15 @@ export default function DashboardPage() {
             <Skeleton lines={3} label="최근 작업을 불러오는 중" />
           ) : jobs.error ? (
             <div className="dash-note"><Alert tone="danger">작업 목록을 불러오지 못했습니다. {jobs.error}</Alert></div>
-          ) : !jobItems.length ? (
+          ) : !jobItems.length && !partialNotice ? (
             <div className="dash-note">
               <p>아직 작업이 없습니다. 데이터 추가나 수식 융합을 실행하면 진행 상황이 이곳에 남습니다.</p>
               <ButtonLink to="/app/data/new" size="sm" variant="line">데이터 추가</ButtonLink>
             </div>
           ) : (
-            <table className="xc-table xc-table--cards dash-table">
+            <>
+            {partialNotice && <div className="dash-note"><Alert tone="warning">{partialNotice}</Alert><Button variant="line" size="sm" onClick={jobs.reload}>다시 시도</Button></div>}
+            {jobItems.length > 0 && <table className="xc-table xc-table--cards dash-table">
               <thead><tr><th scope="col">작업</th><th scope="col">종류</th><th scope="col">상태</th><th scope="col" className="num">요청</th></tr></thead>
               <tbody>
                 {jobItems.slice(0, RECENT).map((job) => (
@@ -152,7 +155,8 @@ export default function DashboardPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table>}
+            </>
           )}
         </Section>
       </div>

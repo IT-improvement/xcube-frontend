@@ -92,7 +92,10 @@ async function toConfirm(name = '대청호 8월') {
   fireEvent.change(screen.getByLabelText('SR_B4 표시 최솟값'), { target: { value: '0' } });
   fireEvent.change(screen.getByLabelText('SR_B4 표시 최댓값'), { target: { value: '30000' } });
   fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-  return screen.findByRole('button', { name: '생성 시작' });
+  // Picking bands re-estimates; 생성 시작 opens once the new estimate is in.
+  const start = await screen.findByRole('button', { name: '생성 시작' });
+  await waitFor(() => expect(start).toBeEnabled(), { timeout: 4000 });
+  return start;
 }
 
 describe('GEE 날짜 고르기', () => {

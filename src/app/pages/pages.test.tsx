@@ -331,6 +331,8 @@ describe('S4 데이터 추가 (FR-GEN-10·11)', () => {
     fireEvent.change(screen.getByLabelText('좌하단 위도'), { target: { value: '35' } });
     fireEvent.change(screen.getByLabelText('우상단 경도'), { target: { value: '127' } });
     fireEvent.change(screen.getByLabelText('우상단 위도'), { target: { value: '35.5' } });
+    // 다음 waits for the size estimate of this area.
+    await waitFor(() => expect(screen.getByRole('button', { name: /다음/ })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
     fireEvent.click(await screen.findByRole('button', { name: /다음/ }));
     fireEvent.change(screen.getByLabelText('데이터 이름'), { target: { value: '서울 S2' } });
@@ -342,7 +344,9 @@ describe('S4 데이터 추가 (FR-GEN-10·11)', () => {
     fireEvent.change(screen.getByLabelText('B8 표시 최솟값'), { target: { value: '0' } });
     fireEvent.change(screen.getByLabelText('B8 표시 최댓값'), { target: { value: '4000' } });
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-    fireEvent.click(await screen.findByRole('button', { name: '생성 시작' }));
+    const start = await screen.findByRole('button', { name: '생성 시작' });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
     await waitFor(() => expect(generation.createGeeJob).toHaveBeenCalledWith(expect.objectContaining({
       collectionId: 'COPERNICUS/S2', bands: ['B8'], bandStyles: [{ variable: 'B8', colorBar: 'viridis', valueMin: 0, valueMax: 4000 }],
       bounds: { west: 126.5, south: 35, east: 127, north: 35.5 },
@@ -519,6 +523,20 @@ describe('M6 수식 융합 작업·데이터 표시', () => {
     analysis.listJobs.mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.'));
     renderAt('/app/jobs');
     expect(await screen.findByText('제주 GeoTIFF')).toBeInTheDocument();
+    expect(screen.getByText('수식 융합 작업 목록을 불러오지 못했습니다. 나머지 작업만 표시합니다.')).toBeInTheDocument();
+  });
+
+  test('AI 서비스가 실패하면 불러온 작업은 남기고 알림과 다시 시도를 보여 준다', async () => {
+    generation.listJobs.mockResolvedValue([generated]);
+    analysis.listJobs.mockResolvedValue([fusionDone]);
+    aiService.listJobs.mockRejectedValueOnce(new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.'));
+    renderAt('/app/jobs');
+    expect(await screen.findByText('제주 GeoTIFF')).toBeInTheDocument();
+    expect(screen.getByText('NDWI 융합')).toBeInTheDocument();
+    expect(screen.getByText('AI 작업 목록을 불러오지 못했습니다. 나머지 작업만 표시합니다.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+    await waitFor(() => expect(screen.queryByText(/AI 작업 목록을 불러오지 못했습니다/)).not.toBeInTheDocument());
+    expect(aiService.listJobs).toHaveBeenCalledTimes(2);
   });
 
   test('대시보드의 처리 중 작업 수와 최근 작업에 융합 작업이 함께 들어간다', async () => {

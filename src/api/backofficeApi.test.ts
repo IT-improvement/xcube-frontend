@@ -11,7 +11,7 @@ test('카탈로그 목록 endpoint를 사용하고 선택한 프로젝트의 데
     { datacubeId: 3, xcubeDatasetId: 'custom_other', ownerUserId: 8, accessType: 'SHARED', projectId: 11, projectName: 'Project B', name: 'other', kind: 'ORIGINAL', integrationStatus: 'REGISTERED', availabilityStatus: 'AVAILABLE' },
   ], page: 0, size: 100, totalElements: 3, totalPages: 1 }));
   const items = await backofficeAdapter.getDatasets('10');
-  expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8082/api/v1/datasets?scope=all&page=0&size=100&projectId=10');
+  expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8082/api/v1/datasets?scope=all&projectId=10&page=0&size=100');
   expect(items.map((item) => item.name)).toEqual(['original', 'infer']);
   expect(items[0]).toMatchObject({ id: '1', xcubeDatasetId: 'custom_original', accessType: 'OWNED', projectName: 'Project A', defaultVariable: 'red' });
   expect(items[1]).toMatchObject({ kind: 'AI_RESULT' });
@@ -125,4 +125,30 @@ test('목록은 융합 결과(FUSION)와 AI 결과(M7, 원본 연결 포함)를 
     { datacubeId: 3, name: 'infer', kind: 'AI_RESULT', status: 'READY', sourceDatacubeId: 1, metadata: {} },
   ], totalElements: 2, totalPages: 1, number: 0, size: 100 }));
   expect((await backofficeAdapter.getProjectDatasets!('10')).map((item) => item.name)).toEqual(['NDWI 융합', 'infer']);
+});
+
+test('목록은 100개에서 자르지 않고 마지막 쪽까지 모두 읽는다', async () => {
+  const cube = (id: number) => ({ datacubeId: id, projectId: 9, name: `cube-${id}`, kind: 'ORIGINAL', status: 'CREATED', metadata: {} });
+  const fetchMock = jest.spyOn(global, 'fetch')
+    .mockResolvedValueOnce(json({ content: Array.from({ length: 100 }, (_, index) => cube(index + 1)), totalElements: 230, totalPages: 3, number: 0, size: 100 }))
+    .mockResolvedValueOnce(json({ content: Array.from({ length: 100 }, (_, index) => cube(index + 101)), totalElements: 230, totalPages: 3, number: 1, size: 100 }))
+    .mockResolvedValueOnce(json({ content: Array.from({ length: 30 }, (_, index) => cube(index + 201)), totalElements: 230, totalPages: 3, number: 2, size: 100 }));
+  const items = await backofficeAdapter.getProjectDatasets!('9');
+  expect(items).toHaveLength(230);
+  expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([0, 1, 2].map((page) => `http://localhost:8082/api/v1/projects/9/datacubes?page=${page}&size=100`));
+});
+
+test('프로젝트 목록도 여러 쪽을 이어 읽고, last가 오면 멈춘다', async () => {
+  const project = (id: number) => ({ id, name: `p${id}`, createdAt: '', updatedAt: '' });
+  const fetchMock = jest.spyOn(global, 'fetch')
+    .mockResolvedValueOnce(json({ content: Array.from({ length: 100 }, (_, index) => project(index + 1)), totalPages: 2, last: false }))
+    .mockResolvedValueOnce(json({ content: Array.from({ length: 100 }, (_, index) => project(index + 101)), totalPages: 2, last: true }));
+  expect(await backofficeAdapter.getProjects()).toHaveLength(200);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+test('쪽 수가 비정상적으로 많아도 50쪽에서 멈춘다', async () => {
+  const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async () => json({ content: Array.from({ length: 100 }, (_, index) => ({ id: index, name: 'p', createdAt: '', updatedAt: '' })), totalPages: 999 }));
+  expect(await backofficeAdapter.getProjects()).toHaveLength(5000);
+  expect(fetchMock).toHaveBeenCalledTimes(50);
 });

@@ -8,6 +8,17 @@ export type PickMode = 'point' | 'box' | null;
 type Props = { bbox?: Bbox; geojson?: AreaGeometry; pick: PickMode; onPoint?: (lon: number, lat: number) => void; onBox?: (bbox: Bbox) => void };
 
 const KOREA: Bbox = [124, 33, 132, 39];
+/** The area is an overprint mark, drawn like the sketch (wizard.css): solid --fb-overprint stroke, 14% fill. */
+const OVERPRINT_FALLBACK = '#b8166f';
+const OVERPRINT_FILL_ALPHA = 0.14;
+/** `#rrggbb` (or `#rgb`) with an alpha, for OpenLayers styles that cannot read CSS variables. */
+export function withAlpha(color: string, alpha: number) {
+  const hex = color.trim().replace('#', '');
+  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+  if (!/^[0-9a-f]{6}$/i.test(full)) return color;
+  const [r, g, b] = [0, 2, 4].map((at) => parseInt(full.slice(at, at + 2), 16));
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 /** All [lon, lat] rings of a Polygon or MultiPolygon. */
 export function ringsOf(geometry?: AreaGeometry): number[][][] {
@@ -55,15 +66,15 @@ export default function AreaMap({ bbox, geojson, pick, onPoint, onBox }: Props) 
         await import('ol/ol.css');
         const boxSource = new VectorSource();
         const polySource = new VectorSource();
-        const primary = getComputedStyle(host.current).getPropertyValue('--color-primary').trim() || '#2563eb';
+        const mark = getComputedStyle(host.current).getPropertyValue('--fb-overprint').trim() || OVERPRINT_FALLBACK;
         const view = new View({ projection: 'EPSG:3857', center: fromLonLat([127.8, 36.2]), zoom: 6.5 });
         const map = new Map({
           target: host.current,
           view,
           layers: [
             new TileLayer({ source: new OSM() }),
-            new VectorLayer({ source: polySource, style: new Style({ fill: new Fill({ color: 'rgba(37,99,235,0.22)' }), stroke: new Stroke({ color: primary, width: 2 }) }) }),
-            new VectorLayer({ source: boxSource, style: new Style({ stroke: new Stroke({ color: primary, width: 2, lineDash: [6, 4] }) }) }),
+            new VectorLayer({ source: polySource, style: new Style({ fill: new Fill({ color: withAlpha(mark, OVERPRINT_FILL_ALPHA) }), stroke: new Stroke({ color: mark, width: 2 }) }) }),
+            new VectorLayer({ source: boxSource, style: new Style({ stroke: new Stroke({ color: mark, width: 2, lineDash: [6, 4] }) }) }),
           ],
         });
         const dragBox = new DragBox({ condition: () => true });

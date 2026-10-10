@@ -1,5 +1,4 @@
 import './styles/tokens.css';
-import { lazy, Suspense } from 'react';
 import { BrowserRouter, Route, Routes, useSearchParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
 import { RequireAuth } from './auth/RequireAuth';
@@ -15,7 +14,6 @@ import { ProjectDetailPage, ProjectsPage } from './app/pages/ProjectsPage';
 import AddDataPage from './app/wizard/AddDataPage';
 import JobsPage from './app/pages/JobsPage';
 import FusionPage from './app/pages/FusionPage';
-const TestViewer = lazy(() => import('./views/TestViewer'));
 
 function ViewerPage() {
   const { user, signOut } = useAuth();
@@ -41,7 +39,6 @@ export function AppRoutes() {
       </Route>
       {/* The Viewer keeps its own full-screen layout and opens in a new tab. */}
       <Route path="/app/viewer" element={<RequireAuth><ViewerPage /></RequireAuth>} />
-      <Route path="/test" element={<Suspense fallback={<StatusScreen busy title="테스트 지도를 불러오는 중…" />}><TestViewer /></Suspense>} />
       <Route
         path="*"
         element={<StatusScreen title="페이지를 찾을 수 없습니다" text="주소를 확인하거나 홈으로 이동해 주세요." action={<ButtonLink to="/">홈으로</ButtonLink>} />}

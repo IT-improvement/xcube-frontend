@@ -625,7 +625,8 @@
   width: 36px; height: 36px; margin: 0 2px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%;
   background: var(--vx-ink); color: var(--vx-on-ink); cursor: pointer;
 }
-.vx-play:hover { background: color-mix(in srgb, var(--vx-ink) 84%, var(--vx-surface)); }
+.vx-play:disabled { background: var(--vx-sunken); color: var(--vx-ink-3); cursor: not-allowed; }
+.vx-play:hover:not(:disabled) { background: color-mix(in srgb, var(--vx-ink) 84%, var(--vx-surface)); }
 .vx-play[aria-pressed='true'] { background: var(--vx-mark); color: var(--vx-on-mark); }
 .vx-current {
   display: grid; grid-template-columns: auto auto; grid-template-areas: 'date count' 'b b'; align-items: center;

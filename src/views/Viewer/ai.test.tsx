@@ -3,7 +3,9 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import '@testing-library/jest-dom';
 import Viewer from '.';
 import * as appApi from '../../app/api';
-import { areaCsv } from './AiPanel';
+import { aiMaskStyle, AiResultList, areaCsv, RESULT_TEAL } from './AiPanel';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { demoResult } from '../../app/aiDemo';
 import { normalizeResult } from '../../api/aiApi';
 
@@ -170,4 +172,22 @@ test('AI 서비스의 실제 결과 모양(timeSeries, thresholdCurve.values, �
   expect(result.metrics.overall.iou).toBe(0.854);
   expect(result.metrics.times[0].time).toBe('2024-08-14T02:27:28Z');
   expect(result.researchBestThreshold.threshold).toBe(0.91);
+});
+
+test('AI 수체 지도 색은 범례와 같은 결과 청록(--fb-result)이고, 1만 칠하는 xcube 범주형 색표를 보낸다', () => {
+  const css = readFileSync(join(__dirname, '../../styles/fieldbook.css'), 'utf8');
+  const tokens = Array.from(css.matchAll(/--fb-result:\s*(#[0-9a-f]{6})/gi)).map((match) => match[1].toLowerCase());
+  expect(tokens).toEqual([RESULT_TEAL.light, RESULT_TEAL.dark]);
+  expect(JSON.parse(aiMaskStyle('light').cmap)).toEqual({ name: 'xcube_ai_water', type: 'categorical', colors: [[1, RESULT_TEAL.light]] });
+  expect(JSON.parse(aiMaskStyle('dark').cmap).colors).toEqual([[1, RESULT_TEAL.dark]]);
+  expect(aiMaskStyle('light')).not.toHaveProperty('vmin');
+});
+
+test('“지도에 표시 중”은 고른 결과가 실제로 지도에 켜져 있을 때만 보인다', () => {
+  const entries = [{ key: 'j1', name: 'U-Net 결과', status: 'SUCCEEDED' }, { key: 'j2', name: 'NDWI 결과', status: 'SUCCEEDED' }];
+  const { rerender } = render(<AiResultList entries={entries} selectedKey="j1" onMap={false} onSelect={jest.fn()} />);
+  expect(screen.queryByText('지도에 표시 중')).not.toBeInTheDocument();
+  rerender(<AiResultList entries={entries} selectedKey="j1" onMap onSelect={jest.fn()} />);
+  expect(within(screen.getByRole('button', { name: /U-Net 결과/ })).getByText('지도에 표시 중')).toBeInTheDocument();
+  expect(within(screen.getByRole('button', { name: /NDWI 결과/ })).queryByText('지도에 표시 중')).not.toBeInTheDocument();
 });
