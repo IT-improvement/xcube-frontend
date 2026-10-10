@@ -164,7 +164,7 @@ export default function Viewer({
   const [sourceVisible, setSourceVisible] = useState(true);
   const [resultVisible, setResultVisible] = useState(false);
   const [sourceOpacity, setSourceOpacity] = useState(100);
-  const [resultOpacity, setResultOpacity] = useState(70);
+  const [resultOpacity, setResultOpacity] = useState(90);
   const [timeIndex, setTimeIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
