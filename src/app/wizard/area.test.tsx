@@ -10,6 +10,7 @@ const adapter = require('../../api').activeViewerAdapter as Record<string, jest.
 const { generation } = require('../api');
 const { bboxAreaKm2, pointBbox, resolveArea, emptyArea } = require('./areaModel');
 const AddDataPage = require('./AddDataPage').default;
+const { geeFlow } = require('./geeFlow.testutil');
 
 const T = 4000;
 beforeEach(() => {
@@ -46,19 +47,30 @@ describe('지점 + 크기 bbox 계산', () => {
 function renderWizard() {
   return render(<MemoryRouter initialEntries={['/app/data/new']}><Routes><Route path="/app/data/new" element={<AddDataPage />} /></Routes></MemoryRouter>);
 }
+// UR-54: 방식 → 자료(S2, B8) → 영역. The period and the estimate come on the next step (기간·날짜).
+let flow = geeFlow();
 async function toAreaStep() {
+  flow = geeFlow();
   renderWizard();
-  fireEvent.click(await screen.findByRole('radio', { name: /Google Earth Engine/ }));
-  fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-  fireEvent.click(await screen.findByRole('radio', { name: /Sentinel-2 L2A/ }));
-  fireEvent.change(screen.getByLabelText('시작 날짜'), { target: { value: '2026-05-01' } });
-  fireEvent.change(screen.getByLabelText('끝 날짜'), { target: { value: '2026-05-31' } });
+  await flow.toData();
+  flow.choose(/Sentinel-2 L2A/, ['B8']);
+  await flow.toArea();
+}
+/** From the area step to 기간·날짜 with May 2026, where the estimate runs. */
+async function toDatesStep() {
+  await flow.toDates();
+  flow.setPeriod('2026-05-01', '2026-05-31');
 }
 const preview = () => screen.getByTestId('area-preview');
-const setPoint = (lon: string, lat: string) => {
-  fireEvent.change(screen.getByLabelText('중심 경도'), { target: { value: lon } });
-  fireEvent.change(screen.getByLabelText('중심 위도'), { target: { value: lat } });
-};
+const setPoint = (lon: string, lat: string) => flow.setPoint(lon, lat);
+const next = () => screen.getByRole('button', { name: /^다음/ });
+/** Back to the area step, change it, and forward again. */
+async function changeArea(change: () => void) {
+  fireEvent.click(screen.getByRole('button', { name: /이전/ }));
+  await screen.findByRole('tab', { name: '지점 + 크기' });
+  change();
+  await flow.toDates();
+}
 
 describe('GEE 영역 단계', () => {
   test('기본은 지점 + 크기 탭이고, 탭을 바꿔도 지도 미리보기가 현재 탭의 영역과 맞는다', async () => {
@@ -76,10 +88,10 @@ describe('GEE 영역 단계', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: '사각형' }));
     expect(preview()).toHaveTextContent('지도를 끌어 사각형을 그리세요.');
-    fireEvent.change(screen.getByLabelText('좌하단 경도'), { target: { value: '126.5' } });
-    fireEvent.change(screen.getByLabelText('좌하단 위도'), { target: { value: '35' } });
-    fireEvent.change(screen.getByLabelText('우상단 경도'), { target: { value: '127' } });
-    fireEvent.change(screen.getByLabelText('우상단 위도'), { target: { value: '35.5' } });
+    flow.type('좌하단 경도', '126.5');
+    flow.type('좌하단 위도', '35');
+    flow.type('우상단 경도', '127');
+    flow.type('우상단 위도', '35.5');
     expect(preview()).toHaveTextContent('경도 126.5000 ~ 127.0000, 위도 35.0000 ~ 35.5000');
 
     fireEvent.click(screen.getByRole('tab', { name: '지점 + 크기' }));
@@ -91,8 +103,9 @@ describe('GEE 영역 단계', () => {
     await toAreaStep();
     setPoint('127.5', '36.4');
     fireEvent.click(screen.getByRole('radio', { name: '직접 입력' }));
-    fireEvent.change(screen.getByLabelText(/한 변 크기 \(km/), { target: { value: '500' } });
-    expect(screen.getByRole('alert')).toHaveTextContent('1~200 km');
+    flow.type('한 변 크기 (km, 1~200)', '500');
+    expect(screen.getByLabelText(/한 변 크기 \(km/)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getAllByText('한 변 크기는 1~200 km로 입력하세요.').length).toBeGreaterThan(0);
   });
 
   test('행정구역을 검색해 고르면 지도에 반영되고 출처를 보여 준다', async () => {
@@ -154,15 +167,19 @@ describe('GEE 영역 단계', () => {
     jest.spyOn(generation, 'estimateGee').mockResolvedValue({ areaKm2: 40000, grid: { width: 9000, height: 9000 }, scenes: 900, estimatedBytes: 6e10, requestTiles: 40, warnings: ['예상 용량이 5 GB를 넘습니다.'], blockers: ['QUOTA_EXCEEDED'] });
     await toAreaStep();
     setPoint('127.5', '36.4');
+    await toDatesStep();
     expect(await screen.findByText(/저장 용량 한도를 넘어/, undefined, { timeout: T })).toBeInTheDocument();
     expect(screen.getByRole('alert')).toBeInTheDocument();
-    expect(screen.getByText('서버가 40개로 나눠 받습니다.')).toBeInTheDocument();
+    expect(screen.getByText('범위가 커서 나눠 받습니다(자동).')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '예상 크기' })).toHaveTextContent('요청 수40');
     expect(screen.getByText('예상 용량이 5 GB를 넘습니다.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /다음/ })).toBeDisabled();
-    // Changing the area drops the stale estimate; the button opens again once the new, unblocked one arrives.
+    expect(next()).toBeDisabled();
+    // The reason sits next to the disabled button.
+    expect(next()).toHaveAccessibleDescription(/예상 크기에 나온 사유를 먼저 해결하세요/);
+    // A new area gets a new estimate; the button opens again once the new, unblocked one arrives.
     jest.spyOn(generation, 'estimateGee').mockResolvedValue({ areaKm2: 400, grid: { width: 100, height: 100 }, scenes: 6, estimatedBytes: 1e6, requestTiles: 1, warnings: [], blockers: [] });
-    fireEvent.click(screen.getByRole('radio', { name: '10 km' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /다음/ })).toBeEnabled(), { timeout: T });
+    await changeArea(() => fireEvent.click(screen.getByRole('radio', { name: '10 km' })));
+    await waitFor(() => expect(next()).toBeEnabled(), { timeout: T });
   });
 
   test('예상 크기를 계산하는 동안과 실패했을 때는 다음으로 갈 수 없고 이유를 보여 준다', async () => {
@@ -171,24 +188,26 @@ describe('GEE 영역 단계', () => {
     const estimate = jest.spyOn(generation, 'estimateGee').mockImplementationOnce((body: unknown) => new Promise((done) => { release = () => done(real(body)); }));
     await toAreaStep();
     setPoint('127.5', '36.4');
+    await toDatesStep();
     expect(await screen.findByText('예상 크기를 계산하는 중입니다.', undefined, { timeout: T })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /다음/ })).toBeDisabled();
+    expect(next()).toBeDisabled();
     await waitFor(() => expect(estimate).toHaveBeenCalled(), { timeout: T });
     release!();
-    await waitFor(() => expect(screen.getByRole('button', { name: /다음/ })).toBeEnabled(), { timeout: T });
+    await waitFor(() => expect(next()).toBeEnabled(), { timeout: T });
     expect(screen.queryByText('예상 크기를 계산하는 중입니다.')).not.toBeInTheDocument();
     // A failed estimate keeps the step closed, with a way to ask again.
     jest.spyOn(generation, 'estimateGee').mockRejectedValueOnce(new Error('down'));
-    fireEvent.click(screen.getByRole('radio', { name: '10 km' }));
+    await changeArea(() => fireEvent.click(screen.getByRole('radio', { name: '10 km' })));
     expect(await screen.findByText('예상 크기를 불러오지 못해 진행할 수 없습니다.', undefined, { timeout: T })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /다음/ })).toBeDisabled();
+    expect(next()).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '다시 계산' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /다음/ })).toBeEnabled(), { timeout: T });
+    await waitFor(() => expect(next()).toBeEnabled(), { timeout: T });
   });
 
   test('예상 크기에 면적·격자·장면 수·용량이 표시된다', async () => {
     await toAreaStep();
     setPoint('127.5', '36.4');
+    await toDatesStep();
     const panel = screen.getByRole('region', { name: '예상 크기' });
     await waitFor(() => expect(panel).toHaveTextContent('예상 장면 수'), { timeout: T });
     expect(panel).toHaveTextContent('900 km²');
@@ -200,18 +219,14 @@ describe('GEE 영역 단계', () => {
     const create = jest.spyOn(generation, 'createGeeJob');
     await toAreaStep();
     setPoint('127.502', '36.454');
+    await toDatesStep();
     await waitFor(() => expect(screen.getByRole('region', { name: '예상 크기' })).toHaveTextContent('예상 장면 수'), { timeout: T });
-    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /다음/ }));
+    await flow.toReview();
     fireEvent.change(screen.getByLabelText('데이터 이름'), { target: { value: '충주 S2' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: /B8/ }));
     fireEvent.change(screen.getByLabelText('B8 표시 최솟값'), { target: { value: '0' } });
     fireEvent.change(screen.getByLabelText('B8 표시 최댓값'), { target: { value: '4000' } });
-    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
     expect(await screen.findByText(/지점 \+ 크기 · 중심 127.5020, 36.4540 · 한 변 30 km/)).toBeInTheDocument();
-    // Picking bands re-estimates; the request waits for it.
-    const start = await screen.findByRole('button', { name: '생성 시작' });
-    await waitFor(() => expect(start).toBeEnabled(), { timeout: T });
+    const start = await flow.createButton();
     fireEvent.click(start);
     await waitFor(() => expect(create).toHaveBeenCalled(), { timeout: T });
     const body = create.mock.calls[0][0] as any;
@@ -225,4 +240,12 @@ test('지도 위 관심 영역은 overprint 마젠타(실선, 낮은 투명도 �
   expect(withAlpha('#b8166f', 0.14)).toBe('rgba(184,22,111,0.14)');
   expect(withAlpha(' #f6b ', 0.5)).toBe('rgba(255,102,187,0.5)');
   expect(withAlpha('rgb(1,2,3)', 0.5)).toBe('rgb(1,2,3)');
+});
+
+test('지도는 영역이 화면 밖이거나 지도 폭의 25%보다 작으면 영역으로 맞춘다 (모바일에서 30 km가 점처럼 보이지 않게)', () => {
+  const { needsFit } = require('./AreaMap');
+  const view = [0, 0, 1000, 1000];
+  expect(needsFit([100, 100, 600, 600], view)).toBe(false);
+  expect(needsFit([100, 100, 200, 200], view)).toBe(true);
+  expect(needsFit([900, 900, 1500, 1500], view)).toBe(true);
 });

@@ -337,27 +337,30 @@ describe('S4 데이터 추가 (FR-GEN-10·11)', () => {
     renderAt('/app/data/new');
     fireEvent.click(await screen.findByRole('radio', { name: /Google Earth Engine/ }));
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    // 자료: the collection and the bands to build (UR-54).
     fireEvent.click(await screen.findByRole('radio', { name: /Sentinel-2/ }));
-    fireEvent.change(screen.getByLabelText('시작 날짜'), { target: { value: '2026-05-01' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'B8' }));
+    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    // 영역: a rectangle typed in (each value counts when the field loses focus).
+    fireEvent.click(await screen.findByRole('tab', { name: '사각형' }));
+    for (const [label, value] of [['좌하단 경도', '126.5'], ['좌하단 위도', '35'], ['우상단 경도', '127'], ['우상단 위도', '35.5']]) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+      fireEvent.blur(screen.getByLabelText(label));
+    }
+    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
+    // 기간·날짜: 다음 waits for the size estimate of this area and period.
+    fireEvent.change(await screen.findByLabelText('시작 날짜'), { target: { value: '2026-05-01' } });
     fireEvent.change(screen.getByLabelText('끝 날짜'), { target: { value: '2026-05-31' } });
-    fireEvent.click(screen.getByRole('tab', { name: '사각형' }));
-    fireEvent.change(screen.getByLabelText('좌하단 경도'), { target: { value: '126.5' } });
-    fireEvent.change(screen.getByLabelText('좌하단 위도'), { target: { value: '35' } });
-    fireEvent.change(screen.getByLabelText('우상단 경도'), { target: { value: '127' } });
-    fireEvent.change(screen.getByLabelText('우상단 위도'), { target: { value: '35.5' } });
-    // 다음 waits for the size estimate of this area.
     await waitFor(() => expect(screen.getByRole('button', { name: /다음/ })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /다음/ }));
-    fireEvent.change(screen.getByLabelText('데이터 이름'), { target: { value: '서울 S2' } });
+    // 이름·확인
+    fireEvent.change(await screen.findByLabelText('데이터 이름'), { target: { value: '서울 S2' } });
     // The typed name never reaches the estimate (typing it must not re-estimate).
     await waitFor(() => expect(generation.estimateGee).toHaveBeenCalled());
     for (const [body] of generation.estimateGee.mock.calls) expect(body.name).toBe('새 데이터');
-    fireEvent.click(screen.getByRole('checkbox', { name: /B8/ }));
     expect(screen.queryByLabelText('B8 변수 이름')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('B8 표시 최솟값'), { target: { value: '0' } });
     fireEvent.change(screen.getByLabelText('B8 표시 최댓값'), { target: { value: '4000' } });
-    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
     const start = await screen.findByRole('button', { name: '생성 시작' });
     await waitFor(() => expect(start).toBeEnabled());
     fireEvent.click(start);

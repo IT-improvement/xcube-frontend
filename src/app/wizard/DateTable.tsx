@@ -11,10 +11,11 @@ import { byLeastCloud, cloudText, estimateDates, leastCloudy } from './dateModel
 import { CAUTION_DAYS, coverageText, dateOnly, daysText, orbitLabel } from './sarModel';
 import { withStrong } from './strong';
 
-type Props = { data: GeeEstimate; picked: string[]; onChange: (next: string[]) => void; pairing?: { keepUnpaired: boolean } };
+/** `stale`: the table belongs to the previous estimate while a new one is calculated (dimmed, not editable). */
+type Props = { data: GeeEstimate; picked: string[]; onChange: (next: string[]) => void; pairing?: { keepUnpaired: boolean }; stale?: boolean };
 type Order = 'clear' | 'date';
 
-export default function DateTable({ data, picked, onChange, pairing }: Props) {
+export default function DateTable({ data, picked, onChange, pairing, stale }: Props) {
   const { lang, t } = useLanguage();
   const dates = estimateDates(data) ?? [];
   const excluded = data.excludedDates ?? [];
@@ -43,7 +44,7 @@ export default function DateTable({ data, picked, onChange, pairing }: Props) {
   const unpairedPicked = unpaired.filter((item) => chosen.has(item.date)).length;
 
   return (
-    <section className="date-pick" aria-label={t('wizard.dates.title')}>
+    <section className={`date-pick${stale ? ' is-stale' : ''}`} aria-label={t('wizard.dates.title')} aria-busy={stale || undefined}>
       <div className="date-pick__head">
         <h3 className="area-estimate__title">{t('wizard.dates.title')}</h3>
         <p className="date-pick__count tabular" aria-live="polite">{withStrong(t, 'wizard.dates.count', 'picked', count, { count: dates.length })}</p>
@@ -53,14 +54,14 @@ export default function DateTable({ data, picked, onChange, pairing }: Props) {
           <label htmlFor="date-pick-count">{t('wizard.dates.wanted')}</label>
           <input
             id="date-pick-count" className="xc-field__input date-pick__n tabular" type="number" min={1} max={dates.length} step={1}
-            value={wanted} onChange={(event) => setCount(event.target.value)} aria-invalid={!nOk || undefined}
+            value={wanted} onChange={(event) => setCount(event.target.value)} aria-invalid={!nOk || undefined} disabled={stale}
             aria-describedby="date-pick-count-hint"
           />
           <span aria-hidden>{t('wizard.dates.wantedOf', { count: dates.length })}</span>
         </span>
         <span className="date-pick__sel" role="group" aria-label={t('wizard.dates.selection')}>
-          <Button size="sm" variant="line" onClick={() => onChange(all)} disabled={count === dates.length}>{t('wizard.dates.all')}</Button>
-          <Button size="sm" variant="line" onClick={() => onChange([])} disabled={count === 0}>{t('wizard.dates.none')}</Button>
+          <Button size="sm" variant="line" onClick={() => onChange(all)} disabled={stale || count === dates.length}>{t('wizard.dates.all')}</Button>
+          <Button size="sm" variant="line" onClick={() => onChange([])} disabled={stale || count === 0}>{t('wizard.dates.none')}</Button>
         </span>
         <span className="date-pick__order" role="group" aria-label={t('wizard.dates.order')}>
           <button type="button" aria-pressed={order === 'clear'} onClick={() => setOrder('clear')}>{t('wizard.dates.byCloud')}</button>
@@ -85,17 +86,18 @@ export default function DateTable({ data, picked, onChange, pairing }: Props) {
           {unpaired.length > 0 && t('wizard.sar.unpairedNote', { count: unpaired.length, how: t(pairing.keepUnpaired ? 'wizard.sar.keptNote' : 'wizard.sar.droppedNote') })}
         </p>
       )}
+      {/* No inner scroll: the table grows with the page. Phones read each row as a card (wizard.css). */}
       <div className="xc-table-wrap date-pick__wrap">
         <table className="xc-table date-pick__table" aria-label={t(pairing ? 'wizard.dates.tableLabelPaired' : 'wizard.dates.tableLabel')}>
           <thead>
             <tr>
               <th scope="col" className="date-pick__check"><span className="sr-only">{t('wizard.dates.select')}</span></th>
-              <th scope="col">{t('wizard.dates.rank')}</th>
+              <th scope="col" className="num date-pick__rank">{t('wizard.dates.rank')}</th>
               <th scope="col">{t('wizard.dates.date')}</th>
-              {hasNoise && <th scope="col">{t('wizard.dates.noise')}</th>}
-              <th scope="col">{t(hasNoise ? 'wizard.dates.tileCloud' : 'wizard.dates.cloud')}</th>
-              <th scope="col">{t('wizard.dates.scenes')}</th>
-              {pairing && <><th scope="col">{t('wizard.sar.radarDate')}</th><th scope="col">{t('wizard.sar.daysApart')}</th></>}
+              {hasNoise && <th scope="col" className="num">{t('wizard.dates.noise')}</th>}
+              <th scope="col" className="num">{t(hasNoise ? 'wizard.dates.tileCloud' : 'wizard.dates.cloud')}</th>
+              <th scope="col" className="num">{t('wizard.dates.scenes')}</th>
+              {pairing && <><th scope="col">{t('wizard.sar.radarDate')}</th><th scope="col" className="num">{t('wizard.sar.daysApart')}</th></>}
             </tr>
           </thead>
           <tbody>
@@ -103,24 +105,33 @@ export default function DateTable({ data, picked, onChange, pairing }: Props) {
               const on = chosen.has(item.date);
               const noPass = !!pairing && item.s1 === null;
               const far = !!item.s1 && Math.abs(item.s1.daysApart) > CAUTION_DAYS;
+              const cloud = hasNoise ? item.noisePercent : item.cloudPercent;
+              const radarShort = !pairing ? '' : noPass
+                ? t(pairing.keepUnpaired ? 'wizard.sar.noRadarKept' : 'wizard.sar.noRadarDropped')
+                : item.s1 ? t('wizard.dates.cardRadar', { date: dateOnly(item.s1.date).slice(5), orbit: orbitLabel(item.s1.orbitPass, lang), days: daysText(item.s1.daysApart) }) : '';
               return (
                 <tr key={item.date} className={[noPass ? 'is-unpaired' : '', on ? 'is-picked' : ''].join(' ').trim() || undefined}>
                   <td className="date-pick__check">
-                    <input type="checkbox" checked={on} onChange={(event) => toggle(item.date, event.target.checked)} aria-label={t('wizard.dates.selectDate', { date: item.date })} />
+                    <input type="checkbox" checked={on} disabled={stale} onChange={(event) => toggle(item.date, event.target.checked)} aria-label={t('wizard.dates.selectDate', { date: item.date })} />
                   </td>
-                  <td className="tabular">{rank.get(item.date)}</td>
-                  <td className="tabular">{item.date}</td>
-                  {hasNoise && <td className="tabular">{cloudText(item.noisePercent)}</td>}
-                  <td className="tabular">{cloudText(item.cloudPercent)}</td>
-                  <td className="tabular">{item.sceneCount}</td>
+                  <td className="num date-pick__rank">{rank.get(item.date)}</td>
+                  <td className="tabular date-pick__date">{item.date}</td>
+                  {hasNoise && <td className="num date-pick__wide">{cloudText(item.noisePercent)}</td>}
+                  <td className="num date-pick__wide">{cloudText(item.cloudPercent)}</td>
+                  <td className="num date-pick__wide">{item.sceneCount}</td>
                   {pairing && (noPass ? (
-                    <td colSpan={2}>{t(pairing.keepUnpaired ? 'wizard.sar.noRadarKept' : 'wizard.sar.noRadarDropped')}</td>
+                    <td colSpan={2} className="date-pick__wide">{t(pairing.keepUnpaired ? 'wizard.sar.noRadarKept' : 'wizard.sar.noRadarDropped')}</td>
                   ) : (
                     <>
-                      <td className="tabular">{item.s1 ? `${dateOnly(item.s1.date)} ${orbitLabel(item.s1.orbitPass, lang)}` : '—'}</td>
-                      <td className="tabular">{daysText(item.s1?.daysApart)}{far && <> <Badge tone="warning">{t('wizard.sar.caution', { days: CAUTION_DAYS })}</Badge></>}</td>
+                      <td className="tabular date-pick__wide date-pick__date">{item.s1 ? `${dateOnly(item.s1.date)} ${orbitLabel(item.s1.orbitPass, lang)}` : '—'}</td>
+                      <td className="num date-pick__wide">{daysText(item.s1?.daysApart)}{far && <> <Badge tone="warning">{t('wizard.sar.caution', { days: CAUTION_DAYS })}</Badge></>}</td>
                     </>
                   ))}
+                  {/* Phones (≤767px) show this one line instead of the wide columns. */}
+                  <td className="tabular date-pick__card">
+                    <span>{t('wizard.dates.cardCloud', { value: cloudText(cloud) })}</span>
+                    {radarShort && <span>{radarShort}{far && <> <Badge tone="warning">{t('wizard.sar.caution', { days: CAUTION_DAYS })}</Badge></>}</span>}
+                  </td>
                 </tr>
               );
             })}

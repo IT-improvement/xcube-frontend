@@ -10,6 +10,7 @@ const adapter = require('../../api').activeViewerAdapter as Record<string, jest.
 const { generation } = require('../api');
 const { activeSelection, leastCloudy, minutesText, selectedDatesField, selectionProblem, selectionTotals, isLong } = require('./dateModel');
 const AddDataPage = require('./AddDataPage').default;
+const { geeFlow } = require('./geeFlow.testutil');
 
 const T = 4000;
 const GiB = 1024 ** 3;
@@ -70,32 +71,31 @@ describe('dateModel', () => {
 function renderWizard() {
   return render(<MemoryRouter initialEntries={['/app/data/new']}><Routes><Route path="/app/data/new" element={<AddDataPage />} /></Routes></MemoryRouter>);
 }
+// UR-54: 자료 (collection + one band) → 영역 (point) → 기간·날짜 (August 2024), where the date table is.
+let flow = geeFlow();
 async function toAreaStep(collection: RegExp = /Landsat 9/) {
+  flow = geeFlow();
   renderWizard();
-  fireEvent.click(await screen.findByRole('radio', { name: /Google Earth Engine/ }));
-  fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-  fireEvent.click(await screen.findByRole('radio', { name: collection }));
-  fireEvent.change(screen.getByLabelText('시작 날짜'), { target: { value: '2024-08-01' } });
-  fireEvent.change(screen.getByLabelText('끝 날짜'), { target: { value: '2024-08-31' } });
-  fireEvent.change(screen.getByLabelText('중심 경도'), { target: { value: '127.63' } });
-  fireEvent.change(screen.getByLabelText('중심 위도'), { target: { value: '36.45' } });
+  await flow.toDatesWith({ collection, bands: [/Landsat/.test(String(collection)) ? 'SR_B4' : 'B8'], lon: '127.63', lat: '36.45', start: '2024-08-01', end: '2024-08-31' });
+}
+/** Back `steps` steps, `change` something there, and forward to 기간·날짜 again. */
+async function changeEarlier(steps: number, change: () => void) {
+  for (let index = 0; index < steps; index += 1) fireEvent.click(screen.getByRole('button', { name: /이전/ }));
+  change();
+  for (let index = 0; index < steps; index += 1) fireEvent.click(next());
+  await screen.findByLabelText('시작 날짜');
 }
 const panel = () => screen.getByRole('region', { name: '예상 크기' });
 const dateTable = () => screen.findByRole('table', { name: '날짜 고르기' }, { timeout: T });
 const count = () => within(screen.getByRole('region', { name: '날짜 고르기' })).getByText(/선택/, { selector: 'p' });
-const next = () => screen.getByRole('button', { name: /다음/ });
+const next = () => screen.getByRole('button', { name: /^다음/ });
+/** 기간·날짜 → 이름·확인: name, the display range of the band picked on 자료, and the create button. */
 async function toConfirm(name = '대청호 8월') {
-  fireEvent.click(next());
-  fireEvent.click(await screen.findByRole('button', { name: /다음/ }));
-  fireEvent.change(await screen.findByLabelText('데이터 이름'), { target: { value: name } });
-  fireEvent.click(screen.getByRole('checkbox', { name: /SR_B4/ }));
+  await flow.toReview();
+  fireEvent.change(screen.getByLabelText('데이터 이름'), { target: { value: name } });
   fireEvent.change(screen.getByLabelText('SR_B4 표시 최솟값'), { target: { value: '0' } });
   fireEvent.change(screen.getByLabelText('SR_B4 표시 최댓값'), { target: { value: '30000' } });
-  fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-  // Picking bands re-estimates; 생성 시작 opens once the new estimate is in.
-  const start = await screen.findByRole('button', { name: '생성 시작' });
-  await waitFor(() => expect(start).toBeEnabled(), { timeout: 4000 });
-  return start;
+  return flow.createButton();
 }
 
 describe('GEE 날짜 고르기', () => {
@@ -147,9 +147,10 @@ describe('GEE 날짜 고르기', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('날짜를 하나 이상 고르세요');
     expect(next()).toBeDisabled();
     expect(screen.getByTestId('estimate-time')).toHaveTextContent('—');
-    fireEvent.click(screen.getByRole('radio', { name: '20 km' }));
-    await waitFor(() => expect(count()).toHaveTextContent('선택 5 / 전체 5개 날짜'), { timeout: T });
-    expect(next()).toBeEnabled();
+    await changeEarlier(1, () => fireEvent.click(screen.getByRole('radio', { name: '20 km' })));
+    // The previous table stays (dimmed) while the new estimate is calculated; then all dates are picked again.
+    await waitFor(() => expect(next()).toBeEnabled(), { timeout: T });
+    expect(count()).toHaveTextContent('선택 5 / 전체 5개 날짜');
   });
 
   test('일부만 고르면 생성 요청에 selectedDates(정렬)를 넣고, 확인 단계에 개수·목록을 보여 준다', async () => {
@@ -215,11 +216,13 @@ describe('GEE 날짜 고르기', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '2024-08-19 선택' }));
     expect(screen.queryByText(/레이더 짝이 없는 날짜/)).toBeNull();
     fireEvent.click(screen.getByRole('checkbox', { name: '2024-08-19 선택' }));
-    fireEvent.click(screen.getByRole('button', { name: '레이더 없이 남기기' }));
+    // "짝이 없는 날짜" is a 자료 setting: change it there and come back; the picks stay.
+    await changeEarlier(2, () => fireEvent.click(screen.getByRole('button', { name: '레이더 없이 남기기' })));
     expect(await screen.findByText(/이 날짜는 레이더 없이 생성됩니다/, undefined, { timeout: T })).toBeInTheDocument();
     // Only the unpaired date with "빼기" leaves nothing to make.
-    fireEvent.click(screen.getByRole('button', { name: '빼기' }));
+    await changeEarlier(2, () => fireEvent.click(screen.getByRole('button', { name: '빼기' })));
     await screen.findByRole('table', { name: '날짜 고르기 · 광학·레이더 날짜 짝' }, { timeout: T });
+    await waitFor(() => expect(screen.getByRole('button', { name: '선택 해제' })).toBeEnabled(), { timeout: T });
     fireEvent.click(screen.getByRole('button', { name: '선택 해제' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '2024-08-19 선택' }));
     expect(next()).toBeDisabled();

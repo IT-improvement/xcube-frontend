@@ -1,5 +1,8 @@
-// S4 data add wizard: method → source → inspection → settings → confirm.
-// Replaces the Viewer's ZarrStudio panel (GeoTIFF/CAS500, Shapefile, GEE, Zarr register).
+// S4 data add wizard. The steps depend on the method (UR-54):
+// - GEE: 방식 → 자료 → 영역 → 기간·날짜 → 이름·확인 (one decision group per step; no inspection step, it adds nothing)
+// - GeoTIFF/CAS500 and Shapefile: 방식 → 원본 입력 → 자동 검사 결과 → 설정 → 확인 및 생성 (the inspection is real)
+// - Zarr registration: 방식 → 원본 입력 → 설정 → 확인 (nothing to inspect before registering)
+// Requests are the same as before for the same choices (wizard.request.test.tsx).
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, CloudDownload, Database, Droplets, FileArchive, Globe2, Image, Loader2, Search, UploadCloud } from 'lucide-react';
 import { ChangeEvent, DragEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -8,18 +11,22 @@ import { ColorBarOption, GeeCollection, GenerationJob, InspectionField, JobSumma
 import { Alert, Button, ButtonLink, TextField } from '../../components/ui';
 import { Badge, Card, PageHeader, RadioGroup, Skeleton } from '../../components/ui/kit';
 import { appApi, canEditProject, generation, viewerHref } from '../api';
+import { jobSteps } from '../jobs';
 import { BBoxMap } from '../pages/DatasetDetailPage';
-import AreaStep, { EstimatePanel } from './AreaStep';
-import { AreaState, bboxBounds, blockerText, emptyArea, resolveArea, ResolvedArea } from './areaModel';
+import AreaStep, { areaCenter, EstimatePanel } from './AreaStep';
+import AreaMap from './AreaMap';
+import DateTable from './DateTable';
+import { AreaState, bboxBounds, emptyArea, resolveArea } from './areaModel';
 import { useGeeEstimate } from './useGeeEstimate';
 import { activeSelection, DateSelection, estimateDates, selectedDatesField, selectionProblem } from './dateModel';
+import { suggestName } from './nameModel';
 import { useLoad } from '../useLoad';
 import VariableStyleEditor, { autoRange, defaultChoice, toVariableSpecs, validateChoices, VariableChoice } from './VariableStyleEditor';
 import { FixedVariables, SarOptions } from './SarPairing';
-import { defaultSar, FIXED_NAMES, PRESET_GEE, isS2, orbitOption, pairingActive, presetSar, S2_COLLECTION, sarError, sarRequest, SarState, WATER_BANDS, WATER_NAME, withPairingBlockers } from './sarModel';
+import { defaultSar, FIXED_NAMES, PRESET_GEE, PRESET_STYLE, isS2, orbitOption, pairingActive, presetSar, S2_COLLECTION, sarError, sarRequest, SarState, WATER_BANDS, WATER_NAME, withPairingBlockers } from './sarModel';
 import { withStrong } from './strong';
 import './wizard.css';
-import { formatNumber, registrationFailureText, serverText, useLanguage, useT } from '../../i18n';
+import { failureText, formatNumber, registrationFailureText, serverText, useLanguage, useT } from '../../i18n';
 import type { Lang, TFunction, TKey } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 // The wizard's text (UR-53 stage 3) loads with the wizard chunk only; it brings the management part along.
@@ -30,7 +37,13 @@ type RasterKind = 'geotiff' | 'cas500';
 type GeeParams = { startDate: string; endDate: string; maxCloudPercent: string; scaleMeters: string };
 type Rgb = { red: string; green: string; blue: string };
 
-const STEPS = ['method', 'source', 'inspection', 'settings', 'confirm'] as const;
+export type StepId = 'method' | 'source' | 'inspection' | 'settings' | 'confirm' | 'data' | 'area' | 'dates' | 'review';
+const FILE_FLOW: StepId[] = ['method', 'source', 'inspection', 'settings', 'confirm'];
+const GEE_FLOW: StepId[] = ['method', 'data', 'area', 'dates', 'review'];
+const ZARR_FLOW: StepId[] = ['method', 'source', 'settings', 'confirm'];
+/** The steps of a method; before one is chosen, the file flow's names stand in. */
+export const stepsFor = (method: Method | null): StepId[] => (method === 'gee' ? GEE_FLOW : method === 'zarr' ? ZARR_FLOW : FILE_FLOW);
+
 /** Method cards; product names stay as they are, the rest comes from `wizard.method.*`. */
 const METHODS: Array<{ id: Method; title?: string; icon: ReactNode; register?: boolean }> = [
   { id: 'geotiff', title: 'GeoTIFF / CAS500', icon: <Image size={22} /> },
@@ -51,11 +64,8 @@ const sensorLabel = (item: (typeof SENSORS)[number], t: TFunction) => item.label
 // Workers read the time from file names: 14 digits (YYYYMMDDHHMMSS) for rasters, 6 digits (YYYYMM) for Shapefiles.
 const hasTimeInName = (fileName: string, method: Method) => (method === 'shape' ? /\d{6}/ : /\d{14}/).test(fileName);
 const JOB_STATUSES = ['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED'];
+const RGB_CHANNELS = [['red', 'R'], ['green', 'G'], ['blue', 'B']] as const;
 
-/** Preset "수체 분석용 S1+S2" (UR-41): S2 optical bands under the names the AI looks for, plus Sentinel-1 VV·VH and the JRC reference.
- *  Its title and text are `wizard.catalog.preset*`. */
-// S2 L2A reflectance is stored as DN (×10,000); 0~3,000 shows land and water well.
-const WATER_RANGE = { min: '0', max: '3000' };
 /** Pairing on: S2 bands take the AI names (blue…swir) unless the user already renamed them; off: back to the band names. */
 const renameForPairing = (choices: VariableChoice[], on: boolean) => choices.map((choice) => {
   const mapped = WATER_NAME[choice.source];
@@ -67,6 +77,8 @@ const renameForPairing = (choices: VariableChoice[], on: boolean) => choices.map
 const sarSummary = (sar: SarState, t: TFunction, lang: Lang) =>
   t('wizard.sar.summary', { days: sar.maxDaysApart, orbit: orbitOption(sar.orbitPass, lang), unpaired: t(sar.keepUnpaired ? 'wizard.sar.summaryKept' : 'wizard.sar.summaryDropped') })
   + (sar.waterReference ? t('wizard.sar.summaryWater') : '');
+/** "red (B4)" when the variable was renamed, else the band name. */
+const choiceLabel = (choice?: VariableChoice) => (!choice ? '' : choice.name && choice.name !== choice.source ? `${choice.name} (${choice.source})` : choice.source);
 
 const fieldsOf = (inspection: SpatialInspection | null): InspectionField[] =>
   inspection ? inspection.fields ?? inspection.bands.map((name) => ({ name })) : [];
@@ -79,6 +91,25 @@ export const registeredDatasetId = (job: GenerationJob | null) => {
   const id = (job as Partial<JobSummary> | null)?.registration?.datacubeId;
   return id == null || id === '' ? '' : String(id);
 };
+
+/** A field-level problem: the message shows next to `field`, and a failed 다음 moves focus there. */
+type Problem = { field: string; message: string } | null;
+
+/** Focus the first problem in `root`: a field marked `aria-invalid`, else the first control of a group marked `data-invalid`. */
+export function focusFirstInvalid(root: HTMLElement | null) {
+  // A field marked invalid itself comes first; else the first marked group.
+  const target = root?.querySelector<HTMLElement>('[aria-invalid="true"]') ?? root?.querySelector<HTMLElement>('[data-invalid="true"]');
+  if (!target) return;
+  // A choice group focuses its tab stop (radio), a form group its first field, anything else its first button.
+  const control = target.matches('input, select, textarea, button')
+    ? target
+    : target.querySelector<HTMLElement>('[role="radio"][tabindex="0"]')
+      ?? target.querySelector<HTMLElement>('input:not([disabled]):not([type="hidden"]):not([type="search"]), select:not([disabled]), textarea:not([disabled])')
+      ?? target.querySelector<HTMLElement>('button:not([disabled]):not([tabindex="-1"])');
+  if (control) { control.focus(); return; }
+  target.tabIndex = -1;
+  target.focus();
+}
 
 /** S4 data add wizard. "다른 데이터 추가" starts a fresh wizard (new state) without reloading the page. */
 export default function AddDataPage() {
@@ -100,9 +131,13 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const [area, setArea] = useState<AreaState>(emptyArea);
   const [sar, setSar] = useState<SarState>(() => defaultSar());
   const [preset, setPreset] = useState(false);
+  // Folded summaries of the preset ("바꾸기" opens them).
+  const [sarOpen, setSarOpen] = useState(false);
+  const [displayOpen, setDisplayOpen] = useState(false);
   const [dateSel, setDateSel] = useState<DateSelection | null>(null);
   const [storageUri, setStorageUri] = useState('');
   const [name, setName] = useState('');
+  const [nameEdited, setNameEdited] = useState(false);
   const [choices, setChoices] = useState<VariableChoice[]>([]);
   const [resolution, setResolution] = useState('0.00025');
   const [sensor, setSensor] = useState('');
@@ -113,6 +148,8 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const [rgb, setRgb] = useState<Rgb>({ red: '', green: '', blue: '' });
   const [projectId, setProjectId] = useState('');
   const [showErrors, setShowErrors] = useState(false);
+  // Counts failed 다음 presses, so focus moves to the first problem after each one.
+  const [failedTries, setFailedTries] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [job, setJob] = useState<GenerationJob | null>(null);
   const [registeredId, setRegisteredId] = useState('');
@@ -125,8 +162,13 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const inspectError = inspectFailure ? userMessage(inspectFailure.cause, lang) : '';
   const submitError = !submitFailure ? '' : submitFailure.noFileJobs ? t('wizard.file.serverUnavailable') : userMessage(submitFailure.cause, lang);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const registrationPolls = useRef(0);
   const done = !!job || !!registeredId;
+  const steps = stepsFor(method);
+  const current = steps[step];
+  const last = step === steps.length - 1;
+  const isGee = method === 'gee';
 
   // Leaving the tab mid-way loses the inputs; ask first.
   useEffect(() => {
@@ -136,6 +178,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
     return () => window.removeEventListener('beforeunload', warn);
   }, [step, done]);
   useEffect(() => { headingRef.current?.focus(); }, [step]);
+  useEffect(() => { if (failedTries) focusFirstInvalid(bodyRef.current); }, [failedTries]);
 
   // Poll the generation job until it finishes and, when it succeeded, until the new dataset is registered.
   useEffect(() => {
@@ -152,35 +195,36 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
 
   const collection = collections.data?.find((item) => item.id === collectionId);
   const fields: InspectionField[] = useMemo(() => {
-    if (method === 'gee') return (collection?.bands ?? []).map((band) => ({ name: typeof band === 'string' ? band : band.id ?? band.name }));
+    if (isGee) return (collection?.bands ?? []).map((band) => ({ name: typeof band === 'string' ? band : band.id ?? band.name }));
     return fieldsOf(inspection);
-  }, [method, collection, inspection]);
+  }, [isGee, collection, inspection]);
   const resolved = useMemo(() => resolveArea(area, lang), [area, lang]);
   const datesOk = !!gee.startDate && !!gee.endDate && gee.startDate <= gee.endDate;
-  const pairing = method === 'gee' && pairingActive(collectionId, sar);
-  const sarFields = method === 'gee' ? sarRequest(collectionId, sar) : {};
+  const pairing = isGee && pairingActive(collectionId, sar);
+  const sarFields = isGee ? sarRequest(collectionId, sar) : {};
   const estimateBands = choices.length ? choices.map((item) => item.source) : fields.map((field) => field.name);
-  const estimateBody = method === 'gee' && step >= 1 && collectionId && datesOk && resolved.request && resolved.bbox
+  // The estimate starts on "기간·날짜", once collection, area and period are known.
+  const estimateBody = isGee && step >= GEE_FLOW.indexOf('dates') && collectionId && datesOk && resolved.request && resolved.bbox
     ? { name: ESTIMATE_NAME, collectionId, bands: estimateBands, startDate: gee.startDate, endDate: gee.endDate, maxCloudPercent: Number(gee.maxCloudPercent), scaleMeters: Number(gee.scaleMeters), bounds: bboxBounds(resolved.bbox), area: resolved.request, bandStyles: [], ...sarFields }
     : null;
   const estimate = useGeeEstimate(estimateBody);
-  const blockers = method === 'gee' ? withPairingBlockers(estimate.data, pairing) : [];
+  const ready = estimate.status === 'ok';
+  const blockers = isGee && ready ? withPairingBlockers(estimate.data, pairing) : [];
   // Date picking (UR-43): the picks belong to one area/period; changing either (a new date list) starts again from all dates.
   // Bands and what to do with unpaired dates do not change the list, so changing them keeps the picks.
   const { dropUnpaired, ...pairScope } = sarFields.sarPairing ?? { dropUnpaired: true };
   const dateScope = JSON.stringify([collectionId, gee.startDate, gee.endDate, gee.maxCloudPercent, resolved.request ?? null, pairScope]);
   useEffect(() => { setDateSel(null); }, [dateScope]);
-  const estimateDateList = method === 'gee' ? estimateDates(estimate.data) : null;
-  const dateSelection = method === 'gee' ? activeSelection(dateSel, dateScope, estimateDateList) : null;
-  const dateProblem = selectionProblem(dateSelection, estimateDateList, pairing ? { keepUnpaired: sar.keepUnpaired } : null, lang);
+  const estimateDateList = isGee ? estimateDates(estimate.data) : null;
+  const dateSelection = isGee ? activeSelection(dateSel, dateScope, estimateDateList) : null;
+  const dateProblem = ready ? selectionProblem(dateSelection, estimateDateList, pairing ? { keepUnpaired: sar.keepUnpaired } : null, lang) : '';
   const pickDates = (picked: string[]) => { if (estimateDateList) setDateSel({ scope: dateScope, all: estimateDateList.map((item) => item.date), picked }); };
   // Dates and blockers come from the estimate, so a GEE request cannot go on before the estimate for these inputs is in.
-  const estimatePending = method === 'gee' && step >= 1 && estimate.status !== 'ok';
-  const estimateWait = !estimatePending ? '' : estimate.status === 'loading' ? t('wizard.estimate.waiting') : estimate.status === 'error' ? t('wizard.estimate.waitFailed') : '';
-  const estimateHint = !collectionId ? t('wizard.catalog.required') : !datesOk ? t('wizard.gee.periodRequired') : resolved.error;
+  const estimateStep = isGee && (current === 'dates' || current === 'review') && datesOk;
+  const estimateWait = !estimateStep || ready ? '' : estimate.status === 'error' ? t('wizard.estimate.waitFailed') : estimate.status === 'loading' ? t('wizard.estimate.waiting') : t('wizard.estimate.notYet');
   const noun = method === 'shape' ? 'attribute' : 'band';
   const continuous = choices.filter((choice) => choice.kind === 'continuous');
-  const rgbPossible = (method === 'gee' || method === 'geotiff') && continuous.length >= 3;
+  const rgbPossible = (isGee || method === 'geotiff') && continuous.length >= 3;
   const variableErrors = validateChoices(choices, colorBars.data ?? [], lang);
   const editableProjects = (projects.data ?? []).filter(canEditProject);
   // CAS500 and Shapefile get sensor/mode defaults on the server; a generic GeoTIFF needs them from the user.
@@ -188,15 +232,20 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const sensorValue = sensor === 'custom' ? customSensor.trim() : sensor;
   const fileInputs = method === 'geotiff' || method === 'shape';
   const dateRequired = fileInputs && !(method === 'geotiff' && rasterKind === 'cas500') && !!inspection && !hasTimeInName(inspection.fileName, method!);
+  const suggestedName = isGee ? suggestName(area, gee.startDate, gee.endDate) : '';
+  const channels: Record<string, 'R' | 'G' | 'B'> = rgbOn && rgbPossible ? Object.fromEntries(RGB_CHANNELS.filter(([key]) => rgb[key]).map(([key, letter]) => [rgb[key], letter])) : {};
+
+  // The GEE name is filled in from the place and period until the user types their own (UR-54).
+  useEffect(() => { if (current === 'review' && !nameEdited && suggestedName) setName(suggestedName); }, [current, nameEdited, suggestedName]);
 
   const chooseMethod = (next: Method) => {
     if (next !== method) {
-      setInspection(null); setInspectFailure(null); setChoices([]); setCollectionId(''); setRgbOn(false); setName(''); setSar(defaultSar()); setPreset(false);
+      setInspection(null); setInspectFailure(null); setChoices([]); setCollectionId(''); setRgbOn(false); setName(''); setNameEdited(false); setSar(defaultSar()); setPreset(false);
     }
     setMethod(next);
   };
   const inspectFile = async (file: File) => {
-    if (!method || method === 'gee' || method === 'zarr') return;
+    if (!method || isGee || method === 'zarr') return;
     const type = method === 'shape' ? 'shapefile' : rasterKind;
     setInspecting(true); setInspectFailure(null); setInspection(null); setChoices([]);
     try {
@@ -217,12 +266,17 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   };
   const choosePreset = () => {
     const bars = colorBars.data ?? [];
-    setPreset(true); setCollectionId(S2_COLLECTION); setSar(presetSar()); setGee((current) => ({ ...current, ...PRESET_GEE }));
-    setChoices(WATER_BANDS.map((band) => ({ ...defaultChoice({ name: band.source }, bars), name: band.name, ...WATER_RANGE })));
+    const colorBar = bars.some((item) => item.id === PRESET_STYLE.colorBar) ? PRESET_STYLE.colorBar : undefined;
+    setPreset(true); setSarOpen(false); setDisplayOpen(false);
+    setCollectionId(S2_COLLECTION); setSar(presetSar()); setGee((value) => ({ ...value, ...PRESET_GEE }));
+    setChoices(WATER_BANDS.map((band) => {
+      const base = defaultChoice({ name: band.source }, bars);
+      return { ...base, name: band.name, min: PRESET_STYLE.min, max: PRESET_STYLE.max, colorBar: colorBar ?? base.colorBar, origin: 'preset' as const };
+    }));
     setRgbOn(true); setRgb({ red: 'B4', green: 'B3', blue: 'B2' });
   };
   const changeSar = (nextSar: SarState) => {
-    if (nextSar.enabled !== sar.enabled) setChoices((current) => renameForPairing(current, nextSar.enabled));
+    if (nextSar.enabled !== sar.enabled) setChoices((value) => renameForPairing(value, nextSar.enabled));
     if (!nextSar.enabled) setPreset(false);
     setSar(nextSar);
   };
@@ -234,46 +288,63 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
     if (rgbOn && named.filter((item) => item.kind === 'continuous').length < 3) setRgbOn(false);
   };
 
-  const stepValid = (index: number): string => {
-    if (index === 0) return method ? '' : t('wizard.method.required');
-    if (index === 1) {
-      if (method === 'gee') {
-        if (!collectionId) return t('wizard.catalog.required');
-        if (!gee.startDate || !gee.endDate) return t('wizard.gee.periodRequired');
-        if (gee.startDate > gee.endDate) return t('wizard.gee.periodOrder');
-        if (resolved.error) return resolved.error;
-        if (pairing && sarError(sar, lang)) return sarError(sar, lang);
-        if (estimatePending) return estimateWait || t('wizard.estimate.notYet');
-        if (blockers.length) return blockerText(blockers[0], lang);
-        if (dateProblem) return dateProblem;
-        return '';
-      }
-      if (method === 'zarr') return storageUri.trim() ? '' : t('wizard.zarr.required');
-      return inspection ? '' : t(inspecting ? 'wizard.file.busy' : 'wizard.file.required');
+  /** Settings checks shared by the file/Zarr "설정" step and the GEE review. */
+  const settingsProblem = (): Problem => {
+    const say = (field: string, key: TKey, vars?: Record<string, string | number>): Problem => ({ field, message: t(key, vars) });
+    if (!name.trim()) return say('name', 'wizard.settings.nameRequired');
+    if (!choices.length) return say('bands', noun === 'attribute' ? 'wizard.settings.pickAttributes' : 'wizard.settings.pickBands');
+    if (Object.keys(variableErrors).length) return say('style', 'wizard.settings.checkStyle');
+    if (pairing && choices.some((choice) => (FIXED_NAMES as readonly string[]).includes(choice.name.trim()))) return say('style', 'wizard.settings.fixedNames', { names: FIXED_NAMES.join('·') });
+    if (method === 'shape' && !(Number(resolution) > 0)) return say('resolution', 'wizard.settings.resolutionCheck');
+    if (genericRaster && !sensorValue) return say('sensor', 'wizard.settings.sensorRequired');
+    if (dateRequired && !obsDate) return say('obsDate', 'wizard.settings.obsDateMissing');
+    if (nodata !== '' && !Number.isFinite(Number(nodata))) return say('nodata', 'wizard.settings.nodataNumber');
+    if (rgbOn && rgbPossible && !(rgb.red && rgb.green && rgb.blue)) return say('rgb', 'wizard.rgb.required');
+    if (method !== 'zarr' && !colorBars.data?.length) return say('style', 'wizard.settings.colorBarsMissing');
+    return null;
+  };
+  /** What the user has to fix on a step before 다음 (field problems; waiting states are `blockReason`). */
+  const problemOf = (id: StepId): Problem => {
+    switch (id) {
+      case 'method': return method ? null : { field: 'method', message: t('wizard.method.required') };
+      case 'source':
+        if (method === 'zarr') return storageUri.trim() ? null : { field: 'zarr', message: t('wizard.zarr.required') };
+        return inspection ? null : { field: 'file', message: t(inspecting ? 'wizard.file.busy' : 'wizard.file.required') };
+      case 'data':
+        if (!collectionId) return { field: 'catalog', message: t('wizard.catalog.required') };
+        if (!preset && !choices.length) return { field: 'bands', message: t('wizard.settings.pickBands') };
+        if (pairing && sarError(sar, lang)) return { field: 'sar', message: sarError(sar, lang) };
+        return null;
+      case 'area': return resolved.error ? { field: 'area', message: resolved.error } : null;
+      case 'dates':
+        if (!gee.startDate || !gee.endDate) return { field: 'period', message: t('wizard.gee.periodRequired') };
+        if (gee.startDate > gee.endDate) return { field: 'period', message: t('wizard.gee.periodOrder') };
+        return null;
+      case 'settings': case 'review': return settingsProblem();
+      default: return null;
     }
-    if (index === 3) {
-      if (!name.trim()) return t('wizard.settings.nameRequired');
-      if (!choices.length) return t(noun === 'attribute' ? 'wizard.settings.pickAttributes' : 'wizard.settings.pickBands');
-      if (Object.keys(variableErrors).length) return t('wizard.settings.checkStyle');
-      if (pairing && choices.some((choice) => (FIXED_NAMES as readonly string[]).includes(choice.name.trim()))) return t('wizard.settings.fixedNames', { names: FIXED_NAMES.join('·') });
-      if (method === 'shape' && !(Number(resolution) > 0)) return t('wizard.settings.resolutionCheck');
-      if (genericRaster && !sensorValue) return t('wizard.settings.sensorRequired');
-      if (dateRequired && !obsDate) return t('wizard.settings.obsDateMissing');
-      if (nodata !== '' && !Number.isFinite(Number(nodata))) return t('wizard.settings.nodataNumber');
-      if (rgbOn && rgbPossible && !(rgb.red && rgb.green && rgb.blue)) return t('wizard.rgb.required');
-      if (method !== 'zarr' && !colorBars.data?.length) return t('wizard.settings.colorBarsMissing');
+  };
+  /** Why 다음 / 생성 시작 cannot be pressed now (shown next to it); '' when it can. */
+  const blockReason = (): string => {
+    if (current === 'source' && inspecting) return t('wizard.file.busy');
+    if (isGee && (current === 'dates' || current === 'review') && datesOk) {
+      if (estimateWait) return estimateWait;
+      // The blocker itself is spelled out in the estimate panel; the footer points to it.
+      if (blockers.length) return t('wizard.nav.blocked');
+      if (dateProblem) return dateProblem;
     }
     return '';
   };
+  const failStep = () => { setShowErrors(true); setFailedTries((value) => value + 1); };
   const next = () => {
-    const problem = stepValid(step);
-    if (problem) { setShowErrors(true); return; }
+    if (problemOf(current)) { failStep(); return; }
     setShowErrors(false);
-    setStep((value) => Math.min(STEPS.length - 1, value + 1));
+    setStep((value) => Math.min(steps.length - 1, value + 1));
   };
   const back = () => { setShowErrors(false); setStep((value) => Math.max(0, value - 1)); };
 
   const submit = async () => {
+    if (problemOf(current)) { failStep(); return; }
     setSubmitting(true); setSubmitFailure(null);
     const specs = toVariableSpecs(choices);
     const channel = (source: string) => {
@@ -282,7 +353,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
     };
     const rgbStyle = rgbOn && rgbPossible ? { red: channel(rgb.red), green: channel(rgb.green), blue: channel(rgb.blue) } : undefined;
     try {
-      if (method === 'gee') {
+      if (isGee) {
         setJob(await generation.createGeeJob({
           name: name.trim(), collectionId, bands: choices.map((item) => item.source), startDate: gee.startDate, endDate: gee.endDate,
           maxCloudPercent: Number(gee.maxCloudPercent), scaleMeters: Number(gee.scaleMeters),
@@ -315,48 +386,136 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
         }));
       }
     } catch (cause) {
-      setSubmitFailure({ cause, noFileJobs: cause instanceof ApiError && cause.status === 404 && method !== 'gee' && method !== 'zarr' });
+      setSubmitFailure({ cause, noFileJobs: cause instanceof ApiError && cause.status === 404 && !isGee && method !== 'zarr' });
     } finally {
       setSubmitting(false);
     }
   };
+  const retryJob = async () => {
+    if (!job) return;
+    registrationPolls.current = 0;
+    setJob(await generation.retryJob(String(job.id)));
+  };
 
-  if (done) return <Result job={job} registeredId={registeredId} name={name} projectLinked={!!projectId && method !== 'zarr'} onRestart={onRestart} />;
-  const problem = showErrors ? stepValid(step) : '';
+  if (done) return <Result job={job} registeredId={registeredId} name={name} projectLinked={!!projectId && method !== 'zarr'} onRestart={onRestart} onRetry={retryJob} />;
+  const problem = showErrors ? problemOf(current) : null;
+  const errorFor = (field: string) => (problem?.field === field ? problem.message : '');
+  const invalid = (field: string) => (problem?.field === field ? true : undefined);
+  const groupError = (field: string) => (errorFor(field) ? <p className="xc-field__error" id={`wizard-error-${field}`}>{errorFor(field)}</p> : null);
+  const reason = blockReason();
+  const stepLabel = (id: StepId) => t(`wizard.steps.${id}` as TKey);
+
+  // Name and project: the file/Zarr "설정" step and the GEE review share them.
+  const nameAndProject = (
+    <div className="form-grid">
+      <TextField
+        label={t('wizard.settings.name')} value={name} maxLength={150} placeholder={t('wizard.settings.namePlaceholder')}
+        onChange={(event) => { setName(event.target.value); setNameEdited(true); }}
+        help={isGee && !nameEdited && name && name === suggestedName ? t('wizard.settings.nameSuggested') : undefined}
+        error={errorFor('name') || (showErrors && !name.trim() ? t('wizard.settings.nameRequired') : undefined)}
+      />
+      <label className="xc-field">
+        <span className="xc-label">{t('wizard.settings.project')} <span className="xc-hint">{t('wizard.settings.optional')}</span></span>
+        <select className="xc-select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+          <option value="">{t('app.noProject')}</option>
+          {editableProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+        </select>
+      </label>
+    </div>
+  );
+  const variableEditor = (show: 'all' | 'style') => (
+    <div className="wizard-group" data-invalid={invalid('style') || invalid('bands')}>
+      {groupError('bands')}
+      {groupError('style')}
+      <VariableStyleEditor
+        fields={method === 'zarr' ? [] : fields}
+        value={choices}
+        onChange={changeChoices}
+        colorBars={colorBars.data ?? []}
+        noun={noun}
+        allowCustom={method === 'zarr'}
+        renamable={!isGee || pairing}
+        continuousOnly={isGee}
+        errors={showErrors ? variableErrors : {}}
+        show={show}
+        channels={channels}
+      />
+    </div>
+  );
+  const rgbSection = rgbPossible && (
+    <section className="wizard-rule rgb-box" data-invalid={invalid('rgb')}>
+      <label className="xc-check"><input type="checkbox" checked={rgbOn} onChange={(event) => setRgbOn(event.target.checked)} /><span><strong>{t('wizard.rgb.toggle')}</strong> <span className="xc-hint">{t('wizard.rgb.hint')}</span></span></label>
+      {rgbOn && (
+        <div className="form-grid">
+          {RGB_CHANNELS.map(([channel]) => (
+            <label className="xc-field" key={channel}>
+              <span className="xc-label">{t(`wizard.rgb.${channel}`)}</span>
+              <select className="xc-select" value={rgb[channel]} aria-invalid={invalid('rgb') && !rgb[channel] ? true : undefined} onChange={(event) => setRgb({ ...rgb, [channel]: event.target.value })}>
+                <option value="">{t('wizard.rgb.pick')}</option>
+                {continuous.map((choice) => <option key={choice.source} value={choice.source}>{choiceLabel(choice)}</option>)}
+              </select>
+            </label>
+          ))}
+        </div>
+      )}
+      {groupError('rgb')}
+    </section>
+  );
+  const rgbText = `R ${choiceLabel(choices.find((item) => item.source === rgb.red))} · G ${choiceLabel(choices.find((item) => item.source === rgb.green))} · B ${choiceLabel(choices.find((item) => item.source === rgb.blue))}`;
+  const variablesSummary = (
+    <ul className="summary-vars">
+      {choices.map((choice) => (
+        <li key={choice.source}>
+          <strong>{choice.name}</strong>
+          {choice.name !== choice.source && <span className="xc-hint"> ← {choice.source}</span>}
+          <span className="xc-hint"> · {choice.colorBar} · {choice.kind === 'continuous' ? t('wizard.summary.range', { min: choice.min, max: choice.max }) : t('wizard.summary.categorical')}</span>
+        </li>
+      ))}
+      {pairing && ['vv', 'vh', ...(sar.waterReference ? ['water_gt'] : [])].map((fixed) => (
+        <li key={fixed}><strong>{fixed}</strong><span className="xc-hint"> · {t(fixed === 'water_gt' ? 'wizard.summary.waterRef' : 'wizard.summary.radar')}</span></li>
+      ))}
+    </ul>
+  );
+  const displayShown = !preset || displayOpen || !!(showErrors && problem && ['style', 'rgb', 'bands'].includes(problem.field));
+  const filteredCollections = (collections.data ?? []).filter((item) => [item.id, item.name, item.title].some((text) => text?.toLowerCase().includes(catalogQuery.trim().toLowerCase())));
+  const presetAvailable = (collections.data ?? []).some((item) => item.id === S2_COLLECTION);
 
   return (
     <div className="page-stack wizard">
       <PageHeader back={<Link className="page-back" to="/app/data"><ArrowLeft size={16} aria-hidden />{t('wizard.back')}</Link>} title={t('wizard.title')} description={t('wizard.description')} />
       <ol className="wizard-steps" aria-label={t('wizard.steps.label')}>
-        {STEPS.map((id, index) => (
+        {steps.map((id, index) => (
           <li key={id} className={index === step ? 'is-current' : index < step ? 'is-done' : ''} aria-current={index === step ? 'step' : undefined}>
             <span className="wizard-steps__dot">{index < step ? <Check size={14} aria-hidden /> : index + 1}</span>
-            <span className="wizard-steps__label">{t(`wizard.steps.${id}`)}</span>
+            <span className="wizard-steps__label">{stepLabel(id)}</span>
           </li>
         ))}
       </ol>
 
       <Card className="wizard-card">
-        <div className="wizard-body">
-          <h2 className="wizard-title" ref={headingRef} tabIndex={-1}>{t(`wizard.steps.${STEPS[step]}`)}</h2>
+        <div className="wizard-body" ref={bodyRef}>
+          <h2 className="wizard-title" ref={headingRef} tabIndex={-1}>{stepLabel(current)}</h2>
 
-          {step === 0 && (
-            <RadioGroup className="method-grid" label={t('wizard.method.label')}>
-              {METHODS.map((item) => (
-                <button key={item.id} type="button" role="radio" aria-checked={method === item.id} className={`method-card ${method === item.id ? 'is-on' : ''}`} onClick={() => chooseMethod(item.id)}>
-                  <span className="method-card__icon" aria-hidden>{item.icon}</span>
-                  <span className="method-card__text">
-                    <span className="method-card__title">{methodTitle(item, t)} <Badge tone={item.register ? 'neutral' : 'primary'}>{t(item.register ? 'wizard.method.groupRegister' : 'wizard.method.groupCreate')}</Badge></span>
-                    <span>{t(`wizard.method.${item.id}Text` as TKey)}</span>
-                    <small>{t(`wizard.method.${item.id}Hint` as TKey)}</small>
-                  </span>
-                  <span className="method-card__check" aria-hidden>{method === item.id && <Check size={12} strokeWidth={3} />}</span>
-                </button>
-              ))}
-            </RadioGroup>
+          {current === 'method' && (
+            <div className="wizard-group" data-invalid={invalid('method')}>
+              <RadioGroup className="method-grid" label={t('wizard.method.label')}>
+                {METHODS.map((item) => (
+                  <button key={item.id} type="button" role="radio" aria-checked={method === item.id} className={`method-card ${method === item.id ? 'is-on' : ''}`} onClick={() => chooseMethod(item.id)}>
+                    <span className="method-card__icon" aria-hidden>{item.icon}</span>
+                    <span className="method-card__text">
+                      <span className="method-card__title">{methodTitle(item, t)} <Badge tone={item.register ? 'neutral' : 'primary'}>{t(item.register ? 'wizard.method.groupRegister' : 'wizard.method.groupCreate')}</Badge></span>
+                      <span>{t(`wizard.method.${item.id}Text` as TKey)}</span>
+                      <small>{t(`wizard.method.${item.id}Hint` as TKey)}</small>
+                    </span>
+                    <span className="method-card__check" aria-hidden>{method === item.id && <Check size={12} strokeWidth={3} />}</span>
+                  </button>
+                ))}
+              </RadioGroup>
+              {groupError('method')}
+            </div>
           )}
 
-          {step === 1 && (method === 'geotiff' || method === 'shape') && (
+          {current === 'source' && fileInputs && (
             <div className="wizard-section">
               {method === 'geotiff' && (
                 <div className="xc-field">
@@ -367,90 +526,124 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
                   </div>
                 </div>
               )}
-              <FileDrop
-                accept={method === 'shape' || rasterKind === 'cas500' ? '.zip,application/zip' : '.tif,.tiff,image/tiff'}
-                title={t(method === 'shape' ? 'wizard.file.dropShape' : rasterKind === 'cas500' ? 'wizard.file.dropCas500' : 'wizard.file.dropGeotiff')}
-                hint={t(method === 'shape' ? 'wizard.file.hintShape' : rasterKind === 'cas500' ? 'wizard.file.hintCas500' : 'wizard.file.hintGeotiff')}
-                busy={inspecting}
-                fileName={inspection?.fileName}
-                onFile={inspectFile}
-              />
+              <div className="wizard-group" data-invalid={invalid('file')}>
+                <FileDrop
+                  accept={method === 'shape' || rasterKind === 'cas500' ? '.zip,application/zip' : '.tif,.tiff,image/tiff'}
+                  title={t(method === 'shape' ? 'wizard.file.dropShape' : rasterKind === 'cas500' ? 'wizard.file.dropCas500' : 'wizard.file.dropGeotiff')}
+                  hint={t(method === 'shape' ? 'wizard.file.hintShape' : rasterKind === 'cas500' ? 'wizard.file.hintCas500' : 'wizard.file.hintGeotiff')}
+                  busy={inspecting}
+                  fileName={inspection?.fileName}
+                  onFile={inspectFile}
+                />
+                {groupError('file')}
+              </div>
               {inspectError && <Alert tone="danger">{t('wizard.file.inspectFailed', { error: inspectError })}</Alert>}
               {inspection && <Alert tone="success">{serverText({ code: inspection.messageCode, params: inspection.messageParams, message: inspection.message }, lang)}</Alert>}
             </div>
           )}
 
-          {step === 1 && method === 'gee' && (
+          {current === 'source' && method === 'zarr' && (
             <div className="wizard-section">
-              <div className="catalog">
-                <p className="xc-hint">{t('wizard.catalog.hint')}</p>
-                <label className="toolbar__search" style={{ maxWidth: 'none' }}>
-                  <Search size={16} aria-hidden />
-                  <input type="search" value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder={t('wizard.catalog.searchPlaceholder')} aria-label={t('wizard.catalog.searchLabel')} />
-                </label>
-                {collections.loading ? <Skeleton lines={3} label={t('wizard.catalog.loading')} /> : collections.error ? (
-                  <Alert tone="danger">{t('wizard.catalog.failed', { error: collections.error })}</Alert>
-                ) : (
-                  <RadioGroup className="catalog__list" label={t('wizard.catalog.label')}>
-                    {(collections.data ?? []).some((item) => item.id === S2_COLLECTION) && [t('wizard.catalog.presetTitle'), t('wizard.catalog.presetText'), t('wizard.catalog.presetKeywords')].some((text) => text.toLowerCase().includes(catalogQuery.trim().toLowerCase())) && (
-                      <>
-                        <button type="button" role="radio" aria-checked={preset} className={`catalog__item ${preset ? 'is-on' : ''}`} onClick={choosePreset}>
-                          <span className="xc-cell-main"><strong>{t('wizard.catalog.presetTitle')}</strong><small>{t('wizard.catalog.presetText')}</small></span>
-                          <Badge><Droplets size={12} aria-hidden /> {t('wizard.catalog.preset')}</Badge>
-                        </button>
-                        <p className="catalog__group" aria-hidden>{t('wizard.catalog.group')}</p>
-                      </>
-                    )}
-                    {(collections.data ?? []).filter((item) => [item.id, item.name, item.title].some((text) => text?.toLowerCase().includes(catalogQuery.trim().toLowerCase()))).map((item) => (
-                      <button key={item.id} type="button" role="radio" aria-checked={!preset && collectionId === item.id} className={`catalog__item ${!preset && collectionId === item.id ? 'is-on' : ''}`} onClick={() => chooseCollection(item.id)}>
-                        <span className="xc-cell-main"><strong>{item.title || item.name || item.id}</strong><small>{item.id}</small></span>
-                        <Badge>{t('wizard.catalog.bandCount', { count: item.bands.length })}</Badge>
+              <TextField label={t('wizard.zarr.uri')} placeholder={t('wizard.zarr.placeholder')} value={storageUri} onChange={(event) => setStorageUri(event.target.value)} help={t('wizard.zarr.help')} error={errorFor('zarr') || undefined} />
+            </div>
+          )}
+
+          {current === 'data' && (
+            <div className="wizard-section">
+              {collections.loading ? <Skeleton lines={3} label={t('wizard.catalog.loading')} /> : collections.error ? (
+                <Alert tone="danger">{t('wizard.catalog.failed', { error: collections.error })}</Alert>
+              ) : (
+                <div className="wizard-group catalog" data-invalid={invalid('catalog')}>
+                  {presetAvailable && (
+                    <RadioGroup className="catalog__preset" label={t('wizard.catalog.presetGroup')}>
+                      <button type="button" role="radio" aria-checked={preset} className={`catalog__item catalog__item--preset ${preset ? 'is-on' : ''}`} onClick={choosePreset}>
+                        <span className="xc-cell-main">
+                          <strong>{t('wizard.catalog.presetTitle')}</strong>
+                          <small>{t('wizard.catalog.presetText')}</small>
+                          <small className="tabular">{t('wizard.catalog.presetFixed', { bands: WATER_BANDS.length, cloud: PRESET_GEE.maxCloudPercent, scale: PRESET_GEE.scaleMeters })}</small>
+                        </span>
+                        <Badge><Droplets size={12} aria-hidden /> {t('wizard.catalog.preset')}</Badge>
                       </button>
-                    ))}
-                  </RadioGroup>
-                )}
-              </div>
-              {isS2(collectionId) && <SarOptions sar={sar} onChange={changeSar} showErrors={showErrors} />}
-              <div className="form-grid">
-                <TextField label={t('wizard.gee.startDate')} type="date" value={gee.startDate} onChange={(event) => setGee({ ...gee, startDate: event.target.value })} />
-                <TextField label={t('wizard.gee.endDate')} type="date" value={gee.endDate} onChange={(event) => setGee({ ...gee, endDate: event.target.value })} />
-                <TextField label={t('wizard.gee.maxCloud')} type="number" min={0} max={100} value={gee.maxCloudPercent} onChange={(event) => setGee({ ...gee, maxCloudPercent: event.target.value })} />
-                <TextField label={t('wizard.gee.pixelSize')} type="number" min={10} max={10000} value={gee.scaleMeters} onChange={(event) => setGee({ ...gee, scaleMeters: event.target.value })} />
-              </div>
-              <AreaStep area={area} onChange={setArea} resolved={resolved} estimate={estimate} estimateHint={estimateHint} showErrors={showErrors} pairing={pairing ? { keepUnpaired: sar.keepUnpaired } : undefined} dates={dateSelection ? { picked: dateSelection.picked, onChange: pickDates } : undefined} />
+                    </RadioGroup>
+                  )}
+                  <div className="catalog__custom">
+                    <h3 className="wizard-rule__title" id="catalog-custom">{t('wizard.catalog.custom')}</h3>
+                    <p className="xc-hint">{t('wizard.catalog.hint')}</p>
+                    <label className="toolbar__search catalog__search">
+                      <Search size={16} aria-hidden />
+                      <input type="search" value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder={t('wizard.catalog.searchPlaceholder')} aria-label={t('wizard.catalog.searchLabel')} />
+                    </label>
+                    <RadioGroup className="catalog__list" label={t('wizard.catalog.label')}>
+                      {filteredCollections.map((item) => (
+                        <button key={item.id} type="button" role="radio" aria-checked={!preset && collectionId === item.id} className={`catalog__item ${!preset && collectionId === item.id ? 'is-on' : ''}`} onClick={() => chooseCollection(item.id)}>
+                          <span className="xc-cell-main"><strong>{item.title || item.name || item.id}</strong><small>{item.id}</small></span>
+                          <Badge>{t('wizard.catalog.bandCount', { count: item.bands.length })}</Badge>
+                        </button>
+                      ))}
+                    </RadioGroup>
+                  </div>
+                  {groupError('catalog')}
+                </div>
+              )}
+              {isS2(collectionId) && (preset && !sarOpen ? (
+                <section className="wizard-rule" aria-labelledby="sar-summary-title">
+                  <div className="wizard-rule__head">
+                    <h3 className="wizard-rule__title" id="sar-summary-title">{t('wizard.sar.title')}</h3>
+                    <Button variant="line" size="sm" aria-expanded={false} aria-label={t('wizard.changeNamed', { what: t('wizard.sar.title') })} onClick={() => setSarOpen(true)}>{t('wizard.change')}</Button>
+                  </div>
+                  <p className="wizard-rule__text">{sarSummary(sar, t, lang)}</p>
+                </section>
+              ) : (
+                <div className="wizard-group" data-invalid={invalid('sar')}>
+                  <SarOptions sar={sar} onChange={changeSar} showErrors={showErrors} />
+                </div>
+              ))}
+              {collectionId && !preset && (
+                <section className="wizard-rule" data-invalid={invalid('bands')}>
+                  <VariableStyleEditor fields={fields} value={choices} onChange={changeChoices} colorBars={colorBars.data ?? []} noun="band" renamable={pairing} continuousOnly show="pick" />
+                  {groupError('bands')}
+                </section>
+              )}
             </div>
           )}
 
-          {step === 1 && method === 'zarr' && (
+          {current === 'area' && <AreaStep area={area} onChange={setArea} resolved={resolved} showErrors={showErrors} />}
+
+          {current === 'dates' && (
             <div className="wizard-section">
-              <TextField label={t('wizard.zarr.uri')} placeholder={t('wizard.zarr.placeholder')} value={storageUri} onChange={(event) => setStorageUri(event.target.value)} help={t('wizard.zarr.help')} />
+              <div className="form-grid wizard-period">
+                <TextField label={t('wizard.gee.startDate')} type="date" value={gee.startDate} onChange={(event) => setGee({ ...gee, startDate: event.target.value })} error={errorFor('period') && (!gee.startDate || (!!gee.endDate && gee.startDate > gee.endDate)) ? errorFor('period') : undefined} />
+                <TextField label={t('wizard.gee.endDate')} type="date" value={gee.endDate} onChange={(event) => setGee({ ...gee, endDate: event.target.value })} error={errorFor('period') && !gee.endDate && !!gee.startDate ? errorFor('period') : undefined} />
+              </div>
+              <details className="wizard-more">
+                <summary>{t('wizard.gee.advanced')} <span className="xc-hint tabular">· {t('wizard.gee.advancedValue', { cloud: gee.maxCloudPercent, scale: gee.scaleMeters })}</span></summary>
+                <div className="form-grid">
+                  <TextField label={t('wizard.gee.maxCloud')} type="number" min={0} max={100} value={gee.maxCloudPercent} onChange={(event) => setGee({ ...gee, maxCloudPercent: event.target.value })} help={preset && gee.maxCloudPercent === PRESET_GEE.maxCloudPercent ? t('wizard.gee.presetValue') : undefined} />
+                  <TextField label={t('wizard.gee.pixelSize')} type="number" min={10} max={10000} value={gee.scaleMeters} onChange={(event) => setGee({ ...gee, scaleMeters: event.target.value })} help={preset && gee.scaleMeters === PRESET_GEE.scaleMeters ? t('wizard.gee.presetValue') : undefined} />
+                </div>
+              </details>
+              <EstimatePanel estimate={estimate} hint={!datesOk ? t('wizard.gee.periodRequired') : undefined} pairing={pairing ? { keepUnpaired: sar.keepUnpaired } : undefined} picked={dateSelection?.picked} />
+              {estimate.data && dateSelection && estimateDates(estimate.data) && (
+                <DateTable data={estimate.data} picked={dateSelection.picked} onChange={pickDates} pairing={pairing ? { keepUnpaired: sar.keepUnpaired } : undefined} stale={estimate.stale} />
+              )}
             </div>
           )}
 
-          {step === 2 && <InspectionSummary method={method!} rasterKind={rasterKind} inspection={inspection} collection={collection} gee={gee} resolved={resolved} storageUri={storageUri} fields={fields} sarText={pairing ? sarSummary(sar, t, lang) : ''} />}
-
-          {step === 3 && (
+          {current === 'settings' && (
             <div className="wizard-section">
+              {nameAndProject}
               <div className="form-grid">
-                <TextField label={t('wizard.settings.name')} value={name} maxLength={150} placeholder={t('wizard.settings.namePlaceholder')} onChange={(event) => setName(event.target.value)} error={showErrors && !name.trim() ? t('wizard.settings.nameRequired') : undefined} />
-                <label className="xc-field">
-                  <span className="xc-label">{t('wizard.settings.project')} <span className="xc-hint">{t('wizard.settings.optional')}</span></span>
-                  <select className="xc-select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                    <option value="">{t('app.noProject')}</option>
-                    {editableProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-                  </select>
-                </label>
-                {method === 'shape' && <TextField label={t('wizard.settings.resolution')} type="number" step="0.000001" min={0.000001} value={resolution} onChange={(event) => setResolution(event.target.value)} help={t('wizard.settings.resolutionHelp')} />}
+                {method === 'shape' && <TextField label={t('wizard.settings.resolution')} type="number" step="0.000001" min={0.000001} value={resolution} onChange={(event) => setResolution(event.target.value)} help={t('wizard.settings.resolutionHelp')} error={errorFor('resolution') || undefined} />}
                 {genericRaster && (
-                  <label className="xc-field">
-                    <span className="xc-label">{t('wizard.settings.sensor')}</span>
-                    <select className="xc-select" aria-label={t('wizard.settings.sensor')} value={sensor} onChange={(event) => setSensor(event.target.value)} aria-invalid={showErrors && !sensorValue ? true : undefined}>
+                  <div className="xc-field">
+                    <label className="xc-label" htmlFor="wizard-sensor">{t('wizard.settings.sensor')}</label>
+                    <select id="wizard-sensor" className="xc-select" value={sensor} onChange={(event) => setSensor(event.target.value)} aria-invalid={invalid('sensor')} aria-describedby={errorFor('sensor') ? 'wizard-error-sensor' : 'wizard-sensor-hint'}>
                       <option value="">{t('wizard.settings.choose')}</option>
                       {SENSORS.map((item) => <option key={item.id} value={item.id}>{sensorLabel(item, t)}</option>)}
                       <option value="custom">{t('wizard.settings.sensorOther')}</option>
                     </select>
-                    <span className="xc-hint">{t('wizard.settings.sensorHint')}</span>
-                  </label>
+                    {errorFor('sensor') ? groupError('sensor') : <span className="xc-hint" id="wizard-sensor-hint">{t('wizard.settings.sensorHint')}</span>}
+                  </div>
                 )}
                 {genericRaster && sensor === 'custom' && <TextField label={t('wizard.settings.sensorName')} placeholder={t('wizard.settings.sensorNamePlaceholder')} value={customSensor} maxLength={64} onChange={(event) => setCustomSensor(event.target.value.toUpperCase())} error={showErrors && !customSensor.trim() ? t('wizard.settings.sensorNameRequired') : undefined} />}
                 {fileInputs && !(method === 'geotiff' && rasterKind === 'cas500') && (
@@ -460,110 +653,114 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
                     value={obsDate}
                     onChange={(event) => setObsDate(event.target.value)}
                     help={dateRequired ? t('wizard.settings.obsDateNeeded', { pattern: method === 'shape' ? 'YYYYMM' : 'YYYYMMDDHHMMSS' }) : t('wizard.settings.obsDateHelp')}
-                    error={showErrors && dateRequired && !obsDate ? t('wizard.settings.obsDateRequired') : undefined}
+                    error={errorFor('obsDate') || (showErrors && dateRequired && !obsDate ? t('wizard.settings.obsDateRequired') : undefined)}
                   />
                 )}
-                {fileInputs && <TextField label={t('wizard.settings.nodata')} type="number" step="any" value={nodata} onChange={(event) => setNodata(event.target.value)} help={t('wizard.settings.nodataHelp')} />}
+                {fileInputs && <TextField label={t('wizard.settings.nodata')} type="number" step="any" value={nodata} onChange={(event) => setNodata(event.target.value)} help={t('wizard.settings.nodataHelp')} error={errorFor('nodata') || undefined} />}
               </div>
               {colorBars.error && method !== 'zarr' && <Alert tone="danger">{t('wizard.settings.colorBarsFailed', { error: colorBars.error })}</Alert>}
-              <VariableStyleEditor
-                fields={method === 'zarr' ? [] : fields}
-                value={choices}
-                onChange={changeChoices}
-                colorBars={colorBars.data ?? []}
-                noun={noun}
-                allowCustom={method === 'zarr'}
-                renamable={method !== 'gee' || pairing}
-                continuousOnly={method === 'gee'}
-                errors={showErrors ? variableErrors : {}}
-              />
-              {pairing && <FixedVariables waterReference={sar.waterReference} />}
-              {rgbPossible && (
-                <div className="rgb-box">
-                  <label className="xc-check"><input type="checkbox" checked={rgbOn} onChange={(event) => setRgbOn(event.target.checked)} /><span><strong>{t('wizard.rgb.toggle')}</strong> <span className="xc-hint">{t('wizard.rgb.hint')}</span></span></label>
-                  {rgbOn && (
-                    <div className="form-grid">
-                      {(['red', 'green', 'blue'] as const).map((channel) => (
-                        <label className="xc-field" key={channel}>
-                          <span className="xc-label">{t(`wizard.rgb.${channel}`)}</span>
-                          <select className="xc-select" value={rgb[channel]} onChange={(event) => setRgb({ ...rgb, [channel]: event.target.value })}>
-                            <option value="">{t('wizard.rgb.pick')}</option>
-                            {continuous.map((choice) => <option key={choice.source} value={choice.source}>{choice.source}</option>)}
-                          </select>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+              {variableEditor('all')}
+              {rgbSection}
             </div>
           )}
 
-          {step === 4 && (
+          {current === 'review' && (
+            <div className="wizard-section">
+              {nameAndProject}
+              <section className="wizard-rule" aria-labelledby="display-title">
+                <div className="wizard-rule__head">
+                  <h3 className="wizard-rule__title" id="display-title">{t('wizard.display.title')}</h3>
+                  {preset && (
+                    <Button variant="line" size="sm" aria-expanded={displayShown} aria-controls="display-body" aria-label={displayShown ? undefined : t('wizard.changeNamed', { what: t('wizard.display.what') })} onClick={() => setDisplayOpen(!displayShown)}>
+                      {t(displayShown ? 'wizard.fold' : 'wizard.change')}
+                    </Button>
+                  )}
+                </div>
+                {preset && !displayShown ? (
+                  <div id="display-body">
+                    <p className="wizard-rule__text">{t('wizard.display.presetSummary', { bands: choices.length, reference: sar.waterReference ? 1 : 0 })}</p>
+                    <p className="xc-hint">{t('wizard.display.presetHint')}</p>
+                  </div>
+                ) : (
+                  <div id="display-body" className="wizard-section">
+                    {colorBars.error && <Alert tone="danger">{t('wizard.settings.colorBarsFailed', { error: colorBars.error })}</Alert>}
+                    {variableEditor(preset ? 'all' : 'style')}
+                    {pairing && <FixedVariables waterReference={sar.waterReference} />}
+                    {rgbSection}
+                  </div>
+                )}
+              </section>
+              <div className="review-grid">
+                <div className="review-grid__map">
+                  <AreaMap readOnly bbox={resolved.bbox} geojson={area.tab === 'admin' || area.tab === 'shape' ? resolved.geojson : undefined} center={areaCenter(area, resolved)} pick={null} />
+                </div>
+                <dl className="meta-list summary-list">
+                  <dt>{t('wizard.summary.collection')}</dt>
+                  <dd>{preset ? t('wizard.catalog.presetTitle') : collection?.title || collection?.name || collectionId}{!preset && collection && <><br /><span className="xc-hint">{collection.id}</span></>}</dd>
+                  <dt>{t('wizard.inspect.period')}</dt><dd className="tabular">{t('wizard.summary.period', { start: gee.startDate, end: gee.endDate })}</dd>
+                  {dateSelection && (
+                    <>
+                      <dt>{t('wizard.summary.dates')}</dt>
+                      <dd>
+                        <span className="tabular">{t('wizard.summary.datesValue', { picked: dateSelection.picked.length, count: dateSelection.all.length })}</span>
+                        {dateSelection.picked.length > 0 && (
+                          <details className="summary-dates">
+                            <summary>{t('wizard.summary.showDates')}</summary>
+                            <ul aria-label={t('wizard.summary.pickedDates')}>{[...dateSelection.picked].sort().map((date) => <li key={date} className="tabular">{date}</li>)}</ul>
+                          </details>
+                        )}
+                      </dd>
+                    </>
+                  )}
+                  <dt>{t('wizard.summary.area')}</dt><dd>{resolved.modeLabel} · {resolved.label}</dd>
+                  <dt>{t('wizard.summary.clip')}</dt><dd data-testid="summary-clip">{resolved.clipLabel}{resolved.request?.maskVariable ? ` · ${t('wizard.summary.maskSaved')}` : ''}</dd>
+                  <dt>{t('wizard.summary.pixel')}</dt><dd className="tabular">{t('wizard.gee.advancedValue', { cloud: gee.maxCloudPercent, scale: gee.scaleMeters })}</dd>
+                  {pairing && <><dt>{t('wizard.summary.radarPair')}</dt><dd>{sarSummary(sar, t, lang)}</dd></>}
+                  <dt>{t('wizard.summary.variables')}</dt><dd>{variablesSummary}</dd>
+                  {rgbOn && rgbPossible && <><dt>RGB</dt><dd>{rgbText}</dd></>}
+                </dl>
+              </div>
+              <EstimatePanel estimate={estimate} compact pairing={pairing ? { keepUnpaired: sar.keepUnpaired } : undefined} picked={dateSelection?.picked} />
+              {submitError && <Alert tone="danger">{submitError}</Alert>}
+            </div>
+          )}
+
+          {current === 'inspection' && <InspectionSummary method={method!} rasterKind={rasterKind} inspection={inspection} fields={fields} />}
+
+          {current === 'confirm' && (
             <div className="wizard-section">
               <dl className="meta-list summary-list">
                 <dt>{t('wizard.summary.method')}</dt><dd>{methodTitle(METHODS.find((item) => item.id === method)!, t)}{method === 'geotiff' ? ` · ${rasterKind === 'cas500' ? 'CAS500' : t('wizard.file.geotiff')}` : ''}</dd>
-                <dt>{t('wizard.summary.source')}</dt><dd>{method === 'gee' ? `${collection?.title || collection?.name || collectionId} · ${t('wizard.summary.period', { start: gee.startDate, end: gee.endDate })}` : method === 'zarr' ? storageUri : inspection?.fileName}</dd>
-                {pairing && <><dt>{t('wizard.summary.radarPair')}</dt><dd>{sarSummary(sar, t, lang)}</dd></>}
-                {method === 'gee' && dateSelection && (
-                  <>
-                    <dt>{t('wizard.summary.dates')}</dt>
-                    <dd>
-                      <span className="tabular">{t('wizard.summary.datesValue', { picked: dateSelection.picked.length, count: dateSelection.all.length })}</span>
-                      {dateSelection.picked.length > 0 && (
-                        <details className="summary-dates">
-                          <summary>{t('wizard.summary.showDates')}</summary>
-                          <ul aria-label={t('wizard.summary.pickedDates')}>{[...dateSelection.picked].sort().map((date) => <li key={date} className="tabular">{date}</li>)}</ul>
-                        </details>
-                      )}
-                    </dd>
-                  </>
-                )}
-                {method === 'gee' && <><dt>{t('wizard.summary.area')}</dt><dd>{resolved.modeLabel} · {resolved.label}<br /><span className="xc-hint">{resolved.clipLabel}{resolved.request?.maskVariable ? ` · ${t('wizard.summary.maskSaved')}` : ''}</span></dd></>}
+                <dt>{t('wizard.summary.source')}</dt><dd>{method === 'zarr' ? storageUri : inspection?.fileName}</dd>
                 <dt>{t('wizard.summary.name')}</dt><dd>{name}</dd>
                 <dt>{t('wizard.summary.project')}</dt><dd>{editableProjects.find((item) => item.id === projectId)?.name ?? t('app.noProject')}</dd>
-                <dt>{t('wizard.summary.variables')}</dt>
-                <dd>
-                  <ul className="summary-vars">
-                    {choices.map((choice) => (
-                      <li key={choice.source}>
-                        <strong>{choice.name}</strong>
-                        {choice.name !== choice.source && <span className="xc-hint"> ← {choice.source}</span>}
-                        <span className="xc-hint"> · {choice.colorBar} · {choice.kind === 'continuous' ? t('wizard.summary.range', { min: choice.min, max: choice.max }) : t('wizard.summary.categorical')}</span>
-                      </li>
-                    ))}
-                    {pairing && ['vv', 'vh', ...(sar.waterReference ? ['water_gt'] : [])].map((fixed) => (
-                      <li key={fixed}><strong>{fixed}</strong><span className="xc-hint"> · {t(fixed === 'water_gt' ? 'wizard.summary.waterRef' : 'wizard.summary.radar')}</span></li>
-                    ))}
-                  </ul>
-                </dd>
-                {rgbOn && rgbPossible && <><dt>RGB</dt><dd>R {rgb.red} · G {rgb.green} · B {rgb.blue}</dd></>}
+                <dt>{t('wizard.summary.variables')}</dt><dd>{variablesSummary}</dd>
+                {rgbOn && rgbPossible && <><dt>RGB</dt><dd>{rgbText}</dd></>}
                 {method === 'shape' && <><dt>{t('wizard.summary.resolution')}</dt><dd>{resolution}°</dd></>}
                 {genericRaster && <><dt>{t('wizard.summary.sensor')}</dt><dd>{(() => { const known = SENSORS.find((item) => item.id === sensorValue); return known ? sensorLabel(known, t) : sensorValue; })()}</dd></>}
                 {obsDate && <><dt>{t('wizard.summary.obsDate')}</dt><dd>{obsDate}</dd></>}
                 {nodata !== '' && <><dt>nodata</dt><dd>{nodata}</dd></>}
               </dl>
-              {method === 'gee' && <EstimatePanel estimate={estimate} compact pairing={pairing ? { keepUnpaired: sar.keepUnpaired } : undefined} picked={dateSelection?.picked} />}
-              {method === 'gee' && dateProblem && <Alert tone="warning" role="alert">{dateProblem}</Alert>}
+              {method === 'zarr' && <Alert>{withStrong(t, 'wizard.inspect.zarrNote', 'path', storageUri)}</Alert>}
               {submitError && <Alert tone="danger">{submitError}</Alert>}
             </div>
           )}
-
-          {problem && <Alert tone="warning">{problem}</Alert>}
         </div>
+        {/* Sticky on every step: the next action never scrolls out of reach; a disabled one says why. */}
         <div className="wizard-foot">
           <Button variant="secondary" onClick={back} disabled={step === 0 || submitting}><ArrowLeft size={16} aria-hidden />{t('wizard.nav.prev')}</Button>
-          <span className="xc-hint">{step + 1} / {STEPS.length}</span>
-          {estimateWait && (step === 1 || step === STEPS.length - 1) && (
-            <span className="xc-hint wizard-foot__wait" role="status" id="estimate-wait">
-              {estimate.status === 'loading' && <Loader2 size={14} className="spin" aria-hidden />}{estimateWait}
-              {estimate.retry && <Button variant="line" size="sm" onClick={estimate.retry}>{t('wizard.estimate.recalculate')}</Button>}
+          <span className="xc-hint wizard-foot__count">{step + 1} / {steps.length}</span>
+          {reason && (
+            <span className="xc-hint wizard-foot__wait" role="status" id="wizard-next-reason">
+              {(estimate.status === 'loading' && !!estimateWait) || (current === 'source' && inspecting) ? <Loader2 size={14} className="spin" aria-hidden /> : null}
+              <span className="sr-only">{t('wizard.nav.reasonLabel')}: </span>{reason}
+              {estimateWait && estimate.retry && <Button variant="line" size="sm" onClick={estimate.retry}>{t('wizard.estimate.recalculate')}</Button>}
             </span>
           )}
-          {step < STEPS.length - 1 ? (
-            <Button onClick={next} disabled={inspecting || (step === 1 && !!estimateWait) || (step === 1 && (blockers.length > 0 || !!dateProblem))} aria-describedby={estimateWait ? 'estimate-wait' : undefined}>{t('wizard.nav.next')}<ArrowRight size={16} aria-hidden /></Button>
+          {!last ? (
+            <Button onClick={next} disabled={!!reason} aria-describedby={reason ? 'wizard-next-reason' : undefined}>{t('wizard.nav.next')}<ArrowRight size={16} aria-hidden /></Button>
           ) : (
-            <Button onClick={submit} disabled={submitting || estimatePending || blockers.length > 0 || !!dateProblem} aria-describedby={estimateWait ? 'estimate-wait' : undefined}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />{t('wizard.nav.submitting')}</> : t(method === 'zarr' ? 'wizard.nav.register' : 'wizard.nav.create')}</Button>
+            <Button onClick={submit} disabled={submitting || !!reason} aria-describedby={reason ? 'wizard-next-reason' : undefined}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />{t('wizard.nav.submitting')}</> : t(method === 'zarr' ? 'wizard.nav.register' : 'wizard.nav.create')}</Button>
           )}
         </div>
       </Card>
@@ -588,37 +785,16 @@ function FileDrop({ accept, title, hint, busy, fileName, onFile }: { accept: str
   );
 }
 
-function InspectionSummary({ method, rasterKind, inspection, collection, gee, resolved, storageUri, fields, sarText }: { method: Method; rasterKind: RasterKind; inspection: SpatialInspection | null; collection?: GeeCollection; gee: GeeParams; resolved: ResolvedArea; storageUri: string; fields: InspectionField[]; sarText: string }) {
+/** "자동 검사 결과" of a GeoTIFF/CAS500 or Shapefile upload (GEE and Zarr have no inspection step). */
+function InspectionSummary({ method, rasterKind, inspection, fields }: { method: Method; rasterKind: RasterKind; inspection: SpatialInspection | null; fields: InspectionField[] }) {
   const { lang, t } = useLanguage();
-  if (method === 'zarr') {
-    return <div className="wizard-section"><Alert>{withStrong(t, 'wizard.inspect.zarrNote', 'path', storageUri)}</Alert></div>;
-  }
-  if (method === 'gee') {
-    return (
-      <div className="wizard-section">
-        <div className="inspect-grid">
-          {resolved.bbox && <BBoxMap bbox={resolved.bbox} />}
-          <dl className="meta-list">
-            <dt>{t('wizard.inspect.collection')}</dt><dd>{collection?.title || collection?.name}<br /><span className="xc-hint">{collection?.id}</span></dd>
-            <dt>{t('wizard.inspect.period')}</dt><dd className="tabular">{t('wizard.summary.period', { start: gee.startDate, end: gee.endDate })}</dd>
-            <dt>{t('wizard.inspect.area')}</dt><dd>{resolved.modeLabel} · {resolved.label}<br /><span className="xc-hint">{resolved.clipLabel}</span></dd>
-            <dt>{t('wizard.inspect.pixelSize')}</dt><dd>{t('wizard.inspect.pixelValue', { scale: gee.scaleMeters, cloud: gee.maxCloudPercent })}</dd>
-            <dt>{t('wizard.inspect.bands')}</dt><dd>{t('wizard.inspect.bandCount', { count: fields.length })}</dd>
-            {sarText && <><dt>{t('wizard.inspect.radarPair')}</dt><dd>{sarText}<br /><span className="xc-hint">{t('wizard.inspect.radarPairHint')}</span></dd></>}
-            <dt>{t('wizard.inspect.crs')}</dt><dd>{t('wizard.inspect.crsStored')}</dd>
-          </dl>
-        </div>
-        <Alert>{t('wizard.inspect.geeNote')}</Alert>
-      </div>
-    );
-  }
   if (!inspection) return <Alert tone="warning">{t('wizard.inspect.missing')}</Alert>;
   const bounds = inspection.bounds;
   const lower = inspection.files.map((file) => file.toLowerCase());
   return (
     <div className="wizard-section">
       <div className="inspect-grid">
-        {bounds ? <BBoxMap bbox={[bounds.west, bounds.south, bounds.east, bounds.north]} /> : <div className="xc-hint" style={{ padding: 20 }}>{t('wizard.inspect.noBounds')}</div>}
+        {bounds ? <BBoxMap bbox={[bounds.west, bounds.south, bounds.east, bounds.north]} /> : <div className="xc-hint inspect-grid__empty">{t('wizard.inspect.noBounds')}</div>}
         <dl className="meta-list">
           <dt>{t('wizard.inspect.file')}</dt><dd>{inspection.fileName}</dd>
           <dt>{t('wizard.inspect.kind')}</dt><dd>{method === 'shape' ? 'Shapefile' : rasterKind === 'cas500' ? 'CAS500' : 'GeoTIFF'}</dd>
@@ -645,30 +821,52 @@ function InspectionSummary({ method, rasterKind, inspection, collection, gee, re
   );
 }
 
-function Result({ job, registeredId, name, projectLinked, onRestart }: { job: GenerationJob | null; registeredId: string; name: string; projectLinked: boolean; onRestart: () => void }) {
+/** The page after 생성 시작 / 등록: focus on its heading, progress while running, the reason and 다시 시도 on failure. */
+function Result({ job, registeredId, name, projectLinked, onRestart, onRetry }: { job: GenerationJob | null; registeredId: string; name: string; projectLinked: boolean; onRestart: () => void; onRetry: () => Promise<void> }) {
   const status = job?.status;
   const finished = status === 'SUCCEEDED';
   const failed = status === 'FAILED' || status === 'CANCELLED';
   // Zarr registration answers with the id at once; a generation job gets it when the Backoffice registers the result.
   const datasetId = registeredId || registeredDatasetId(job);
   const { lang, t } = useLanguage();
-  const registrationError = registrationFailureText((job as Partial<JobSummary> | null)?.registration, lang);
+  const summary = job as Partial<JobSummary> | null;
+  const registrationError = registrationFailureText(summary?.registration, lang);
   const statusText = status && JOB_STATUSES.includes(status) ? t(`jobStatus.${status}` as TKey) : status;
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [retryFailure, setRetryFailure] = useState<{ cause: unknown } | null>(null);
+  useEffect(() => { headingRef.current?.focus(); }, [failed, finished]);
+  const percent = typeof summary?.progress === 'number' ? Math.round(Math.max(0, Math.min(1, summary.progress)) * 100) : null;
+  const stage = summary ? jobSteps({ type: 'GEE_TO_ZARR', ...summary } as JobSummary, lang).find((item) => item.state === 'current')?.label : undefined;
+  const reasonText = job && status === 'FAILED' ? failureText({ errorCode: summary?.errorCode, errorParams: summary?.errorParams, errorMessage: summary?.errorMessage }, lang) || t('wizard.result.unknownReason') : '';
+  const retry = async () => {
+    setRetrying(true); setRetryFailure(null);
+    try { await onRetry(); } catch (cause) { setRetryFailure({ cause }); } finally { setRetrying(false); }
+  };
   return (
     <div className="page-stack wizard">
       <PageHeader title={t('wizard.title')} />
       <Card>
         <div className="wizard-result">
           <span className={`wizard-result__icon ${failed ? 'is-failed' : registeredId || finished ? '' : 'is-running'}`} aria-hidden>{registeredId || finished ? <CheckCircle2 size={28} /> : failed ? '!' : <Loader2 size={28} className="spin" />}</span>
-          <h2 className="wizard-title">{t(registeredId ? 'wizard.result.registered' : finished ? 'wizard.result.finished' : failed ? 'wizard.result.failed' : 'wizard.result.started')}</h2>
+          <h2 className="wizard-title" ref={headingRef} tabIndex={-1}>{t(registeredId ? 'wizard.result.registered' : finished ? 'wizard.result.finished' : failed ? 'wizard.result.failed' : 'wizard.result.started')}</h2>
           <p role="status">
             {registeredId ? t('wizard.result.registeredText', { name }) : <>{t('wizard.result.job', { name, id: String(job?.id) })}<strong>{statusText}</strong>{!finished && !failed ? t('wizard.result.keepsRunning') : ''}</>}
           </p>
+          {status === 'RUNNING' && percent != null && (
+            <div className="wizard-result__progress">
+              <progress className="wizard-progress" max={100} value={percent} aria-label={t('wizard.result.progress')} />
+              <span className="xc-hint tabular">{stage ? t('wizard.result.progressValue', { percent, stage }) : `${percent}%`}</span>
+            </div>
+          )}
+          {reasonText && <Alert tone="danger">{t('wizard.result.failReason', { reason: reasonText })}</Alert>}
+          {retryFailure && <Alert tone="danger">{t('wizard.result.retryFailed', { error: userMessage(retryFailure.cause, lang) })}</Alert>}
           {finished && !datasetId && !registrationError && <p className="xc-hint" role="status">{t('wizard.result.registering')}</p>}
           {finished && registrationError && <Alert tone="warning">{t('wizard.result.registrationFailed', { error: registrationError })}</Alert>}
           {projectLinked && !registeredId && <p className="xc-hint">{t('wizard.result.projectLater')}</p>}
           <div className="wizard-result__actions">
-            {datasetId ? <ButtonLink to={`/app/data/${encodeURIComponent(datasetId)}`}>{t('wizard.result.viewData')}</ButtonLink> : <ButtonLink to="/app/jobs">{t('app.inJobCenter')}</ButtonLink>}
+            {failed && job && <Button onClick={retry} disabled={retrying}>{retrying ? <><Loader2 size={16} className="spin" aria-hidden />{t('wizard.result.retrying')}</> : t('wizard.result.retry')}</Button>}
+            {datasetId ? <ButtonLink to={`/app/data/${encodeURIComponent(datasetId)}`}>{t('wizard.result.viewData')}</ButtonLink> : <ButtonLink variant={failed ? 'line' : 'ink'} to="/app/jobs">{t('app.inJobCenter')}</ButtonLink>}
             {datasetId && <a className="xc-btn xc-btn--line" href={viewerHref(datasetId)} target="_blank" rel="noopener noreferrer">{t('app.openInViewer')}<span className="sr-only">{t('wizard.result.newTab')}</span></a>}
             <Button variant="quiet" onClick={onRestart}>{t('wizard.result.again')}</Button>
           </div>
