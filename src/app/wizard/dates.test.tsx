@@ -131,7 +131,7 @@ describe('GEE 날짜 고르기', () => {
     expect(screen.getByTestId('estimate-time')).toHaveTextContent('약 10분');
     expect(panel()).not.toHaveTextContent('날짜를 줄이면 빨라집니다');
 
-    fireEvent.click(screen.getByRole('button', { name: '전체' }));
+    fireEvent.click(screen.getByRole('button', { name: '전체 선택' }));
     expect(count()).toHaveTextContent('선택 5 / 전체 5개 날짜');
     await new Promise((resolve) => setTimeout(resolve, 500));
     expect(estimate.mock.calls.length).toBe(calls);
@@ -142,7 +142,7 @@ describe('GEE 날짜 고르기', () => {
     await toAreaStep();
     await dateTable();
     expect(next()).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: '모두 해제' }));
+    fireEvent.click(screen.getByRole('button', { name: '선택 해제' }));
     expect(count()).toHaveTextContent('선택 0 / 전체 5개 날짜');
     expect(screen.getByRole('alert')).toHaveTextContent('날짜를 하나 이상 고르세요');
     expect(next()).toBeDisabled();
@@ -220,7 +220,7 @@ describe('GEE 날짜 고르기', () => {
     // Only the unpaired date with "빼기" leaves nothing to make.
     fireEvent.click(screen.getByRole('button', { name: '빼기' }));
     await screen.findByRole('table', { name: '날짜 고르기 · 광학·레이더 날짜 짝' }, { timeout: T });
-    fireEvent.click(screen.getByRole('button', { name: '모두 해제' }));
+    fireEvent.click(screen.getByRole('button', { name: '선택 해제' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '2024-08-19 선택' }));
     expect(next()).toBeDisabled();
   });
@@ -235,7 +235,9 @@ describe('100% 덮는 날짜만 (UR-45)', () => {
     render(<DateTable data={data} picked={['2024-08-04']} onChange={jest.fn()} />);
     const table = screen.getByRole('table', { name: '날짜 고르기' });
     expect(within(table).queryByText('2024-08-14')).not.toBeInTheDocument();
-    expect(screen.getByText(/위치를 100% 덮는 날짜만 보여 줍니다/)).toHaveTextContent('다 덮지 못해 뺀 날짜 2개: 2024-08-14(82%), 2024-08-24(97%)');
+    expect(screen.getByText('다 덮지 못해 뺀 날짜 2개')).toBeInTheDocument();
+    expect(screen.getByText('2024-08-14 (82%)')).toBeInTheDocument();
+    expect(screen.getByText('2024-08-24 (97%)')).toBeInTheDocument();
   });
 
   test('하나도 없으면 없다고 알려 준다', () => {

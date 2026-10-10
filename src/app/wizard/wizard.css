@@ -192,5 +192,15 @@
 .date-pick__table input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--fb-ink); }
 .summary-dates summary { cursor: pointer; color: var(--fb-ink-2); font-size: 13px; }
 .summary-dates ul { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 13px; }
-.date-pick__order { display: inline-flex; gap: 2px; margin-left: auto; }
+.date-pick__sel { display: inline-flex; gap: 4px; }
+/* sort: one segmented control (bordered box, pressed = ink), so it never reads as loose text */
+.date-pick__order { display: inline-flex; gap: 2px; margin-left: auto; padding: 2px; border: 1px solid var(--fb-rule-strong); border-radius: var(--fb-radius); background: var(--fb-surface); }
+.date-pick__order button { height: 26px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--fb-ink-2); font: 600 13px/1 var(--fb-font); cursor: pointer; white-space: nowrap; }
+.date-pick__order button:hover { background: var(--fb-sunken); color: var(--fb-ink); }
+.date-pick__order button[aria-pressed='true'] { background: var(--fb-ink); color: var(--fb-on-ink); }
+.date-pick__order button:focus-visible { outline: 2px solid var(--fb-focus); outline-offset: 1px; }
+.date-pick__cover { display: grid; gap: 4px; }
+.date-pick__excluded summary { width: fit-content; cursor: pointer; color: var(--fb-ink-2); text-decoration: underline; text-underline-offset: 2px; }
+.date-pick__excluded ul { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 6px 0 0; padding: 0; list-style: none; }
+@media (pointer: coarse) { .date-pick__order button { height: 40px; padding: 0 14px; } }
 
