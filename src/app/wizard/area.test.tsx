@@ -159,9 +159,30 @@ describe('GEE 영역 단계', () => {
     expect(screen.getByText('서버가 40개로 나눠 받습니다.')).toBeInTheDocument();
     expect(screen.getByText('예상 용량이 5 GB를 넘습니다.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /다음/ })).toBeDisabled();
-    // Changing the area drops the stale estimate and re-enables the button until the new one arrives.
+    // Changing the area drops the stale estimate; the button opens again once the new, unblocked one arrives.
     jest.spyOn(generation, 'estimateGee').mockResolvedValue({ areaKm2: 400, grid: { width: 100, height: 100 }, scenes: 6, estimatedBytes: 1e6, requestTiles: 1, warnings: [], blockers: [] });
     fireEvent.click(screen.getByRole('radio', { name: '10 km' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /다음/ })).toBeEnabled(), { timeout: T });
+  });
+
+  test('예상 크기를 계산하는 동안과 실패했을 때는 다음으로 갈 수 없고 이유를 보여 준다', async () => {
+    const real = generation.estimateGee;
+    let release: (() => void) | null = null;
+    const estimate = jest.spyOn(generation, 'estimateGee').mockImplementationOnce((body: unknown) => new Promise((done) => { release = () => done(real(body)); }));
+    await toAreaStep();
+    setPoint('127.5', '36.4');
+    expect(await screen.findByText('예상 크기를 계산하는 중입니다.', undefined, { timeout: T })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /다음/ })).toBeDisabled();
+    await waitFor(() => expect(estimate).toHaveBeenCalled(), { timeout: T });
+    release!();
+    await waitFor(() => expect(screen.getByRole('button', { name: /다음/ })).toBeEnabled(), { timeout: T });
+    expect(screen.queryByText('예상 크기를 계산하는 중입니다.')).not.toBeInTheDocument();
+    // A failed estimate keeps the step closed, with a way to ask again.
+    jest.spyOn(generation, 'estimateGee').mockRejectedValueOnce(new Error('down'));
+    fireEvent.click(screen.getByRole('radio', { name: '10 km' }));
+    expect(await screen.findByText('예상 크기를 불러오지 못해 진행할 수 없습니다.', undefined, { timeout: T })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /다음/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '다시 계산' }));
     await waitFor(() => expect(screen.getByRole('button', { name: /다음/ })).toBeEnabled(), { timeout: T });
   });
 
@@ -188,10 +209,20 @@ describe('GEE 영역 단계', () => {
     fireEvent.change(screen.getByLabelText('B8 표시 최댓값'), { target: { value: '4000' } });
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
     expect(await screen.findByText(/지점 \+ 크기 · 중심 127.5020, 36.4540 · 한 변 30 km/)).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: '생성 시작' }));
+    // Picking bands re-estimates; the request waits for it.
+    const start = await screen.findByRole('button', { name: '생성 시작' });
+    await waitFor(() => expect(start).toBeEnabled(), { timeout: T });
+    fireEvent.click(start);
     await waitFor(() => expect(create).toHaveBeenCalled(), { timeout: T });
     const body = create.mock.calls[0][0] as any;
     expect(body.area).toEqual({ mode: 'point', point: { lon: 127.502, lat: 36.454, sizeKm: 30 }, clip: 'bbox', fullCoverOnly: false, maskVariable: false });
     expect(body.bounds).toEqual({ west: pointBbox(127.502, 36.454, 30)[0], south: pointBbox(127.502, 36.454, 30)[1], east: pointBbox(127.502, 36.454, 30)[2], north: pointBbox(127.502, 36.454, 30)[3] });
   });
+});
+
+test('지도 위 관심 영역은 overprint 마젠타(실선, 낮은 투명도 채움)로 그린다', () => {
+  const { withAlpha } = require('./AreaMap');
+  expect(withAlpha('#b8166f', 0.14)).toBe('rgba(184,22,111,0.14)');
+  expect(withAlpha(' #f6b ', 0.5)).toBe('rgba(255,102,187,0.5)');
+  expect(withAlpha('rgb(1,2,3)', 0.5)).toBe('rgb(1,2,3)');
 });

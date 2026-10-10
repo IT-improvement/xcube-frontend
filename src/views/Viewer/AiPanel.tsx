@@ -40,6 +40,13 @@ const percent = (ratio: number | null | undefined) =>
 const metric = (value: number | undefined) => (value == null ? "—" : value.toFixed(3));
 const thresholdText = (value: number | undefined) => (value == null ? "—" : value.toFixed(2));
 
+/** `--fb-result` of fieldbook.css per theme: the legend, layer swatch and area bar use the same token. */
+export const RESULT_TEAL = { light: "#0f7a6e", dark: "#4fc4b4" } as const;
+/**
+ * water_mask (1 물, 0 물 아님, 255 값 없음) painted in exactly the result teal. xcube 1.13 accepts a user colour map as JSON
+ * in `cmap`; a categorical map with the single class 1 leaves 0, 255 and NaN outside its bins, so they stay transparent.
+ */
+export const aiMaskStyle = (theme: string) => ({ cmap: JSON.stringify({ name: "xcube_ai_water", type: "categorical", colors: [[1, theme === "dark" ? RESULT_TEAL.dark : RESULT_TEAL.light]] }) });
 /** The candidate equal to {@code iso}, or the nearest within a day; null when the time is not covered. */
 export function matchTime(candidates: string[], iso?: string): string | null {
   if (!iso) return null;
@@ -335,11 +342,14 @@ export function AiRunForm({
 export function AiResultList({
   entries,
   selectedKey,
+  onMap = false,
   onSelect,
   models,
 }: {
   entries: ResultEntry[];
   selectedKey: string;
+  /** The selected result is drawn on the map now (its layer is on, or it is in the comparison). */
+  onMap?: boolean;
   onSelect: (entry: ResultEntry) => void;
   models?: AiModel[];
 }) {
@@ -361,7 +371,7 @@ export function AiResultList({
                 </small>
                 {entry.job?.status === "FAILED" && entry.job.errorMessage && <small className="vx-results__error">{entry.job.errorMessage}</small>}
               </span>
-              {entry.key === selectedKey && <em>지도에 표시 중</em>}
+              {onMap && entry.key === selectedKey && <em>지도에 표시 중</em>}
             </button>
           </li>
         );

@@ -52,6 +52,7 @@ import { ai } from "../../app/api";
 import type { AiJobRequest, AiResult, AiWaterJob } from "../../api/aiApi";
 import {
   AiLegend,
+  aiMaskStyle,
   AiResultList,
   AiResultPanel,
   AiRunForm,
@@ -67,9 +68,6 @@ import { FrameBuffer, playbackInterval } from "./frameBuffer";
 type Drawer = "ai" | "result" | null;
 type MapTool = "pan" | "pixel";
 const noop = () => undefined;
-/** water_mask (1 물, 0 물 아님, 255 값 없음) in result teal; the _alpha map keeps "물 아님" transparent. */
-// water_mask is 0/1: with vmax 1.6 a value of 1 lands mid-ramp (a clear teal) instead of the darkest green; 0 stays transparent.
-const AI_MASK_STYLE = { cmap: "GnBu_alpha", vmin: 0, vmax: 1.6 };
 /** Numeric catalog ids go to the services as numbers; demo ids stay strings. */
 const cubeId = (id: string) => (/^\d+$/.test(id) ? Number(id) : id);
 
@@ -677,6 +675,11 @@ export default function Viewer({
   useEffect(() => {
     if (!loop && playing && timeIndex === times.length - 1) setPlaying(false);
   }, [timeIndex, times.length, loop, playing]);
+  // Playback needs two or more times; a dataset with one time never stays in the playing state.
+  const canPlay = times.length > 1;
+  useEffect(() => {
+    if (!canPlay && playing) setPlaying(false);
+  }, [canPlay, playing]);
   useEffect(() => {
     frameBuffer.current?.setStyle(sourceVisible, sourceOpacity / 100);
   }, [sourceVisible, sourceOpacity, map]);
@@ -731,7 +734,7 @@ export default function Viewer({
   const resultTime = selectedResult ? matchTime(resultIsos, times[timeIndex]?.iso) : null;
   const resultTileUrl =
     !useMockApi && !resultTilesWait && resultXcubeId && resultTime
-      ? backofficeAdapter.tileUrl(resultXcubeId, "water_mask", resultTime, resultCube?.tileBaseUrl, AI_MASK_STYLE)
+      ? backofficeAdapter.tileUrl(resultXcubeId, "water_mask", resultTime, resultCube?.tileBaseUrl, aiMaskStyle(theme))
       : null;
   const sourceTileUrlA =
     !useMockApi && activeVariable && selectedXcubeDatasetId && times[timeIndex]
@@ -1671,7 +1674,7 @@ export default function Viewer({
                     </p>
                   )}
                   {selected ? (
-                    <AiResultList entries={entries} selectedKey={resultKey} onSelect={chooseResult} />
+                    <AiResultList entries={entries} selectedKey={resultKey} onMap={!!selectedResult && (resultVisible || aiCompare)} onSelect={chooseResult} />
                   ) : (
                     <p className="vx-section__hint">데이터를 고르면 그 데이터의 AI 결과가 보입니다.</p>
                   )}
@@ -1770,7 +1773,7 @@ export default function Viewer({
                   />
                   <section className="vx-section vx-section--top">
                     <h3 className="vx-section__title">이 데이터의 AI 결과</h3>
-                    <AiResultList entries={entries} selectedKey={resultKey} onSelect={chooseResult} />
+                    <AiResultList entries={entries} selectedKey={resultKey} onMap={!!selectedResult && (resultVisible || aiCompare)} onSelect={chooseResult} />
                   </section>
                 </>
               ) : drawer === "result" && selected && selectedResult ? (
@@ -1864,10 +1867,11 @@ export default function Viewer({
                 <button
                   type="button"
                   className="vx-play"
-                  onClick={() => setPlaying(!playing)}
-                  aria-label={playing ? "일시정지" : "재생"}
-                  aria-pressed={playing}
-                  title={playing ? "일시정지 (Space)" : "재생 (Space)"}
+                  onClick={() => setPlaying(canPlay && !playing)}
+                  disabled={!canPlay}
+                  aria-label={!canPlay ? "재생 (시점이 2개 이상일 때 재생할 수 있습니다)" : playing ? "일시정지" : "재생"}
+                  aria-pressed={canPlay && playing}
+                  title={!canPlay ? "시점이 하나뿐이라 재생할 수 없습니다" : playing ? "일시정지 (Space)" : "재생 (Space)"}
                 >
                   {playing ? (
                     <Pause size={16} aria-hidden="true" />

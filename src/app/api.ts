@@ -140,13 +140,20 @@ export const isAiJob = (job: Pick<JobSummary, 'type'>) => job.type === 'AI_WATER
 const SERVICE_TYPES = ['FUSION', 'AI_WATER'];
 const newestFirst = (a: JobSummary, b: JobSummary) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
 
+export type JobListResult = { items: JobSummary[]; unavailable: Array<'FUSION' | 'AI_WATER'> };
+/** Notice for services whose jobs are missing from the merged list. */
+export const unavailableJobsNotice = (unavailable: JobListResult['unavailable']) => (unavailable.length ? `${unavailable.map((type) => (type === 'FUSION' ? '수식 융합' : 'AI')).join('·')} 작업 목록을 불러오지 못했습니다. 나머지 작업만 표시합니다.` : '');
 /** Job center view: generation, fusion and AI jobs together, routed to the service that owns each job. */
-export const jobs = {
+export const jobs: { list(filter?: { status?: string; type?: string }): Promise<JobSummary[]>; listWithStatus(filter?: { status?: string; type?: string }): Promise<JobListResult>; cancel(job: JobSummary): Promise<unknown>; retry(job: JobSummary): Promise<JobSummary> } = {
   /**
    * A type filter skips the services it does not name. Generation is the base list: its failure is an error.
    * A fusion or AI outage does not hide the other jobs, unless only those services were asked for.
    */
   async list(filter: { status?: string; type?: string } = {}): Promise<JobSummary[]> {
+    return (await jobs.listWithStatus(filter)).items;
+  },
+  /** Same as `list`, plus the services (FUSION, AI_WATER) whose jobs could not be loaded, so the page can say so. */
+  async listWithStatus(filter: { status?: string; type?: string } = {}): Promise<JobListResult> {
     const types = filter.type ? filter.type.split(',') : [];
     const wants = (type: string) => !types.length || types.includes(type);
     const wantsGeneration = !types.length || types.some((type) => !SERVICE_TYPES.includes(type));
@@ -161,7 +168,8 @@ export const jobs = {
     const requested = [wants('FUSION') ? fused : null, wants('AI_WATER') ? inferred : null].filter((outcome): outcome is PromiseSettledResult<JobSummary[]> => !!outcome);
     if (!wantsGeneration && requested.every((outcome) => outcome.status === 'rejected')) throw (requested[0] as PromiseRejectedResult).reason;
     const items = [generated, fused, inferred].flatMap((outcome) => (outcome.status === 'fulfilled' ? outcome.value : []));
-    return items.sort(newestFirst);
+    const unavailable = ([['FUSION', fused], ['AI_WATER', inferred]] as const).filter(([, outcome]) => outcome.status === 'rejected').map(([type]) => type);
+    return { items: items.sort(newestFirst), unavailable };
   },
   cancel: (job: JobSummary) => (isFusionJob(job) ? fusion.cancelJob(job.id) : isAiJob(job) ? ai.cancelJob(job.id) : generation.cancelJob(job.id)),
   retry: (job: JobSummary) => (isFusionJob(job) ? fusion.retryJob(job.id) : isAiJob(job) ? ai.retryJob(job.id) : generation.retryJob(job.id)),

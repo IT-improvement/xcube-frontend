@@ -115,6 +115,20 @@ test('M0 FR-VIEW-03: 첫/마지막/이전/다음, 재생, 반복과 속도를 �
   expect(screen.getByRole('button', { name: '재생' })).toBeInTheDocument();
 });
 
+test('시점이 하나뿐이면 재생 버튼을 막고 재생 상태로 들어가지 않는다', async () => {
+  mockBackoffice.getDatasetDetail.mockResolvedValue({ id: '77', projectId: '4', name: '한 시점', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: '77', defaultVariable: 'red', variables: ['red'], times: [{ iso: '2026-01-01T00:00:00Z', label: '2026. 1. 1.' }], bbox: [126, 33, 127, 34] });
+  render(<Viewer />);
+  const select = await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' });
+  fireEvent.click(select); fireEvent.click(await screen.findByRole('option', { name: /임의 데이터셋/ }));
+  const play = await screen.findByRole('button', { name: /^재생 \(시점이 2개 이상/ });
+  expect(play).toBeDisabled();
+  expect(play).toHaveAttribute('title', '시점이 하나뿐이라 재생할 수 없습니다');
+  fireEvent.click(play);
+  fireEvent.keyDown(window, { key: ' ' });
+  expect(play).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.queryByRole('button', { name: '일시정지' })).not.toBeInTheDocument();
+});
+
 test('M0 FR-VIEW-04/05: 같은 좌표 전체 시계열, 현재 시점 동기화와 패널 상태를 유지한다', async () => {
   jest.useFakeTimers();
   mockBackoffice.getTimeseries.mockResolvedValue([

@@ -158,6 +158,9 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const dateSelection = method === 'gee' ? activeSelection(dateSel, dateScope, estimateDateList) : null;
   const dateProblem = selectionProblem(dateSelection, estimateDateList, pairing ? { keepUnpaired: sar.keepUnpaired } : null);
   const pickDates = (picked: string[]) => { if (estimateDateList) setDateSel({ scope: dateScope, all: estimateDateList.map((item) => item.date), picked }); };
+  // Dates and blockers come from the estimate, so a GEE request cannot go on before the estimate for these inputs is in.
+  const estimatePending = method === 'gee' && step >= 1 && estimate.status !== 'ok';
+  const estimateWait = !estimatePending ? '' : estimate.status === 'loading' ? '예상 크기를 계산하는 중입니다.' : estimate.status === 'error' ? '예상 크기를 불러오지 못해 진행할 수 없습니다.' : '';
   const estimateHint = !collectionId ? '컬렉션을 고르세요.' : !datesOk ? '기간을 입력하세요.' : resolved.error;
   const noun = method === 'shape' ? '속성' : 'band';
   const continuous = choices.filter((choice) => choice.kind === 'continuous');
@@ -224,6 +227,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
         if (gee.startDate > gee.endDate) return '시작 날짜가 끝 날짜보다 늦습니다.';
         if (resolved.error) return resolved.error;
         if (pairing && sarError(sar)) return sarError(sar);
+        if (estimatePending) return estimateWait || '예상 크기를 아직 계산하지 않았습니다.';
         if (blockers.length) return blockerText(blockers[0]);
         if (dateProblem) return dateProblem;
         return '';
@@ -536,10 +540,16 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
         <div className="wizard-foot">
           <Button variant="secondary" onClick={back} disabled={step === 0 || submitting}><ArrowLeft size={16} aria-hidden />이전</Button>
           <span className="xc-hint">{step + 1} / {STEPS.length}</span>
+          {estimateWait && (step === 1 || step === STEPS.length - 1) && (
+            <span className="xc-hint wizard-foot__wait" role="status" id="estimate-wait">
+              {estimate.status === 'loading' && <Loader2 size={14} className="spin" aria-hidden />}{estimateWait}
+              {estimate.retry && <Button variant="line" size="sm" onClick={estimate.retry}>다시 계산</Button>}
+            </span>
+          )}
           {step < STEPS.length - 1 ? (
-            <Button onClick={next} disabled={inspecting || (step === 1 && (blockers.length > 0 || !!dateProblem))}>다음<ArrowRight size={16} aria-hidden /></Button>
+            <Button onClick={next} disabled={inspecting || (step === 1 && !!estimateWait) || (step === 1 && (blockers.length > 0 || !!dateProblem))} aria-describedby={estimateWait ? 'estimate-wait' : undefined}>다음<ArrowRight size={16} aria-hidden /></Button>
           ) : (
-            <Button onClick={submit} disabled={submitting || blockers.length > 0 || !!dateProblem}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />요청 중…</> : method === 'zarr' ? '등록' : '생성 시작'}</Button>
+            <Button onClick={submit} disabled={submitting || estimatePending || blockers.length > 0 || !!dateProblem} aria-describedby={estimateWait ? 'estimate-wait' : undefined}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />요청 중…</> : method === 'zarr' ? '등록' : '생성 시작'}</Button>
           )}
         </div>
       </Card>

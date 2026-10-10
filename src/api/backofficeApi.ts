@@ -2,8 +2,6 @@ import { Project, TimePoint, ViewerAdapter, ZarrDataset, AiJob } from './viewerA
 import { request, requestBlob } from './httpClient';
 export const BACKOFFICE_API_BASE_URL = process.env.REACT_APP_BACKOFFICE_API_URL ?? 'http://localhost:8082';
 export const XCUBE_API_BASE_URL = process.env.REACT_APP_XCUBE_URL ?? 'http://localhost:8080';
-type SpringPage<T> = { content: T[]; totalElements: number; totalPages: number; number: number; size: number };
-type CatalogPage<T> = { content: T[]; page: number; size: number; totalElements: number; totalPages: number };
 type ProjectDto = { id: number; name: string; description?: string; createdAt: string; updatedAt: string; ownerUserId?: number; ownerUsername?: string; accessRole?: 'OWNER' | 'EDITOR' | 'VIEWER'; canEdit?: boolean; canDelete?: boolean; canShare?: boolean };
 type InferLink = { id: number; name: string; status: string; storageUri?: string };
 type DatacubeDto = { datacubeId: number; id?: number; projectId?: number | null; name: string; kind: 'ORIGINAL' | 'FUSION' | 'AI_RESULT'; status: string; sourceDatacubeId?: number; timeCoordinateName?: string; timeStart?: string; timeEnd?: string; metadata?: Record<string, any>; xcubeDatasetId?: string; linkedSuccessfulInferResults?: InferLink[] };
@@ -18,6 +16,19 @@ export type ProjectMember = { userId: string; role: 'OWNER' | 'EDITOR' | 'VIEWER
 export type MemberTarget = { username: string; role: 'EDITOR' | 'VIEWER' } | { userId: string; role: 'EDITOR' | 'VIEWER' };
 type MemberDto = { userId: number; role: 'OWNER' | 'EDITOR' | 'VIEWER'; sharedByUserId?: number; createdAt?: string; username?: string | null; name?: string | null };
 const toMember = (item: MemberDto): ProjectMember => ({ userId: String(item.userId), role: item.role, sharedByUserId: item.sharedByUserId == null ? undefined : String(item.sharedByUserId), createdAt: item.createdAt, username: item.username ?? undefined, name: item.name ?? undefined });
+/** Reads every page (size 100) until the last one, so lists and counts are not cut at 100. Stops after MAX_PAGES as a safety bound. */
+const PAGE_SIZE = 100;
+const MAX_PAGES = 50;
+async function fetchAllPages<T>(path: string): Promise<T[]> {
+  const items: T[] = [];
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const body = await request<{ content?: T[]; totalPages?: number; last?: boolean }>(BACKOFFICE_API_BASE_URL, `${path}${path.includes('?') ? '&' : '?'}page=${page}&size=${PAGE_SIZE}`);
+    const content = body?.content ?? [];
+    items.push(...content);
+    if (body?.last === true || content.length < PAGE_SIZE || (body?.totalPages != null && page + 1 >= body.totalPages)) break;
+  }
+  return items;
+}
 const toProject = (item: ProjectDto): Project => ({ id: String(item.id), name: item.name, description: item.description, createdAt: item.createdAt, updatedAt: item.updatedAt, ownerUserId: item.ownerUserId == null ? undefined : String(item.ownerUserId), ownerUsername: item.ownerUsername, accessRole: item.accessRole, canEdit: item.canEdit, canDelete: item.canDelete, canShare: item.canShare });
 
 /** Kinds shown as Zarr datasets. Fusion results are ordinary datasets (M6); AI results carry their input (M7). */
@@ -71,7 +82,7 @@ export const backofficeAdapter: ViewerAdapter & {
   getTimeseries(id: string, variable: string, input: { lon: number; lat: number; startDate?: string; endDate?: string; aggMethods?: string; maxValids?: number }): Promise<SeriesPoint[]>;
   checkXcubeStatus(): Promise<boolean>;
 } = {
-  async getProjects() { const page = await request<SpringPage<ProjectDto>>(BACKOFFICE_API_BASE_URL, '/api/v1/projects?page=0&size=100'); return page.content.map(toProject); },
+  async getProjects() { return (await fetchAllPages<ProjectDto>('/api/v1/projects')).map(toProject); },
   async createProject(input) { return toProject(await request<ProjectDto>(BACKOFFICE_API_BASE_URL, '/api/v1/projects', { method: 'POST', body: JSON.stringify(input) })); },
   async getProject(id) { return toProject(await request<ProjectDto>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}`)); },
   async updateProject(id, input) { return toProject(await request<ProjectDto>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) })); },
@@ -80,11 +91,11 @@ export const backofficeAdapter: ViewerAdapter & {
   async addProjectMember(id, input) { const body = 'username' in input ? { username: input.username.trim(), role: input.role } : { userId: Number(input.userId), role: input.role }; return toMember(await request<MemberDto>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}/members`, { method: 'POST', body: JSON.stringify(body) })); },
   async updateProjectMember(id, userId, input) { return toMember(await request<MemberDto>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, { method: 'PATCH', body: JSON.stringify(input) })); },
   async removeProjectMember(id, userId) { await request<void>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' }); },
-  async getDatasets(projectId) { const path = projectId ? `/api/v1/datasets?scope=all&page=0&size=100&projectId=${encodeURIComponent(projectId)}` : '/api/v1/datasets?scope=all&page=0&size=100'; const page = await request<CatalogPage<DatasetSummaryDto>>(BACKOFFICE_API_BASE_URL, path); return page.content.filter((item) => VIEWABLE_KINDS.includes(item.kind) && (!projectId || item.projectId === Number(projectId))).map(summaryToDataset); },
-  async getProjectDatasets(projectId) { const page = await request<SpringPage<DatacubeDto>>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(projectId)}/datacubes?page=0&size=100`); return page.content.filter((item) => VIEWABLE_KINDS.includes(item.kind)).map((item) => toDataset(item, projectId)); },
+  async getDatasets(projectId) { const path = projectId ? `/api/v1/datasets?scope=all&projectId=${encodeURIComponent(projectId)}` : '/api/v1/datasets?scope=all'; const items = await fetchAllPages<DatasetSummaryDto>(path); return items.filter((item) => VIEWABLE_KINDS.includes(item.kind) && (!projectId || item.projectId === Number(projectId))).map(summaryToDataset); },
+  async getProjectDatasets(projectId) { const items = await fetchAllPages<DatacubeDto>(`/api/v1/projects/${encodeURIComponent(projectId)}/datacubes`); return items.filter((item) => VIEWABLE_KINDS.includes(item.kind)).map((item) => toDataset(item, projectId)); },
   async registerDatacube(input) { const dto = await request<DatacubeDto>(BACKOFFICE_API_BASE_URL, '/api/v1/datacubes', { method: 'POST', body: JSON.stringify({ ...input, kind: 'ORIGINAL', metadata: input.metadata ?? {} }) }); return toDataset(dto); },
   async deleteDatacube(id) { await request<void>(BACKOFFICE_API_BASE_URL, `/api/v1/datacubes/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
-  async getLinkableDatacubes() { const page = await request<SpringPage<DatacubeDto>>(BACKOFFICE_API_BASE_URL, '/api/v1/datacubes?page=0&size=100'); return page.content.filter((item) => VIEWABLE_KINDS.includes(item.kind)).map((item) => toDataset(item)); },
+  async getLinkableDatacubes() { const items = await fetchAllPages<DatacubeDto>('/api/v1/datacubes'); return items.filter((item) => VIEWABLE_KINDS.includes(item.kind)).map((item) => toDataset(item)); },
   async linkProjectDataset(projectId, datasetId) { await request<void>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(projectId)}/datasets/${encodeURIComponent(datasetId)}`, { method: 'POST' }); },
   async unlinkProjectDataset(projectId, datasetId) { await request<void>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(projectId)}/datasets/${encodeURIComponent(datasetId)}`, { method: 'DELETE' }); },
   async getDatasetDetail(id) { const dto = await request<DatasetDetailDto>(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${id}`); return summaryToDataset(dto); },

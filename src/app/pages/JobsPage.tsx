@@ -5,7 +5,7 @@ import { userMessage } from '../../api/httpClient';
 import { JobSummary } from '../../api/generationApi';
 import { Alert, Button, ButtonLink } from '../../components/ui';
 import { Card, ConfirmDialog, EmptyState, PageHeader, Skeleton, useToast } from '../../components/ui/kit';
-import { aiViewerHref, formatDateTime, jobs as jobService } from '../api';
+import { aiViewerHref, formatDateTime, jobs as jobService, unavailableJobsNotice } from '../api';
 import { elapsed, isActive, JOB_TYPE_LABEL, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
 import { useLoad } from '../useLoad';
 
@@ -35,8 +35,9 @@ export default function JobsPage() {
   const [tick, setTick] = useState(0);
   const [cancelling, setCancelling] = useState<JobSummary | null>(null);
   const toast = useToast();
-  const jobs = useLoad(() => jobService.list({ type, status }), [type, status, tick]);
-  const items = useMemo(() => jobs.data ?? [], [jobs.data]);
+  const jobs = useLoad(() => jobService.listWithStatus({ type, status }), [type, status, tick]);
+  const items = useMemo(() => jobs.data?.items ?? [], [jobs.data]);
+  const partialNotice = unavailableJobsNotice(jobs.data?.unavailable ?? []);
   const anyActive = items.some(isActive);
   const [refreshedAt, setRefreshedAt] = useState('');
   useEffect(() => { if (jobs.data) setRefreshedAt(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })); }, [jobs.data]);
@@ -91,6 +92,7 @@ export default function JobsPage() {
           </label>
         </div>
         {error && <div className="inline-error"><Alert tone="danger">{error}</Alert></div>}
+        {partialNotice && !jobs.error && <div className="inline-error"><Alert tone="warning">{partialNotice}</Alert><Button variant="line" size="sm" onClick={jobs.reload} className="inline-error__retry">다시 시도</Button></div>}
         {jobs.loading && !jobs.data ? (
           <Skeleton lines={4} label="작업을 불러오는 중" />
         ) : jobs.error ? (
