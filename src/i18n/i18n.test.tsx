@@ -8,6 +8,8 @@ import enApp from './app/en';
 import koApp from './app/ko';
 import enWizard from './wizard/en';
 import koWizard from './wizard/ko';
+import enViewer from './viewer/en';
+import koViewer from './viewer/ko';
 import { detectLanguage, formatDate, formatDateTime, formatNumber, pickLanguage, STORAGE_KEY, translate } from './core';
 import { LanguageProvider } from './LanguageProvider';
 
@@ -88,11 +90,13 @@ describe('사전', () => {
   const placeholders = (texts: string[]) => Array.from(new Set(texts.flatMap((text) => text.match(/\{\w+\}/g) ?? []))).sort();
 
   test('ko와 en은 같은 키를 가지고, 같은 자리표시자를 쓰며, 빈 문장이 없다', () => {
-    // Every part: the main dictionary, the app part (management screens, UR-53 stage 2) and the wizard part (stage 3).
-    const koKeys = flatten({ ...ko, ...koApp, ...koWizard } as unknown as Tree);
-    const enKeys = flatten({ ...en, ...enApp, ...enWizard } as unknown as Tree);
+    // Every part: the main dictionary, the app part (management screens, UR-53 stage 2), the wizard part
+    // (stage 3) and the Viewer part (stage 4).
+    const koKeys = flatten({ ...ko, ...koApp, ...koWizard, ...koViewer } as unknown as Tree);
+    const enKeys = flatten({ ...en, ...enApp, ...enWizard, ...enViewer } as unknown as Tree);
     expect(Object.keys(koApp).filter((name) => name in ko)).toEqual([]);
     expect(Object.keys(koWizard).filter((name) => name in ko || name in koApp)).toEqual([]);
+    expect(Object.keys(koViewer).filter((name) => name in ko || name in koApp || name in koWizard)).toEqual([]);
     expect(Array.from(enKeys.keys()).sort()).toEqual(Array.from(koKeys.keys()).sort());
     koKeys.forEach((texts, key) => {
       const english = enKeys.get(key)!;
@@ -238,7 +242,7 @@ describe('관리 화면 상단 바', () => {
 describe('Viewer 계정 메뉴', () => {
   const UserMenu = require('../views/Viewer/UserMenu').default;
 
-  test('한국어·English 항목이 있고, 고르면 언어가 저장된다 (Viewer 글자는 1단계에서 한국어 그대로)', () => {
+  test('한국어·English 항목이 있고, 고르면 언어가 저장되고 메뉴 글자도 바뀐다 (4단계)', () => {
     render(<LanguageProvider><UserMenu name="홍길동" theme="light" onToggleTheme={jest.fn()} onLogout={jest.fn()} /></LanguageProvider>);
     fireEvent.click(screen.getByRole('button', { name: '홍길동 계정 메뉴' }));
     const korean = screen.getByRole('menuitemradio', { name: '한국어' });
@@ -247,7 +251,10 @@ describe('Viewer 계정 메뉴', () => {
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'English' }));
     expect(localStorage.getItem(STORAGE_KEY)).toBe('en');
     expect(document.documentElement.lang).toBe('en');
-    fireEvent.click(screen.getByRole('button', { name: '홍길동 계정 메뉴' }));
+    fireEvent.click(screen.getByRole('button', { name: '홍길동 account menu' }));
     expect(screen.getByRole('menuitemradio', { name: 'English' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('menu', { name: 'Account' })).toHaveTextContent('Signed in');
+    expect(screen.getByRole('menuitem', { name: /Switch to dark mode/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Sign out 홍길동' })).toHaveTextContent('Sign out');
   });
 });

@@ -5,6 +5,8 @@ import { ChevronDown, ChevronUp, Crosshair } from "lucide-react";
 import { ZarrDataset } from "../../api/viewerAdapter";
 import { PLOT_INSET } from "./TimeStaff";
 import { SeriesPoint } from "../../api/backofficeApi";
+import { formatNumber, useLanguage, useT } from "../../i18n";
+import "../../i18n/viewer";
 
 export function PixelMarker({
   map,
@@ -13,6 +15,7 @@ export function PixelMarker({
   map: Map | null;
   coordinate: [number, number];
 }) {
+  const t = useT();
   const [position, setPosition] = useState<[number, number] | null>(null);
   useEffect(() => {
     if (!map || typeof map.getPixelFromCoordinate !== "function") return;
@@ -33,12 +36,12 @@ export function PixelMarker({
     <div
       className="pixel-marker"
       style={{ left: position[0], top: position[1] }}
-      aria-label="선택한 픽셀 위치"
+      aria-label={t("viewer.pixel.marker")}
     />
   );
 }
 
-const numberFormat = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 4 });
+const VALUE_FORMAT: Intl.NumberFormatOptions = { maximumFractionDigits: 4 };
 
 /** Index of the point at, or nearest to, the given time. */
 export function nearestIndex(points: SeriesPoint[], currentTime?: string) {
@@ -95,10 +98,10 @@ export function BottomGraphPanel({
   /** Read the value line aloud when it changes; off during playback so it is not re-read every step. */
   announce?: boolean;
 }) {
+  const { lang, t } = useLanguage();
+  const numberFormat = { format: (value: number) => formatNumber(value, VALUE_FORMAT, lang) };
   const units = dataset.variableMetadata?.[variable]?.units;
-  const label = expanded
-    ? "픽셀 그래프 아래로 숨기기"
-    : "픽셀 그래프 위로 펼치기";
+  const label = t(expanded ? "viewer.pixel.hide" : "viewer.pixel.show");
   // The series may omit times without a valid value, so the nearest point only counts when it is
   // the same observation (within an hour); otherwise that time has no value here.
   const valueAt = (time?: string) => {
@@ -124,17 +127,17 @@ export function BottomGraphPanel({
           percent: from !== 0 ? ((to - from) / Math.abs(from)) * 100 : null,
         }
       : null;
-  const valueText = (value: number | null) => (value != null ? `${numberFormat.format(value)}${unitText ? ` ${unitText}` : ""}` : "값 없음");
+  const valueText = (value: number | null) => (value != null ? `${numberFormat.format(value)}${unitText ? ` ${unitText}` : ""}` : t("viewer.pixel.noValue"));
   // One short sentence for screen readers instead of the whole panel (coordinates, chart, A/B table).
   const status = !points.length
     ? ""
     : compareTime
       ? `A ${currentLabel ?? ""} ${valueText(a)}, B ${compareLabel ?? ""} ${valueText(b)}`
-      : `${currentLabel ?? "현재 시점"} ${variable} 값 ${valueText(a)}`;
+      : t("viewer.pixel.status", { time: currentLabel ?? t("viewer.pixel.currentTime"), variable, value: valueText(a) });
   return (
     <section
       className={`vx-graph ${expanded ? "expanded" : "hidden"}`}
-      aria-label="픽셀 시계열 그래프 패널"
+      aria-label={t("viewer.pixel.panel")}
     >
       <p className="vx-sr" role="status" aria-live="polite">
         {announce ? status : ""}
@@ -142,17 +145,17 @@ export function BottomGraphPanel({
       <div className="vx-reading">
         <span className="vx-reading__title">
           <Crosshair size={14} aria-hidden="true" />
-          <strong>픽셀 시계열</strong>
+          <strong>{t("viewer.pixel.title")}</strong>
           {variable && <b className="vx-reading__var">{variable}</b>}
         </span>
         {coordinate && (
           <dl className="vx-reading__coords tabular">
             <div>
-              <dt>위도</dt>
+              <dt>{t("viewer.pixel.lat")}</dt>
               <dd>{coordinate.lat.toFixed(5)}°</dd>
             </div>
             <div>
-              <dt>경도</dt>
+              <dt>{t("viewer.pixel.lon")}</dt>
               <dd>{coordinate.lon.toFixed(5)}°</dd>
             </div>
           </dl>
@@ -174,14 +177,14 @@ export function BottomGraphPanel({
       <div className="vx-reading__tail">
         {expanded && !compareTime && (
           <div className="vx-reading__value">
-            <small className="tabular">{currentLabel ? `${currentLabel} 값` : "현재 시점 값"}</small>
+            <small className="tabular">{currentLabel ? t("viewer.pixel.valueAt", { time: currentLabel }) : t("viewer.pixel.valueNow")}</small>
             {a != null ? (
               <strong className="tabular">
                 {numberFormat.format(a)}
                 {unitText && <span>{unitText}</span>}
               </strong>
             ) : (
-              <em>이 시점에는 값이 없습니다</em>
+              <em>{t("viewer.pixel.noValueHere")}</em>
             )}
           </div>
         )}
@@ -192,17 +195,17 @@ export function BottomGraphPanel({
                 <b className="vx-flag" aria-hidden="true">A</b>
                 {currentLabel}
               </dt>
-              <dd>{a != null ? numberFormat.format(a) : "값 없음"}</dd>
+              <dd>{a != null ? numberFormat.format(a) : t("viewer.pixel.noValue")}</dd>
             </div>
             <div>
               <dt>
                 <b className="vx-flag vx-flag--b" aria-hidden="true">B</b>
                 {compareLabel}
               </dt>
-              <dd>{b != null ? numberFormat.format(b) : "값 없음"}</dd>
+              <dd>{b != null ? numberFormat.format(b) : t("viewer.pixel.noValue")}</dd>
             </div>
             <div className="vx-reading__change">
-              <dt>{aFirst ? "A → B 변화" : "B → A 변화"}</dt>
+              <dt>{t(aFirst ? "viewer.pixel.changeAB" : "viewer.pixel.changeBA")}</dt>
               <dd>
                 {change
                   ? `${change.delta > 0 ? "+" : ""}${numberFormat.format(change.delta)}${
@@ -253,6 +256,7 @@ export function TimeseriesChart({
   /** Draw dates under the plot; off when the time staff below already labels the same axis. */
   showDates?: boolean;
 }) {
+  const { lang, t } = useLanguage();
   // Draw in the container's own pixel size so the chart fills the panel without
   // stretching text; 900x260 is the fallback where ResizeObserver is unavailable.
   const boxRef = useRef<HTMLDivElement>(null);
@@ -324,7 +328,7 @@ export function TimeseriesChart({
   };
   const current = points[currentIndex];
   const coordinateLabel = coordinate
-    ? `EPSG:4326 · 경도 ${coordinate.lon.toFixed(5)}° · 위도 ${coordinate.lat.toFixed(5)}°`
+    ? t("viewer.pixel.coords", { lon: coordinate.lon.toFixed(5), lat: coordinate.lat.toFixed(5) })
     : "EPSG:4326";
   const yTicks: number[] = [];
   if (valid.length)
@@ -336,13 +340,13 @@ export function TimeseriesChart({
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label={`${dataset} ${variable} 시계열 그래프, ${coordinateLabel}, 최소 ${rawMin}, 최대 ${rawMax}, 유효 ${valid.length}개`}
+        aria-label={t("viewer.pixel.chart", { dataset, variable, coords: coordinateLabel, min: rawMin, max: rawMax, valid: valid.length })}
       >
         <title>
           {dataset} · {variable} · {coordinateLabel}
         </title>
         <desc>
-          전체 {points.length}시점 중 유효 {valid.length}시점.{unit && ` 단위 ${unit}.`}
+          {t("viewer.pixel.desc", { total: points.length, valid: valid.length })}{unit && t("viewer.pixel.unit", { unit })}
         </desc>
         {yTicks.map((value) => (
           <g key={value}>
@@ -359,7 +363,7 @@ export function TimeseriesChart({
               y={y(value) + 3}
               textAnchor="end"
             >
-              {value.toLocaleString("ko-KR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
+              {formatNumber(value, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }, lang)}
             </text>
           </g>
         ))}
@@ -384,7 +388,7 @@ export function TimeseriesChart({
               cy={height - bottom - 4}
               r="3"
             >
-              <title>{point.time}: 값 없음</title>
+              <title>{t("viewer.pixel.missingPoint", { time: point.time })}</title>
             </circle>
           ) : (
             <circle
@@ -447,7 +451,7 @@ export function TimeseriesChart({
       </svg>
       {!valid.length && (
         <div className="chart-empty">
-          이 지점에는 영상 값이 없습니다. 지도에서 영상이 덮인 곳을 다시 선택하세요.
+          {t("viewer.pixel.empty")}
         </div>
       )}
     </div>

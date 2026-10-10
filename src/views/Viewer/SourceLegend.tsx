@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import type { ColorBarOption } from "../../api/generationApi";
 import { generation } from "../../app/api";
+import { formatNumber, getLanguage, translate, useLanguage } from "../../i18n";
+import type { Lang } from "../../i18n";
+import "../../i18n/viewer";
 
 export type LegendStyle = {
   title?: string;
@@ -81,12 +84,12 @@ export function categoriesOf(name?: string): Array<{ code: number; color: string
   }
 }
 
-const valueFormat = new Intl.NumberFormat("ko-KR", { maximumSignificantDigits: 4 });
-export const legendValue = (value: number) => valueFormat.format(value);
-const CHANNELS = ["빨강", "초록", "파랑"] as const;
+export const legendValue = (value: number, lang: Lang = getLanguage()) => formatNumber(value, { maximumSignificantDigits: 4 }, lang);
+const CHANNELS = ["red", "green", "blue"] as const;
 
-/** RGB composite: "빨강 B4 · 초록 B3 · 파랑 B2". */
-export const rgbMapping = (bands: string[]) => bands.map((band, index) => `${CHANNELS[index]} ${band}`).join(" · ");
+/** RGB composite: "빨강 B4 · 초록 B3 · 파랑 B2" / "Red B4 · Green B3 · Blue B2". */
+export const rgbMapping = (bands: string[], lang: Lang = getLanguage()) =>
+  bands.map((band, index) => `${translate(lang, `viewer.legend.channels.${CHANNELS[index]}`)} ${band}`).join(" · ");
 
 export default function SourceLegend({
   variable,
@@ -99,6 +102,8 @@ export default function SourceLegend({
   /** Bands of the RGB composite in red, green, blue order. */
   rgbBands?: string[];
 }) {
+  const { lang, t } = useLanguage();
+  const value = (number: number) => legendValue(number, lang);
   const [images, setImages] = useState<Record<string, string>>({});
   const colorBar = variable === "rgb" ? null : parseColorBar(style?.colorBarName);
   const classes = variable === "rgb" ? null : categoriesOf(style?.colorBarName);
@@ -113,13 +118,13 @@ export default function SourceLegend({
   }, [wantsRamp]);
 
   if (variable === "rgb") {
-    const mapping = rgbBands?.length === 3 ? rgbMapping(rgbBands) : "";
+    const mapping = rgbBands?.length === 3 ? rgbMapping(rgbBands, lang) : "";
     return (
-      <div className="vx-legend vx-cbar" role="group" aria-label={`원본 범례: RGB 합성${mapping ? `, ${mapping}` : ""}`}>
+      <div className="vx-legend vx-cbar" role="group" aria-label={mapping ? t("viewer.legend.rgbAriaWith", { mapping }) : t("viewer.legend.rgbAria")}>
         <span className="vx-cbar__head">
-          <strong>RGB 합성</strong>
+          <strong>{t("viewer.legend.rgb")}</strong>
         </span>
-        <small className="vx-cbar__rgb">{mapping || "빨강·초록·파랑 밴드를 눈으로 보는 색으로 합쳤습니다"}</small>
+        <small className="vx-cbar__rgb">{mapping || t("viewer.legend.rgbFallback")}</small>
       </div>
     );
   }
@@ -129,8 +134,8 @@ export default function SourceLegend({
   const max = style?.colorBarMax;
   const hasRange = typeof min === "number" && typeof max === "number" && Number.isFinite(min) && Number.isFinite(max);
   const categorical = !!classes || style?.colorBarNorm === "cat";
-  const rangeText = hasRange ? `${legendValue(min!)} – ${legendValue(max!)}${units ? ` ${units}` : ""}` : "";
-  const label = `원본 범례: ${variable}${categorical ? ", 범주(코드)" : ""}${rangeText ? `, ${categorical ? "코드 " : ""}${rangeText}` : ""}`;
+  const rangeText = hasRange ? `${value(min!)} – ${value(max!)}${units ? ` ${units}` : ""}` : "";
+  const label = `${t("viewer.legend.source", { variable })}${categorical ? t("viewer.legend.categorical") : ""}${rangeText ? `, ${categorical ? t("viewer.legend.code", { code: rangeText }) : rangeText}` : ""}`;
   const image = colorBar ? images[colorBar.base] : undefined;
   const stops = colorBar ? STOPS[colorBar.base] : undefined;
 
@@ -145,12 +150,12 @@ export default function SourceLegend({
           {classes.map((item) => (
             <li key={item.code}>
               <i style={{ background: item.color }} aria-hidden="true" />
-              <span className="tabular">{item.label ?? `코드 ${item.code}`}</span>
+              <span className="tabular">{item.label ?? t("viewer.legend.code", { code: item.code })}</span>
             </li>
           ))}
         </ul>
       ) : categorical ? (
-        hasRange && <small className="tabular">코드 {legendValue(min!)} – {legendValue(max!)}</small>
+        hasRange && <small className="tabular">{t("viewer.legend.code", { code: `${value(min!)} – ${value(max!)}` })}</small>
       ) : (
         <>
           {(image || stops) && (
@@ -159,12 +164,12 @@ export default function SourceLegend({
             </span>
           )}
           {hasRange ? (
-            <span className="vx-cbar__ticks tabular" aria-hidden="true" title="이 범위 밖의 값은 양 끝 색으로 칠합니다">
-              <span>{legendValue(min!)}</span>
-              <span>{legendValue(max!)}</span>
+            <span className="vx-cbar__ticks tabular" aria-hidden="true" title={t("viewer.legend.clamp")}>
+              <span>{value(min!)}</span>
+              <span>{value(max!)}</span>
             </span>
           ) : (
-            <small>색 범위 정보 없음</small>
+            <small>{t("viewer.legend.noRange")}</small>
           )}
         </>
       )}

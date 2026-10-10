@@ -6,6 +6,8 @@ import { ExternalLink, FolderKanban, FolderPlus, Link2 } from "lucide-react";
 import { userMessage } from "../../api/httpClient";
 import { Project, ZarrDataset } from "../../api/viewerAdapter";
 import { appApi, canEditProject } from "../../app/api";
+import { useLanguage } from "../../i18n";
+import "../../i18n/viewer";
 
 type Mode = "menu" | "create";
 
@@ -25,6 +27,7 @@ export default function ProjectQuickMenu({
   onCreated: (project: Project) => void;
   onLinked: (dataset: ZarrDataset, project: Project) => void;
 }) {
+  const { lang, t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("menu");
   const [name, setName] = useState("");
@@ -59,19 +62,19 @@ export default function ProjectQuickMenu({
 
   // Why "add to project" is unavailable, or "" when it can run.
   const linkBlocked = !dataset
-    ? "지도에 데이터셋을 먼저 고르세요."
+    ? t("viewer.project.needDataset")
     : !project
-      ? "위에서 프로젝트를 먼저 고르세요."
+      ? t("viewer.project.needProject")
       : !canEditProject(project)
-        ? "이 프로젝트에 데이터를 추가할 권한이 없습니다."
+        ? t("viewer.project.noPermission")
         : inProject
-          ? "이미 이 프로젝트에 있는 데이터입니다."
+          ? t("viewer.project.already")
           : "";
 
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!name.trim()) {
-      setError("프로젝트 이름을 입력하세요.");
+      setError(t("viewer.project.nameRequired"));
       return;
     }
     setBusy(true);
@@ -86,7 +89,7 @@ export default function ProjectQuickMenu({
       setDescription("");
       close();
     } catch (cause) {
-      setError(userMessage(cause));
+      setError(userMessage(cause, lang));
     } finally {
       setBusy(false);
     }
@@ -100,7 +103,7 @@ export default function ProjectQuickMenu({
       onLinked(dataset, project);
       close();
     } catch (cause) {
-      setError(userMessage(cause));
+      setError(userMessage(cause, lang));
     } finally {
       setBusy(false);
     }
@@ -121,8 +124,8 @@ export default function ProjectQuickMenu({
         ref={buttonRef}
         type="button"
         className="vx-icon-btn"
-        aria-label="프로젝트 관리"
-        title="프로젝트"
+        aria-label={t("viewer.project.manage")}
+        title={t("viewer.project.manageTitle")}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-pressed={open}
@@ -131,10 +134,10 @@ export default function ProjectQuickMenu({
         <FolderKanban size={18} aria-hidden="true" />
       </button>
       {open && (
-        <div className="vx-pmenu__panel" role="dialog" aria-label="프로젝트 작업">
+        <div className="vx-pmenu__panel" role="dialog" aria-label={t("viewer.project.dialog")}>
           <div className="vx-pmenu__head">
-            <small>현재 프로젝트</small>
-            <strong>{project?.name ?? "프로젝트 없음"}</strong>
+            <small>{t("viewer.project.current")}</small>
+            <strong>{project?.name ?? t("viewer.project.noProject")}</strong>
           </div>
           {mode === "menu" ? (
             <ul className="vx-pmenu__list">
@@ -148,8 +151,8 @@ export default function ProjectQuickMenu({
                 >
                   <FolderPlus size={16} aria-hidden="true" />
                   <span>
-                    새 프로젝트 만들기
-                    <small>만들면 바로 이 프로젝트로 전환합니다.</small>
+                    {t("viewer.project.create")}
+                    <small>{t("viewer.project.createHint")}</small>
                   </span>
                 </button>
               </li>
@@ -162,7 +165,7 @@ export default function ProjectQuickMenu({
                 >
                   <Link2 size={16} aria-hidden="true" />
                   <span>
-                    지금 보는 데이터를 이 프로젝트에 추가
+                    {t("viewer.project.link")}
                     <small id="vx-pmenu-link-hint">
                       {linkBlocked ||
                         `“${dataset?.name}” → “${project?.name}”`}
@@ -183,8 +186,8 @@ export default function ProjectQuickMenu({
                 >
                   <ExternalLink size={16} aria-hidden="true" />
                   <span>
-                    프로젝트 관리 열기
-                    <small>멤버·권한·수정·삭제 (새 탭)</small>
+                    {t("viewer.project.open")}
+                    <small>{t("viewer.project.openHint")}</small>
                   </span>
                 </a>
               </li>
@@ -192,18 +195,18 @@ export default function ProjectQuickMenu({
           ) : (
             <form className="vx-pmenu__form" onSubmit={create}>
               <label>
-                <span>프로젝트 이름</span>
+                <span>{t("viewer.project.name")}</span>
                 <input
                   ref={nameRef}
                   value={name}
                   maxLength={150}
                   onChange={(event) => setName(event.target.value)}
-                  placeholder="예: 한강 수체 2026"
+                  placeholder={t("viewer.project.namePlaceholder")}
                 />
               </label>
               <label>
                 <span>
-                  설명 <small>(선택)</small>
+                  {t("viewer.project.description")} <small>{t("viewer.project.optional")}</small>
                 </span>
                 <textarea
                   value={description}
@@ -221,14 +224,14 @@ export default function ProjectQuickMenu({
                     setError("");
                   }}
                 >
-                  취소
+                  {t("common.cancel")}
                 </button>
                 <button
                   type="submit"
                   className="vx-btn vx-btn--ink"
                   disabled={busy}
                 >
-                  {busy ? "만드는 중…" : "만들기"}
+                  {t(busy ? "viewer.project.creating" : "viewer.project.submit")}
                 </button>
               </div>
             </form>

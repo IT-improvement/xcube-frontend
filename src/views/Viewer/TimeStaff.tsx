@@ -4,6 +4,8 @@
 // sit over these ticks.
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { Repeat, SkipBack, SkipForward, SlidersHorizontal } from "lucide-react";
+import { useT } from "../../i18n";
+import "../../i18n/viewer";
 
 export type StaffTime = { iso: string; label: string };
 
@@ -33,6 +35,7 @@ export function TimeStaff({
   /** Time B while a compare mode is on; -1 otherwise. */
   compareIndex?: number;
 }) {
+  const t = useT();
   const count = times.length;
   const comparing = compareIndex >= 0 && compareIndex < count;
   const position = (value: number) =>
@@ -76,7 +79,7 @@ export function TimeStaff({
         max={Math.max(0, count - 1)}
         value={index}
         onChange={(event) => onIndex(Number(event.target.value))}
-        aria-label="관측 시점"
+        aria-label={t("viewer.dock.staff")}
         aria-valuetext={times[index] ? `${times[index].label}, ${index + 1} / ${count}` : undefined}
       />
     </div>
@@ -99,6 +102,7 @@ export function PlaybackOptions({
   onFirst: () => void;
   onLast: () => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -128,8 +132,8 @@ export function PlaybackOptions({
         className="vx-popt__toggle"
         aria-expanded={open}
         aria-controls="vx-playback-options"
-        aria-label={`재생 옵션, ${speed}x${loop ? ", 반복" : ""}`}
-        title="재생 옵션"
+        aria-label={t(loop ? "viewer.dock.optionsStateLoop" : "viewer.dock.optionsState", { speed })}
+        title={t("viewer.dock.options")}
         onClick={() => setOpen((value) => !value)}
       >
         <SlidersHorizontal size={16} aria-hidden="true" />
@@ -139,23 +143,23 @@ export function PlaybackOptions({
         {loop && <Repeat size={14} aria-hidden="true" />}
       </button>
       {open && (
-        <div id="vx-playback-options" className="vx-popt__panel" role="group" aria-label="재생 옵션">
+        <div id="vx-playback-options" className="vx-popt__panel" role="group" aria-label={t("viewer.dock.options")}>
           <div className="vx-popt__row">
-            <span className="vx-popt__label">이동</span>
+            <span className="vx-popt__label">{t("viewer.dock.jump")}</span>
             <div className="vx-popt__pair">
-              <button type="button" onClick={onFirst} aria-label="첫 시점">
+              <button type="button" onClick={onFirst} aria-label={t("viewer.dock.first")}>
                 <SkipBack size={15} aria-hidden="true" />
-                처음
+                {t("viewer.dock.firstShort")}
               </button>
-              <button type="button" onClick={onLast} aria-label="마지막 시점">
+              <button type="button" onClick={onLast} aria-label={t("viewer.dock.last")}>
                 <SkipForward size={15} aria-hidden="true" />
-                마지막
+                {t("viewer.dock.lastShort")}
               </button>
             </div>
           </div>
           <div className="vx-popt__row">
             <span className="vx-popt__label" id="vx-speed-label">
-              재생 속도
+              {t("viewer.dock.speed")}
             </span>
             <div className="vx-seg" role="group" aria-labelledby="vx-speed-label">
               {[0.5, 1, 2, 4].map((value) => (
@@ -179,9 +183,9 @@ export function PlaybackOptions({
                 aria-describedby="vx-loop-hint"
                 onChange={(event) => onLoop(event.target.checked)}
               />
-              반복
+              {t("viewer.dock.loop")}
             </label>
-            <small id="vx-loop-hint">마지막 시점 다음에 처음으로 돌아가 계속 재생합니다.</small>
+            <small id="vx-loop-hint">{t("viewer.dock.loopHint")}</small>
           </div>
         </div>
       )}

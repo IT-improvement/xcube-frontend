@@ -10,15 +10,14 @@ import OlMap from "../../components/map";
 import addDynamicXcubeLayer from "../../components/xcubeLayer";
 import { FRAME_SAFETY_MS, watchTileLayerReady } from "../../components/xcubeLayer/tileReady";
 import { ChevronDown, Columns2, GripVertical, Square, SplitSquareHorizontal } from "lucide-react";
+import { useT } from "../../i18n";
+import "../../i18n/viewer";
 
 export type DisplayMode = "single" | "swipe" | "split";
 /** What the right side shows while comparing: another time, or the AI result at the same time. */
 export type CompareTarget = "time" | "ai";
-export const DISPLAY_MODES: Array<{ value: DisplayMode; label: string }> = [
-  { value: "single", label: "단일" },
-  { value: "swipe", label: "스와이프" },
-  { value: "split", label: "나란히" },
-];
+/** Display modes in switch order; their names are viewer.compare.modes.* (단일·스와이프·나란히 / Single·Swipe·Side by side). */
+export const DISPLAY_MODES: DisplayMode[] = ["single", "swipe", "split"];
 const ICON = { single: Square, swipe: SplitSquareHorizontal, split: Columns2 };
 
 /** CSS pixel on the map → pixel on the layer canvas (same as ol/render getRenderPixel). */
@@ -158,6 +157,7 @@ export function SwipeDivider({
   rightLabel: string;
   target?: CompareTarget;
 }) {
+  const t = useT();
   const ai = target === "ai";
   const rootRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -172,11 +172,11 @@ export function SwipeDivider({
         <>
           <span className="vx-maplabel vx-maplabel--a">
             <i className="vx-swatch vx-swatch--source" aria-hidden="true" />
-            <span>원본 <span className="tabular">{leftLabel}</span></span>
+            <span>{t("viewer.compare.source")} <span className="tabular">{leftLabel}</span></span>
           </span>
           <span className="vx-maplabel vx-maplabel--b">
             <i className="vx-hatch" aria-hidden="true" />
-            <span>AI 결과 <span className="tabular">{rightLabel}</span></span>
+            <span>{t("viewer.compare.ai")} <span className="tabular">{rightLabel}</span></span>
           </span>
         </>
       ) : (
@@ -196,14 +196,12 @@ export function SwipeDivider({
           type="button"
           className="vx-swipe__handle"
           role="slider"
-          aria-label="스와이프 구분선"
+          aria-label={t("viewer.compare.divider")}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(value)}
           aria-valuetext={
-            ai
-              ? `왼쪽 원본 ${Math.round(value)}%, 오른쪽 AI 결과 ${100 - Math.round(value)}%`
-              : `왼쪽 A ${Math.round(value)}%, 오른쪽 B ${100 - Math.round(value)}%`
+            t(ai ? "viewer.compare.dividerAi" : "viewer.compare.dividerTime", { left: Math.round(value), right: 100 - Math.round(value) })
           }
           onPointerDown={(event) => {
             event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -244,6 +242,7 @@ export function CompareMap({
   /** Drawn over the second map (the demo result hatch). */
   children?: ReactNode;
 }) {
+  const t = useT();
   const [own, setOwn] = useState<Map | null>(null);
   useEffect(() => {
     if (!own || !mainMap) return;
@@ -261,7 +260,7 @@ export function CompareMap({
   return (
     <div
       className="vx-compare-map"
-      aria-label={target === "ai" ? `비교 지도 · 원본과 AI 결과 · ${label}` : `비교 지도 B · ${label}`}
+      aria-label={t(target === "ai" ? "viewer.compare.mapAi" : "viewer.compare.mapTime", { label })}
       role="region"
     >
       <OlMap onMapReady={setOwn} baseVisible={baseVisible} />
@@ -270,7 +269,7 @@ export function CompareMap({
         {target === "ai" ? (
           <>
             <i className="vx-hatch" aria-hidden="true" />
-            <span>원본 + AI 결과 <span className="tabular">{label}</span></span>
+            <span>{t("viewer.compare.sourcePlusAi")} <span className="tabular">{label}</span></span>
           </>
         ) : (
           <>
@@ -293,10 +292,12 @@ export function CompareModes({
   onMode: (mode: DisplayMode) => void;
   disabled: boolean;
 }) {
+  const t = useT();
   return (
-    <div className="vx-modes" role="group" aria-label="표시 방식" data-tour="compare">
-      {DISPLAY_MODES.map(({ value, label }) => {
+    <div className="vx-modes" role="group" aria-label={t("viewer.compare.modesAria")} data-tour="compare">
+      {DISPLAY_MODES.map((value) => {
         const Icon = ICON[value];
+        const label = t(`viewer.compare.modes.${value}`);
         return (
           <button
             type="button"
@@ -304,7 +305,7 @@ export function CompareModes({
             aria-pressed={mode === value}
             disabled={disabled && value !== "single"}
             onClick={() => onMode(value)}
-            title={value === "single" ? "단일 표시" : `${label} 비교`}
+            title={value === "single" ? t("viewer.compare.singleTitle") : t("viewer.compare.modeTitle", { label })}
           >
             <Icon size={15} aria-hidden="true" />
             <span className="vx-modes__label">{label}</span>
@@ -325,11 +326,12 @@ export function CompareTime({
   compareIndex: number;
   onCompareIndex: (index: number) => void;
 }) {
+  const t = useT();
   return (
     <label className="vx-btime">
       <b className="vx-flag vx-flag--b" aria-hidden="true">B</b>
       <select
-        aria-label="비교 시점 B"
+        aria-label={t("viewer.compare.timeB")}
         className="tabular"
         value={compareIndex}
         onChange={(event) => onCompareIndex(Number(event.target.value))}
@@ -355,21 +357,22 @@ export function CompareTargetSwitch({
   onChange: (value: CompareTarget) => void;
   aiAvailable: boolean;
 }) {
+  const t = useT();
   return (
-    <div className="vx-cmp-target" role="group" aria-label="비교 대상">
-      <span className="vx-cmp-target__label" aria-hidden="true">비교 대상</span>
+    <div className="vx-cmp-target" role="group" aria-label={t("viewer.compare.targetGroup")}>
+      <span className="vx-cmp-target__label" aria-hidden="true">{t("viewer.compare.targetLabel")}</span>
       <div className="vx-seg vx-seg--2">
         <button type="button" aria-pressed={value === "time"} onClick={() => onChange("time")}>
-          시점
+          {t("viewer.compare.targetTime")}
         </button>
         <button
           type="button"
           aria-pressed={value === "ai"}
           disabled={!aiAvailable}
-          title={aiAvailable ? "같은 시점의 원본과 AI 결과를 비교" : "이 데이터에는 아직 AI 결과가 없습니다"}
+          title={t(aiAvailable ? "viewer.compare.targetAiTitle" : "viewer.compare.targetAiNone")}
           onClick={() => onChange("ai")}
         >
-          AI 결과
+          {t("viewer.compare.targetAi")}
         </button>
       </div>
     </div>

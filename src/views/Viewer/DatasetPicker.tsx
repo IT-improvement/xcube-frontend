@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { ZarrDataset } from "../../api/viewerAdapter";
+import { useT } from "../../i18n";
+import "../../i18n/viewer";
 
 /**
  * Searchable combobox for choosing the Zarr shown on the map (owned first, then shared).
@@ -27,6 +29,7 @@ export default function DatasetPicker({
   /** Increase to open the list from outside (the empty-map hint). */
   openRequest?: number;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -113,7 +116,9 @@ export default function DatasetPicker({
     }
   };
   const ownership = (item: ZarrDataset) =>
-    item.accessType === "SHARED" ? "공유받음" : "내 데이터";
+    t(item.accessType === "SHARED" ? "viewer.picker.shared" : "viewer.picker.mine");
+  // "{name}의 데이터" / "Data in {name}" with the project name in bold.
+  const [scopeBefore, scopeAfter = ""] = t("viewer.picker.projectData").split("{name}");
   return (
     <div
       className="dataset-picker"
@@ -126,14 +131,14 @@ export default function DatasetPicker({
         type="button"
         className={`dataset-trigger ${selected ? "" : "is-empty"}`}
         role="combobox"
-        aria-label="데이터 또는 Zarr 선택"
+        aria-label={t("viewer.picker.trigger")}
         aria-expanded={open}
         aria-controls="zarr-listbox"
         onClick={() => setOpen((current) => !current)}
       >
-        <span className="dataset-trigger__name">{selected?.name ?? "데이터 고르기"}</span>
+        <span className="dataset-trigger__name">{selected?.name ?? t("viewer.picker.placeholder")}</span>
         {selected?.accessType === "SHARED" && (
-          <small className="dataset-trigger__tag">공유받음</small>
+          <small className="dataset-trigger__tag">{t("viewer.picker.shared")}</small>
         )}
         <ChevronDown size={16} aria-hidden="true" />
       </button>
@@ -148,8 +153,8 @@ export default function DatasetPicker({
                 setQuery(event.target.value);
                 setActive(0);
               }}
-              placeholder={projectScope ? `${project!.name}에서 검색` : "이름으로 검색"}
-              aria-label="Zarr 검색"
+              placeholder={projectScope ? t("viewer.picker.searchIn", { name: project!.name }) : t("viewer.picker.search")}
+              aria-label={t("viewer.picker.searchAria")}
             />
           </div>
           {project && (
@@ -157,10 +162,10 @@ export default function DatasetPicker({
               <span>
                 {projectScope ? (
                   <>
-                    <strong>{project.name}</strong>의 데이터
+                    {scopeBefore}<strong>{project.name}</strong>{scopeAfter}
                   </>
                 ) : (
-                  "모든 데이터"
+                  t("viewer.picker.all")
                 )}
               </span>
               <button
@@ -170,7 +175,7 @@ export default function DatasetPicker({
                   setActive(0);
                 }}
               >
-                {projectScope ? "모든 데이터 보기" : `${project.name}만 보기`}
+                {projectScope ? t("viewer.picker.showAll") : t("viewer.picker.onlyProject", { name: project.name })}
               </button>
             </div>
           )}
@@ -178,7 +183,7 @@ export default function DatasetPicker({
             id="zarr-listbox"
             className="dataset-list"
             role="listbox"
-            aria-label={projectScope ? `${project!.name}의 데이터` : "Zarr 목록"}
+            aria-label={projectScope ? t("viewer.picker.projectData", { name: project!.name }) : t("viewer.picker.list")}
           >
             {filtered.length ? (
               filtered.map((item, index) => (
@@ -198,7 +203,7 @@ export default function DatasetPicker({
                     <strong>{item.name}</strong>
                     <small>
                       <span>{ownership(item)}</span>
-                      {!projectScope && <span>{item.projectName || "프로젝트 없음"}</span>}
+                      {!projectScope && <span>{item.projectName || t("viewer.picker.noProject")}</span>}
                     </small>
                   </span>
                   {item.id === value && (
@@ -208,9 +213,7 @@ export default function DatasetPicker({
               ))
             ) : (
               <p className="dataset-empty">
-                {projectScope && !query
-                  ? "이 프로젝트에 등록된 데이터가 없습니다."
-                  : "검색 결과가 없습니다."}
+                {t(projectScope && !query ? "viewer.picker.emptyProject" : "viewer.picker.noMatch")}
               </p>
             )}
           </div>
