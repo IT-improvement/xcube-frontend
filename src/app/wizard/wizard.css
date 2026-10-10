@@ -63,6 +63,26 @@
 .file-drop__icon { display: grid; place-items: center; color: var(--fb-ink-2); }
 .file-drop small { color: var(--fb-ink-2); }
 
+/* Upload progress and cancel (audit W9): a thin ink bar, then "45% · 120 MB / 800 MB · 약 2분 남음" and 업로드 취소. */
+.upload-meter { display: grid; gap: 6px; width: min(420px, 100%); justify-self: stretch; }
+.file-drop .upload-meter { justify-self: center; }
+.upload-meter__line { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; text-align: left; }
+
+/* Satellite products (UR-55): the type choice, where to get it, and one ruled row per uploaded product. */
+.segmented__note { margin-left: 4px; font-weight: 400; opacity: 0.72; }
+.product-where { margin: 0; font-size: 14px; color: var(--fb-ink-2); word-break: keep-all; }
+.product-where strong { color: var(--fb-ink); margin-right: 4px; }
+.product-list { display: grid; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--fb-rule); }
+.product-row { display: grid; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--fb-rule); min-width: 0; }
+.product-row p { margin: 0; }
+.product-row__head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.product-row__icon { display: grid; place-items: center; color: var(--fb-ink-2); }
+.product-row.is-done .product-row__icon { color: var(--fb-ok); }
+.product-row.is-failed .product-row__icon { color: var(--fb-bad); }
+.product-row__name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font: 500 13.5px/1.35 var(--font-sans); font-variant-numeric: tabular-nums; }
+.product-table__note { font-size: 13px; color: var(--fb-ink-2); min-width: 16ch; }
+.product-rgb { color: var(--fb-ink-2); }
+
 /* GEE "자료": the preset as the large first choice, then "직접 고르기" with the whole list (no inner scroll). */
 .catalog { gap: var(--space-5); }
 .catalog__preset { display: grid; }

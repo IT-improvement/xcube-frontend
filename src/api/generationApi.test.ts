@@ -1,4 +1,4 @@
-import { generationApi } from './generationApi';
+import { generationApi, isAbortError } from './generationApi';
 import { session } from './httpClient';
 
 beforeEach(() => { sessionStorage.clear(); session.setToken('jwt'); jest.restoreAllMocks(); });
@@ -71,4 +71,71 @@ test('upload failures keep the server code, or word the missing sentence from th
   const inspected = await generationApi.inspectSpatialFile('geotiff', new File(['x'], 'a.tif')).catch((error) => error);
   expect(inspected).toMatchObject({ code: 'GEOTIFF_READ_FAILED', params: {} });
   expect(userMessage(inspected, 'en')).toBe('Couldn’t read the GeoTIFF file.');
+});
+
+/* Audit W9 / UR-55: uploads with progress and cancel go through XMLHttpRequest; the request stays the same. */
+class FakeXhr {
+  static last: FakeXhr;
+  method = ''; url = ''; headers: Record<string, string> = {}; body: FormData | null = null; status = 0; responseText = '';
+  upload: { onprogress: ((event: { loaded: number; total: number; lengthComputable: boolean }) => void) | null } = { onprogress: null };
+  onload: (() => void) | null = null; onerror: (() => void) | null = null; onabort: (() => void) | null = null;
+  aborted = false;
+  constructor() { FakeXhr.last = this; }
+  open(method: string, url: string) { this.method = method; this.url = url; }
+  setRequestHeader(name: string, value: string) { this.headers[name] = value; }
+  send(body: FormData) { this.body = body; }
+  abort() { this.aborted = true; this.onabort?.(); }
+  progress(loaded: number, total: number) { this.upload.onprogress?.({ loaded, total, lengthComputable: true }); }
+  respond(status: number, body: unknown) { this.status = status; this.responseText = JSON.stringify(body); this.onload?.(); }
+}
+
+describe('upload progress and cancel (W9)', () => {
+  const original = global.XMLHttpRequest;
+  beforeEach(() => { (global as any).XMLHttpRequest = FakeXhr; });
+  afterEach(() => { (global as any).XMLHttpRequest = original; });
+
+  test('an existing GeoTIFF upload reports progress and sends the same request as before', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch');
+    const seen: Array<{ loaded: number; total: number }> = [];
+    const file = new File(['x'.repeat(10)], 'scene.tif', { type: 'image/tiff' });
+    const result = generationApi.inspectSpatialFile('geotiff', file, { onProgress: (progress) => seen.push(progress) });
+    const xhr = FakeXhr.last;
+    expect(xhr.method).toBe('POST');
+    expect(xhr.url).toBe('http://localhost:8083/api/v1/spatial-files/inspect/geotiff');
+    expect(xhr.headers).toEqual({ Authorization: 'Bearer jwt' });
+    expect(Array.from(xhr.body!.keys())).toEqual(['file']);
+    expect(xhr.body!.get('file')).toBe(file);
+    xhr.progress(4, 10);
+    xhr.progress(10, 10);
+    xhr.respond(200, { sourceType: 'GEOTIFF', fileName: 'scene.tif', bands: ['band_1'], bounds: null, files: ['scene.tif'], message: 'ok' });
+    expect(await result).toMatchObject({ sourceType: 'GEOTIFF', fileName: 'scene.tif' });
+    expect(seen).toEqual([{ loaded: 4, total: 10 }, { loaded: 10, total: 10 }]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('cancel aborts the upload and rejects with AbortError', async () => {
+    const controller = new AbortController();
+    const result = generationApi.inspectSpatialFile('sentinel2', new File(['x'], 'S2B_MSIL2A_x.zip'), { signal: controller.signal }).catch((error) => error);
+    expect(FakeXhr.last.url).toBe('http://localhost:8083/api/v1/spatial-files/inspect/sentinel2');
+    controller.abort();
+    const error = await result;
+    expect(FakeXhr.last.aborted).toBe(true);
+    expect(isAbortError(error)).toBe(true);
+  });
+
+  test('a server error keeps its code and values (UR-55 product codes)', async () => {
+    require('../i18n/codes/data');
+    const { userMessage } = require('./httpClient');
+    const result = generationApi.inspectSpatialFile('landsat', new File(['x'], 'LC09_L2SP_x.tar'), { onProgress: () => undefined }).catch((error) => error);
+    FakeXhr.last.respond(400, { code: 'PRODUCT_BAND_MISSING', message: '제품에 필요한 band 파일이 없습니다: SR_B4', params: { bands: ['SR_B4'] } });
+    const error = await result;
+    expect(error).toMatchObject({ status: 400, code: 'PRODUCT_BAND_MISSING', params: { bands: ['SR_B4'] } });
+    expect(userMessage(error, 'en')).toBe('The product is missing band files: SR_B4');
+  });
+
+  test('without progress or cancel the upload stays on fetch', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({ sourceType: 'SHAPEFILE', fileName: 'a.zip', bands: [], bounds: null, files: [], message: '' }), { status: 200 }));
+    await generationApi.inspectSpatialFile('shapefile', new File(['x'], 'a.zip'));
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8083/api/v1/spatial-files/inspect/shapefile');
+  });
 });

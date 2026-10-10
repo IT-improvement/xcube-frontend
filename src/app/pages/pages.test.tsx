@@ -381,14 +381,14 @@ describe('S4 데이터 추가 (FR-GEN-10·11)', () => {
   test('방식 카드는 하나의 탭 정지점과 방향키 선택을 쓴다', async () => {
     renderAt('/app/data/new');
     const cards = await screen.findAllByRole('radio');
-    expect(cards.map((card) => card.tabIndex)).toEqual([0, -1, -1, -1]);
+    expect(cards.map((card) => card.tabIndex)).toEqual([0, -1, -1, -1, -1]);
     cards[0].focus();
     fireEvent.keyDown(cards[0], { key: 'ArrowRight' });
     expect(cards[1]).toHaveFocus();
     expect(cards[1]).toHaveAttribute('aria-checked', 'true');
-    expect(cards.map((card) => card.tabIndex)).toEqual([-1, 0, -1, -1]);
+    expect(cards.map((card) => card.tabIndex)).toEqual([-1, 0, -1, -1, -1]);
     fireEvent.keyDown(cards[1], { key: 'End' });
-    expect(cards[3]).toHaveAttribute('aria-checked', 'true');
+    expect(cards[4]).toHaveAttribute('aria-checked', 'true');
   });
 
   test('일반 GeoTIFF는 위성·센서가 필요하고, 날짜 없는 파일은 관측 날짜를 받아 함께 보낸다', async () => {

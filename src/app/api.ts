@@ -5,7 +5,8 @@ import { backofficeAdapter, ProjectMember } from '../api/backofficeApi';
 import { demoManagement, viewerAdapter as demoAdapter, Project, ZarrDataset } from '../api/viewerAdapter';
 import { analysisApi, DryRun, FusionRequest, ValidateResult } from '../api/analysisApi';
 import { dryRunDemo, fusionJobsDemo, validateFormula } from './fusionDemo';
-import { AdminArea, AdminLevel, AdminSearch, AreaPick, AreaUpload, ColorBarOption, FileJobInput, GeeCollection, GeeEstimate, GeeJobBody, generationApi, GenerationJob, JobSummary, SavedArea, SpatialInspection } from '../api/generationApi';
+import { AdminArea, AdminLevel, AdminSearch, AreaPick, AreaUpload, ColorBarOption, FileJobInput, GeeCollection, GeeEstimate, GeeJobBody, generationApi, GenerationJob, InspectType, JobSummary, ProductBand, SavedArea, SpatialInspection, UploadOptions } from '../api/generationApi';
+import { ApiError } from '../api/httpClient';
 import { areaDemo } from './areaDemo';
 import { aiApi, AiCheck, AiJobRequest, AiModel, AiWaterJob } from '../api/aiApi';
 import { createAiDemo } from './aiDemo';
@@ -61,8 +62,68 @@ const DEMO_COLLECTIONS: GeeCollection[] = [
   { id: 'LANDSAT/LC09/C02/T1_L2', name: 'Landsat 9 C2 L2', bands: ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7'] },
   { id: 'LANDSAT/LC08/C02/T1_L2', name: 'Landsat 8 C2 L2', bands: ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7'] },
 ];
+/**
+ * Demo upload: progress in four steps over about 0.3 s, then the check; cancel rejects like a real upload.
+ * Satellite products (UR-55) answer from the file name, e.g. `S2B_MSIL2A_20240814T021529_N0511_R003_T52SCG_….zip`
+ * or `LC09_L2SP_115034_20240816_….tar`.
+ */
+function demoUpload<T>(file: File, options: UploadOptions, answer: () => T): Promise<T> {
+  const total = Math.max(file.size, 1);
+  return new Promise<T>((resolve, reject) => {
+    const timers: number[] = [];
+    const stop = () => { timers.forEach((timer) => window.clearTimeout(timer)); reject(new DOMException('Upload cancelled', 'AbortError')); };
+    if (options.signal?.aborted) { stop(); return; }
+    options.signal?.addEventListener('abort', stop);
+    [1, 2, 3, 4].forEach((step) => timers.push(window.setTimeout(() => options.onProgress?.({ loaded: Math.round((total * step) / 4), total }), step * 70)));
+    timers.push(window.setTimeout(() => {
+      options.signal?.removeEventListener('abort', stop);
+      try { resolve(answer()); } catch (error) { reject(error); }
+    }, 400));
+  });
+}
+const S2_BANDS: ProductBand[] = [
+  ['B02', 'blue', 10, true], ['B03', 'green', 10, true], ['B04', 'red', 10, true], ['B08', 'nir', 10, true], ['B11', 'swir', 20, true],
+  ['B05', 'rededge1', 20, false], ['B06', 'rededge2', 20, false], ['B07', 'rededge3', 20, false], ['B8A', 'nir08', 20, false], ['B12', 'swir2', 20, false],
+  ['B01', 'coastal', 60, false], ['B09', 'wv', 60, false],
+].map(([source, name, resolution, picked]) => ({ source: source as string, name: name as string, resolution: resolution as number, kind: 'continuous', default: picked as boolean }) as ProductBand)
+  .concat([{ source: 'SCL', name: 'scl', resolution: 20, kind: 'categorical', default: true }]);
+const LANDSAT_BANDS: ProductBand[] = [
+  ['SR_B1', 'coastal', false], ['SR_B2', 'blue', true], ['SR_B3', 'green', true], ['SR_B4', 'red', true], ['SR_B5', 'nir', true], ['SR_B6', 'swir', true], ['SR_B7', 'swir2', false],
+].map(([source, name, picked]) => ({ source: source as string, name: name as string, resolution: 30, kind: 'continuous', default: picked as boolean }) as ProductBand)
+  .concat([{ source: 'QA_PIXEL', name: 'qa_pixel', resolution: 30, kind: 'categorical', default: true }]);
+const iso = (stamp: string) => `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(9, 11) || '02'}:${stamp.slice(11, 13) || '15'}:${stamp.slice(13, 15) || '00'}Z`;
+function demoProduct(type: 'sentinel2' | 'landsat', file: File): SpatialInspection {
+  const name = file.name;
+  const s2 = /^S2([ABC])_MSIL(1C|2A)_(\d{8}T\d{6})_N(\d{2})(\d{2})_R\d{3}_T(\w{5})_/i.exec(name);
+  const landsat = /^L[CO]0([89])_(L\w{3})_(\d{6})_(\d{8})_/i.exec(name);
+  if ((type === 'sentinel2' && landsat) || (type === 'landsat' && s2)) throw new ApiError(400, 'PRODUCT_TYPE_MISMATCH', '고른 제품 종류와 다른 파일입니다.');
+  if ((s2 && s2[2].toUpperCase() === '1C') || (landsat && landsat[2].toUpperCase().startsWith('L1'))) throw new ApiError(400, 'PRODUCT_LEVEL_UNSUPPORTED', 'Level-1 제품은 올릴 수 없습니다.');
+  const footprint: [number, number, number, number] = [127.21, 36.04, 128.45, 37.03];
+  if (type === 'sentinel2') {
+    const baseline = s2 ? `${s2[4]}.${s2[5]}` : '05.11';
+    return {
+      sourceType: 'SENTINEL2_L2A', fileName: name, bands: S2_BANDS.map((band) => band.source), bounds: { west: footprint[0], south: footprint[1], east: footprint[2], north: footprint[3] }, files: [name],
+      message: 'Sentinel-2 L2A 제품을 확인했습니다. (데모)', messageCode: 'SENTINEL2_CHECKED', inputs: [{ kind: 'zip', uri: `file:///demo/${name}` }],
+      product: {
+        sensor: 'SENTINEL2_L2A', platform: s2 ? `S2${s2[1].toUpperCase()}` : 'S2B', productId: name.replace(/\.zip$/i, ''), acquiredAt: s2 ? iso(s2[3]) : '2024-08-14T02:15:29Z',
+        tile: s2 ? s2[6].toUpperCase() : '52SCG', processingBaseline: baseline, boaAddOffset: Number(baseline) >= 4 ? -1000 : 0, cloudCover: 3.2, footprint, bands: S2_BANDS,
+      },
+    };
+  }
+  const pathRow = landsat ? landsat[3] : '115034';
+  return {
+    sourceType: 'LANDSAT_C2L2', fileName: name, bands: LANDSAT_BANDS.map((band) => band.source), bounds: { west: footprint[0], south: footprint[1], east: footprint[2], north: footprint[3] }, files: [name],
+    message: 'Landsat Collection 2 Level-2 제품을 확인했습니다. (데모)', messageCode: 'LANDSAT_CHECKED', inputs: [{ kind: 'tar', uri: `file:///demo/${name}` }],
+    product: {
+      sensor: 'LANDSAT_C2_L2', platform: landsat ? `LC0${landsat[1]}` : 'LC09', productId: name.replace(/\.(tar(\.gz)?|tgz|zip)$/i, ''), acquiredAt: landsat ? iso(`${landsat[4]}T020000`) : '2024-08-16T02:00:00Z',
+      pathRow, cloudCover: 12.4, footprint, bands: LANDSAT_BANDS,
+    },
+  };
+}
+
 /** Demo inspection: ten attributes (or four bands) with approximate statistics, as the M1 API will return. */
-function demoInspection(type: 'geotiff' | 'shapefile' | 'cas500', file: File): SpatialInspection {
+function demoInspection(type: InspectType, file: File): SpatialInspection {
+  if (type === 'sentinel2' || type === 'landsat') return demoProduct(type, file);
   const bounds = { west: 128.9, south: 35.38, east: 129.42, north: 35.72 };
   if (type === 'shapefile') {
     const fields = [
@@ -88,7 +149,9 @@ function demoInspection(type: 'geotiff' | 'shapefile' | 'cas500', file: File): S
 export const generation = {
   colorBars: (): Promise<ColorBarOption[]> => (useMockApi ? pause(150).then(() => DEMO_COLORBARS) : generationApi.getColorBarOptions()),
   collections: (): Promise<GeeCollection[]> => (useMockApi ? pause(150).then(() => DEMO_COLLECTIONS) : generationApi.getCollections()),
-  inspect: (type: 'geotiff' | 'shapefile' | 'cas500', file: File): Promise<SpatialInspection> => (useMockApi ? pause().then(() => demoInspection(type, file)) : generationApi.inspectSpatialFile(type, file)),
+  /** Upload and check a file; `options` reports progress and cancels (audit W9). */
+  inspect: (type: InspectType, file: File, options: UploadOptions = {}): Promise<SpatialInspection> =>
+    (useMockApi ? demoUpload(file, options, () => demoInspection(type, file)) : generationApi.inspectSpatialFile(type, file, options)),
   createGeeJob: (input: Parameters<typeof generationApi.createGeeJob>[0]): Promise<GenerationJob> => (useMockApi ? pause().then(() => demoJob(input.name, 'GEE_TO_ZARR')) : generationApi.createGeeJob(input)),
   estimateGee: (body: GeeJobBody, signal?: AbortSignal): Promise<GeeEstimate> => (useMockApi ? areaDemo.estimate(body) : generationApi.estimateGee(body, signal)),
   searchAdminAreas: (query: string, level?: AdminLevel): Promise<AdminSearch> => (useMockApi ? areaDemo.searchAdmin(query, level) : generationApi.searchAdminAreas(query, level)),

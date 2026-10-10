@@ -24,12 +24,28 @@ export type ValueStats = { min: number; max: number; p2?: number; p98?: number }
 /** Band or attribute details from the inspect API (FR-GEN-10·11). Older servers send only `bands`. */
 export type InspectionField = { name: string; type?: 'integer' | 'real' | 'string'; approxStats?: ValueStats; categories?: Array<{ value: string | number; count: number }> };
 export type FileInput = { kind?: string; uri?: string; path?: string; fileName?: string; [key: string]: unknown };
-export type SpatialInspection = { sourceType: 'GEOTIFF' | 'SHAPEFILE' | 'CAS500'; fileName: string; bands: string[]; fields?: InspectionField[]; bounds: { west: number; south: number; east: number; north: number } | null; width?: number; height?: number; files: string[]; message: string; inputs?: FileInput[];
+/** What the inspect API reads: the existing file kinds and the satellite product packages (UR-55). */
+export type InspectType = 'geotiff' | 'shapefile' | 'cas500' | 'sentinel2' | 'landsat';
+/** A product package's band (Backend guide "위성 원본 제품 업로드"): `name` is the registry name AI and band math use. */
+export type ProductBand = { source: string; name: string; resolution: number; kind: 'continuous' | 'categorical'; default: boolean;
+  /** Not in the contract yet; used for the display range when a server sends it. */
+  approxStats?: ValueStats };
+/** `footprint` is an EPSG:4326 bbox; both `[w, s, e, n]` and `{west, south, east, north}` are read. */
+export type ProductInfo = {
+  sensor: 'SENTINEL2_L2A' | 'LANDSAT_C2_L2' | string; platform: string; productId: string; acquiredAt: string;
+  tile?: string | null; pathRow?: string | null; processingBaseline?: string | null; boaAddOffset?: number | null; cloudCover?: number | null;
+  footprint?: Bbox | { west: number; south: number; east: number; north: number } | null;
+  bands: ProductBand[];
+};
+export type SpatialInspection = { sourceType: 'GEOTIFF' | 'SHAPEFILE' | 'CAS500' | 'SENTINEL2_L2A' | 'LANDSAT_C2L2' | string; fileName: string; bands: string[]; fields?: InspectionField[]; bounds: { west: number; south: number; east: number; north: number } | null; width?: number; height?: number; files: string[]; message: string; inputs?: FileInput[];
   /** `GEOTIFF_CHECKED`·`SHAPEFILE_CHECKED`·`CAS500_CHECKED` with values (UR-53 stage 5); older servers send only `message`. */
-  messageCode?: string; messageParams?: ServerParams };
+  messageCode?: string; messageParams?: ServerParams;
+  /** Satellite product packages only (`SENTINEL2_CHECKED`·`LANDSAT_CHECKED`). */
+  product?: ProductInfo };
 /** One output variable of a generation job: only selected bands/attributes become Zarr variables. */
 export type VariableSpec = { source: string; name: string; kind: 'continuous' | 'categorical'; style: { colorBar: string; min?: number; max?: number } };
-export type FileJobInput = { type: 'GEOTIFF_BANDS' | 'CAS500' | 'SHAPEFILE'; name: string; inputs: FileInput[]; variables: VariableSpec[]; params?: Record<string, unknown>; projectId?: string };
+export type FileJobType = 'GEOTIFF_BANDS' | 'CAS500' | 'SHAPEFILE' | 'SENTINEL2_L2A' | 'LANDSAT_C2L2';
+export type FileJobInput = { type: FileJobType; name: string; inputs: FileInput[]; variables: VariableSpec[]; params?: Record<string, unknown>; projectId?: string };
 
 
 /** GEE area of interest (AOI), Backend guide "GEE 관심 영역(AOI)". */
@@ -87,15 +103,62 @@ function uploadError(status: number, body: any, fallback: TKey) {
   return error;
 }
 
-async function multipart<T>(path: string, data: FormData, fallback: TKey, accept: (status: number, body: any) => T | undefined): Promise<T> {
+/** Upload progress of one request body (bytes sent so far and in all). */
+export type UploadProgress = { loaded: number; total: number };
+/**
+ * Progress and cancel for a file upload (audit W9). With either one the upload goes through XMLHttpRequest
+ * (fetch can't report upload progress); the request itself (path, headers, form fields) is the same.
+ * Cancelling rejects with a DOMException named `AbortError`, as fetch does.
+ */
+export type UploadOptions = { onProgress?: (progress: UploadProgress) => void; signal?: AbortSignal };
+export const isAbortError = (error: unknown) => (error as { name?: unknown } | null)?.name === 'AbortError';
+const abortError = () => (typeof DOMException !== 'undefined' ? new DOMException('Upload cancelled', 'AbortError') : Object.assign(new Error('Upload cancelled'), { name: 'AbortError' }));
+const bodySize = (data: FormData) => {
+  let size = 0;
+  data.forEach((value) => { size += typeof value === 'string' ? value.length : value.size; });
+  return size;
+};
+
+/** POST `data` with XHR so the sent bytes can be reported and the upload aborted. Resolves with status and JSON body. */
+function sendWithProgress(url: string, data: FormData, token: string | null, options: UploadOptions): Promise<{ status: number; body: any }> {
+  return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) { reject(abortError()); return; }
+    const xhr = new XMLHttpRequest();
+    const onAbort = () => xhr.abort();
+    const done = () => options.signal?.removeEventListener('abort', onAbort);
+    xhr.open('POST', url);
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.upload.onprogress = (event) => options.onProgress?.({ loaded: event.loaded, total: event.lengthComputable && event.total ? event.total : bodySize(data) });
+    xhr.onload = () => {
+      done();
+      let body: any = {};
+      try { body = xhr.responseText ? JSON.parse(xhr.responseText) : {}; } catch { body = {}; }
+      resolve({ status: xhr.status, body });
+    };
+    xhr.onerror = () => { done(); reject(new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.')); };
+    xhr.onabort = () => { done(); reject(abortError()); };
+    options.signal?.addEventListener('abort', onAbort);
+    xhr.send(data);
+  });
+}
+
+async function multipart<T>(path: string, data: FormData, fallback: TKey, accept: (status: number, body: any) => T | undefined, options: UploadOptions = {}): Promise<T> {
   const token = session.getToken();
-  let response: Response;
-  try { response = await fetch(`${GENERATION_API_BASE_URL}${path}`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: data }); }
-  catch { throw new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.'); }
-  const body = await response.json().catch(() => ({}));
-  const accepted = accept(response.status, body);
+  const url = `${GENERATION_API_BASE_URL}${path}`;
+  let status: number;
+  let body: any;
+  if ((options.onProgress || options.signal) && typeof XMLHttpRequest !== 'undefined') {
+    ({ status, body } = await sendWithProgress(url, data, token, options));
+  } else {
+    let response: Response;
+    try { response = await fetch(url, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: data }); }
+    catch { throw new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.'); }
+    status = response.status;
+    body = await response.json().catch(() => ({}));
+  }
+  const accepted = accept(status, body);
   if (accepted !== undefined) return accepted;
-  throw uploadError(response.status, body, fallback);
+  throw uploadError(status, body, fallback);
 }
 const areaResult = (status: number, body: any): AreaUpload | undefined => {
   if (status >= 200 && status < 300) return { area: body as SavedArea };
@@ -127,12 +190,12 @@ export const generationApi = {
   deleteArea(id: string | number) {
     return request<unknown>(GENERATION_API_BASE_URL, `/api/v1/areas/${encodeURIComponent(String(id))}`, { method: 'DELETE' });
   },
-  uploadArea(file: File, name: string, pick: AreaPick = {}): Promise<AreaUpload> {
+  uploadArea(file: File, name: string, pick: AreaPick = {}, options: UploadOptions = {}): Promise<AreaUpload> {
     const data = new FormData();
     data.append('file', file); data.append('name', name);
     if (pick.dissolve) data.append('dissolve', 'true');
     if (pick.attribute) { data.append('attribute', pick.attribute); data.append('value', pick.value ?? ''); }
-    return multipart('/api/v1/areas', data, 'wizard.upload.areaSaveFailed', areaResult);
+    return multipart('/api/v1/areas', data, 'wizard.upload.areaSaveFailed', areaResult, options);
   },
   areaFromJob(jobId: string | number, name: string, pick: AreaPick = {}): Promise<AreaUpload> {
     const data = new FormData();
@@ -176,14 +239,9 @@ export const generationApi = {
   getJob(id: string | number) {
     return request<GenerationJob>(GENERATION_API_BASE_URL, `/api/v1/generation-jobs/${encodeURIComponent(String(id))}`);
   },
-  async inspectSpatialFile(type: 'geotiff' | 'shapefile' | 'cas500', file: File): Promise<SpatialInspection> {
+  /** Upload a file and read it (the existing kinds and, UR-55, `sentinel2`·`landsat` product packages). `options` adds progress and cancel. */
+  inspectSpatialFile(type: InspectType, file: File, options: UploadOptions = {}): Promise<SpatialInspection> {
     const data = new FormData(); data.append('file', file);
-    const token = session.getToken();
-    let response: Response;
-    try { response = await fetch(`${GENERATION_API_BASE_URL}/api/v1/spatial-files/inspect/${type}`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: data }); }
-    catch { throw new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.'); }
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw uploadError(response.status, body, 'wizard.upload.inspectFailed');
-    return body as SpatialInspection;
+    return multipart(`/api/v1/spatial-files/inspect/${type}`, data, 'wizard.upload.inspectFailed', (status, body) => (status >= 200 && status < 300 ? body as SpatialInspection : undefined), options);
   },
 };
