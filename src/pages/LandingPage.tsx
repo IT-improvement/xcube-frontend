@@ -1,5 +1,6 @@
 import { LogOut, Mail, Menu, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { Button, ButtonAnchor, ButtonLink, Logo } from '../components/ui';
 import './landing.css';
@@ -73,6 +74,9 @@ const ADOPT = [
 ];
 
 const MOBILE_QUERY = '(max-width: 767px)';
+const VIEWER_PATH = '/app/viewer';
+/** Visitors who are not signed in go through login and land on the Viewer afterwards (UR-51). */
+const VIEWER_LOGIN = `/login?redirect=${encodeURIComponent(VIEWER_PATH)}`;
 
 export default function LandingPage() {
   const { user, signOut } = useAuth();
@@ -120,8 +124,11 @@ export default function LandingPage() {
     return () => query.removeEventListener?.('change', onChange);
   }, [menuOpen]);
 
+  const viewerTo = user ? VIEWER_PATH : VIEWER_LOGIN;
+
   const actions = (inMenu: boolean) => user ? (
     <>
+      <ButtonLink to={viewerTo} variant={inMenu ? 'line' : 'quiet'} size={inMenu ? 'lg' : 'md'} block={inMenu}>Viewer 열기</ButtonLink>
       <ButtonLink to="/app" variant="ink" size={inMenu ? 'lg' : 'md'} block={inMenu}>콘솔로 이동</ButtonLink>
       <Button variant={inMenu ? 'line' : 'quiet'} size={inMenu ? 'lg' : 'md'} block={inMenu} onClick={() => { setMenuOpen(false); signOut(); }}>
         <LogOut size={16} aria-hidden />로그아웃
@@ -130,6 +137,7 @@ export default function LandingPage() {
   ) : (
     <>
       <ButtonLink to="/login?redirect=%2F" variant={inMenu ? 'line' : 'quiet'} size={inMenu ? 'lg' : 'md'} block={inMenu}>로그인</ButtonLink>
+      <ButtonLink to={viewerTo} variant={inMenu ? 'line' : 'quiet'} size={inMenu ? 'lg' : 'md'} block={inMenu}>Viewer 열기</ButtonLink>
       <ButtonLink to="/signup" variant="ink" size={inMenu ? 'lg' : 'md'} block={inMenu}>시작하기</ButtonLink>
     </>
   );
@@ -179,12 +187,9 @@ export default function LandingPage() {
               <div className="lp-cta">
                 {user
                   ? <ButtonLink to="/app" variant="ink" size="lg">콘솔로 이동</ButtonLink>
-                  : (
-                    <>
-                      <ButtonLink to="/signup" variant="ink" size="lg">시작하기</ButtonLink>
-                      <ButtonAnchor href="#adopt" variant="line" size="lg">도입 안내</ButtonAnchor>
-                    </>
-                  )}
+                  : <ButtonLink to="/signup" variant="ink" size="lg">시작하기</ButtonLink>}
+                <ButtonLink to={viewerTo} variant="line" size="lg">Viewer 열기</ButtonLink>
+                {!user && <ButtonAnchor href="#adopt" variant="quiet" size="lg">도입 안내</ButtonAnchor>}
               </div>
             </div>
           </div>
@@ -242,14 +247,16 @@ export default function LandingPage() {
               </p>
             </div>
             <figure className="lp-case__shot">
-              <img
-                src={`${ASSET}/daecheong-result.webp`}
-                width={666}
-                height={1280}
-                loading="lazy"
-                decoding="async"
-                alt="원본 대비 결과 패널 실제 화면. AI 수체 결과와 원본 레이어 불투명도, 임계값 0.50에서 추정 면적 54.60 km², 참조 자료 대비 IoU 0.854, F1 0.922, 정밀도 0.873, 재현율 0.975."
-              />
+              <Link to={viewerTo} className="lp-case__link" aria-label="대청호 결과를 Viewer에서 보기">
+                <img
+                  src={`${ASSET}/daecheong-result.webp`}
+                  width={666}
+                  height={1280}
+                  loading="lazy"
+                  decoding="async"
+                  alt="원본 대비 결과 패널 실제 화면. AI 수체 결과와 원본 레이어 불투명도, 임계값 0.50에서 추정 면적 54.60 km², 참조 자료 대비 IoU 0.854, F1 0.922, 정밀도 0.873, 재현율 0.975."
+                />
+              </Link>
               <figcaption className="lp-caption">원본 대비 결과 패널 · 같은 화면의 오른쪽</figcaption>
             </figure>
           </div>
@@ -281,6 +288,7 @@ export default function LandingPage() {
                 {user
                   ? <ButtonLink to="/app" variant="ink" size="lg">콘솔로 이동</ButtonLink>
                   : <ButtonLink to="/signup" variant="ink" size="lg">시작하기</ButtonLink>}
+                <ButtonLink to={viewerTo} variant="line" size="lg">Viewer 열기</ButtonLink>
                 {CONTACT_EMAIL && (
                   <ButtonAnchor href={`mailto:${CONTACT_EMAIL}`} variant="line" size="lg">
                     <Mail size={18} aria-hidden />도입 문의 메일

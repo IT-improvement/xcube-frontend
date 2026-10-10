@@ -7,6 +7,7 @@ colors:
   sunken: "#eceee9"
   rule: "#d8ddd5"
   rule-strong: "#b3bbb0"
+  input-border: "#7f8a81"
   ink: "#1b201d"
   ink-2: "#454d47"
   ink-3: "#5f6862"
@@ -160,7 +161,9 @@ XCube reads like a surveyor's field book laid over the map. The ground is cool g
 
 One overprint magenta is reserved for marks the user places: the time cursor, the A/B compare flags, the pixel reticle and the chart's current point. It works like the overprint on an orienteering map, a single colour printed over the terrain. Water blue belongs to data series, teal to AI results and sage to the basemap. State is always named in words ("내 시각화 서버 연결됨"), and an icon only reinforces it. Every date, coordinate and value is set in tabular figures so columns of numbers hold still while playback runs.
 
-The density is high and work-tool calm. A 48px bar sits on top, the map fills the body, sheets and tools float over the map, and a ruled dock holds the pixel reading and the time staff on one shared plot column. **Status:** this world is shipped on the Viewer (`src/views/Viewer/viewer.css`, tokens under `.vx`) and is the project's direction. The landing page, auth and management screens (`src/styles/tokens.css`, `app.css`, `landing.css`) still use the older system and have not migrated yet. The landing redesign is next and should inherit this file.
+The density is high and work-tool calm. A 48px bar sits on top, the map fills the body, sheets and tools float over the map, and a ruled dock holds the pixel reading and the time staff on one shared plot column.
+
+**Status (checked against the code on 2026-10-10, after UX4):** this system is shipped on every screen. The token values live in one file, `src/styles/fieldbook.css` (`--fb-*`, light on `:root`, dark on `:root[data-theme='dark']`). The Viewer aliases them as `--vx-*` (`viewer.css`). The management screens, auth and landing page (`.xc`) use them directly or through the older names in `src/styles/tokens.css` (`--color-primary` is ink, `--color-mark` is overprint, `--shadow-*` are `none`). The landing page (UX3) and the management screens with the 48px top bar (UX2) were rebuilt on this file; there is no second, blue "SaaS" system any more. Dark theme is offered only in the Viewer (account menu); `.xc` screens stay light even when the Viewer switched the tab to dark.
 
 **Key Characteristics:**
 - Ruled, not carded: 1px rules divide every docked region.
@@ -169,14 +172,14 @@ The density is high and work-tool calm. A 48px bar sits on top, the map fills th
 - Data owns the hues: water, result and basemap each have one colour.
 - Pretendard throughout, with tabular figures for every number.
 - State is named in words, and the icon is secondary.
-- Light and dark themes share one token set (`:root[data-theme='dark'] .vx`).
+- Light and dark themes share one token set (`fieldbook.css`: `:root` and `:root[data-theme='dark']`).
 
 ## Colors
 
 The palette is green-grey paper and graphite ink, with three data hues and one overprint colour. Values below are the light theme. Dark-theme counterparts are listed in the sidecar (`.impeccable/design.json`, `colorMeta.*.dark`).
 
 ### Primary
-- **Overprint Magenta** (overprint): the reserved mark colour. Use it for the time cursor (A flag), the hollow B flag outline, the pixel marker and keyboard reticle, the chart cursor line and current point, and the playing state of the play button. Never use it for navigation, selection or decoration.
+- **Overprint Magenta** (overprint): the reserved mark colour. Use it for the time cursor (A flag), the hollow B flag outline, the pixel marker and keyboard reticle, the chart cursor line and current point, the playing state of the play button, and the area of interest the user draws or picks (add-data map, bbox mini maps). Never use it for navigation, selection or decoration.
 - **Overprint Text** (overprint-text): a darker step used where the overprint sets text on white, as in the B flag letter.
 - **Overprint Wash** (overprint-soft): the text-selection highlight only.
 
@@ -184,14 +187,15 @@ The palette is green-grey paper and graphite ink, with three data hues and one o
 - **Water Blue** (water): the colour of data. It is used for the time-series line and points, the source-layer swatch, and the loading pulse. **Water Wash** (water-soft) backs the variable tag and info notes.
 
 ### Tertiary
-- **Result Teal** (result): AI result layers and their hatched overlay. **Basemap Sage** (basemap): the basemap layer swatch.
+- **Result Teal** (result): AI result layers, their hatched legend swatch and the `AI 결과` tag. The water mask on the map is drawn with the same colour (a JSON colormap sent to xcube: `#0f7a6e`, dark `#4fc4b4`), so map, legend and area bars match. **Basemap Sage** (basemap): the basemap layer swatch.
 
 ### Neutral
 - **Field-Book Ground** (ground): the app background, the map's empty state and the scope strip inside popovers.
 - **Sheet White** (surface): the top bar, dock, floating sheets, popovers and line buttons.
 - **Sunken Paper** (sunken): hover fill, pressed line buttons, active list options and count badges.
 - **Ruling Line** (rule): every 1px divider between regions, rows and sections.
-- **Strong Rule** (rule-strong): control outlines (line buttons, chips, selects, segmented groups), the time-staff baseline and disabled icon colour.
+- **Strong Rule** (rule-strong): control outlines next to a text label (line buttons, chips, segmented groups), the time-staff baseline and disabled icon colour.
+- **Input Border** (input-border): text field and select outlines (3:1 or more on surface, ground and sunken). The rule colours are too light for an input outline.
 - **Graphite Ink** (ink): primary text, selected and pressed fills, focus outline and checkbox/range accent.
 - **Ink 2 / Ink 3** (ink-2, ink-3): secondary text, and then tertiary text (labels, axis, staff dates, placeholders).
 - **Status trio** (ok, warn, bad): server and job states. They always appear next to words.
@@ -206,7 +210,7 @@ The palette is green-grey paper and graphite ink, with three data hues and one o
 ## Typography
 
 **Display Font:** none (the system has no display face)
-**Body Font:** Pretendard Variable (with Pretendard, -apple-system, Apple SD Gothic Neo, Noto Sans KR)
+**Body Font:** Pretendard Variable (with Pretendard, -apple-system, Apple SD Gothic Neo, Noto Sans KR). The global `body` rule in `index.css` still loads the older `Pretendard-Regular` web font; moving it to the variable font is pending (audit 2026-10-10, order 3).
 
 **Character:** A single Korean-first sans set at work-tool sizes. Hierarchy comes from weight (400/500/600, and 700 only on the wordmark and flag letters) and ink step, not from size jumps.
 
@@ -219,6 +223,11 @@ The palette is green-grey paper and graphite ink, with three data hues and one o
 - **Caption** (400, 12px, 1.3–1.5, ink-3): hints, metadata, counts and secondary lines in lists.
 - **Axis** (500, 11.5px, tabular, ink-3): chart axis labels and staff dates.
 
+### Other screens
+- **Management screens** (`tokens.css`): page title 26px/600, section 18px/600, sheet title 15px/600, body 14px/1.55, label 12.5px/600, caption 12px.
+- **Landing page** (`landing.css`, own scale): headline `clamp(34px, 5.4vw, 68px)`/600, section `clamp(26px, 3.2vw, 40px)`/600, lead 16–18px/1.7, body 16px/1.7, small 13px. The three scales are not unified yet.
+- Inputs on phones use 16px text so iOS does not zoom.
+
 ### Named Rules
 **The Tabular Rule.** Every date, coordinate, count and value uses `font-variant-numeric: tabular-nums`, so numbers do not shift while playback steps.
 
@@ -226,13 +235,23 @@ The palette is green-grey paper and graphite ink, with three data hues and one o
 
 ## Layout
 
-The layout is a full-viewport column (`100dvh`, min 520px). It stacks a 48px top bar, a map body that fills the remaining space, and a docked bottom panel.
+### Viewer
+
+The Viewer layout is a full-viewport column (`100dvh`, min 520px). It stacks a 48px top bar, a map body that fills the remaining space, and a docked bottom panel.
 
 - **Top bar:** brand (with a right rule), a breadcrumb of project and dataset selects separated by a light slash, then status in words, actions and one account cluster.
 - **Map body:** sheets and tools float 12px in from the map edges (8px on phones). The layer sheet (312px) sits top-left, map tools top-right, and the analysis drawer (340px) on the right.
 - **Dock:** two rows share the grid `lead | plot | tail`. Lead is 276px and tail 344px; they shrink to 252/312px below 1280px and 232/200px below 1024px. The plot column has fixed insets of 56px left and 16px right, so chart points sit exactly over the time-staff ticks. The pixel reading row is `clamp(196px, 26dvh, 252px)`, or 44px when collapsed. The time-staff row is 72px, or 84px in compare modes.
 - **Rhythm:** a 2px-based scale (2, 4, 6, 8, 10, 12, 14, 16). Section padding is 14px 16px, the floating inset 12px and the control gap 6–8px.
 - **Breakpoints:** 1279px (labels collapse to icons, user name hidden), 1159px (status text becomes screen-reader only), 1023px (wordmark hidden, mode labels hidden), 767px (breadcrumb wraps to a second bar row, sheets go full width, the drawer becomes a bottom sheet, the dock restacks so the staff spans full width, and split compare stacks vertically).
+
+### Management screens (app shell)
+
+The signed-in pages (`/app`, data, projects, jobs, fusion) share the Viewer's 48px top bar instead of a side menu: logo with a right rule, text menu (`대시보드` `데이터` `프로젝트` `작업` `수식 융합` `Viewer ↗` in a new tab) where the current item is ink with a 2px ink underline, then `처리 중 n` (only while jobs run), the `데이터 추가` ink button and the account menu. Below 1024px the add button and the user name hide; below 768px the menu becomes a drop-down sheet. The page below is a page header (title, one-line description, actions) over ruled sheets. The dashboard has no KPI tiles or icon cards: one summary line (`내 데이터 n · 공유받음 n · 처리 중 n`), a ruled list of three shortcuts and two ledgers (recent data, recent jobs).
+
+### Landing page
+
+A transparent bar over the hero that takes a surface sheet and a rule once the page scrolls, a large plain headline, then a full-bleed real Viewer capture (Daecheong Lake, source vs AI). Sections are ruled field-book blocks (three ruled lines, one case study next to its result-panel capture, two customer columns, an honest adoption list) with no eyebrows, icon cards or entrance animations. Colour comes only from the captures. Sign-in-aware actions: one ink action per group (`시작하기` or `콘솔로 이동`) with `Viewer 열기` as a line or quiet action (UR-51).
 
 ### Named Rules
 **The Shared Plot Column Rule.** Anything on the time axis (chart cursor, points, staff ticks, flags) is positioned on the same plot column with the same insets. A time-aware element never gets its own axis.
@@ -256,14 +275,15 @@ Corners are small and squared-off. Flags, tags, badges and inner segments use 4p
 
 ### Buttons
 Words are the controls. Buttons are compact, ruled and inked.
-- **Shape:** gently squared (6px), 32px tall, 0 12px padding, 600 13px text, and an icon gap of 6px.
+- **Shape:** gently squared (6px), 32px tall, 0 12px padding, 600 13px text, and an icon gap of 6px. Small is 28px; large (landing, auth) is 40px with 14px text. With a coarse pointer or below 768px, buttons grow to 40px (large 44px).
 - **Ink (primary):** ink fill with on-ink text. On hover it mixes 14% toward surface.
 - **Line:** surface fill with a rule-strong outline. Hover is sunken. When pressed it takes an ink outline and a sunken fill.
 - **Quiet:** transparent with ink-2 text. Hover is sunken with ink text.
 - **Icon button:** 32px square, transparent, ink-2. Hover is sunken. Disabled uses the rule-strong colour.
 - **Focus:** a 2px ink outline with 2px offset on every interactive element.
 - **Disabled:** sunken fill, rule outline and ink-3 text, with a not-allowed cursor.
-- **Motion:** background, border and colour transitions of 140ms ease-out. These are zeroed under reduced motion.
+- **Danger:** bad fill with white text, only inside a destructive confirmation dialog.
+- **Motion:** background, border and colour transitions of 140ms ease-out, and a press scale of 0.97 (`--fb-press`, `--fb-ease-out`). These are zeroed under reduced motion.
 
 ### Chips and Segmented Controls
 - **Band chips:** 30px tall with a min width of 44px, surface fill and a rule-strong outline. When selected they fill with ink.
@@ -273,10 +293,16 @@ Words are the controls. Buttons are compact, ruled and inked.
 There are no cards. Floating sheets (layer sheet, drawer, popovers) use the surface colour, an 8px radius, a 1px rule border and Lift or Lift High. Inside them, sections are separated by rules (14px 16px padding) and key/value lists by row rules.
 
 ### Inputs / Fields
-- **Select and text field:** surface fill, rule-strong 1px outline, 6px radius, 36px tall, 400 14px text.
+- **Select and text field:** surface fill, input-border 1px outline (ink-2 on hover, bad when invalid), 6px radius, 36px tall, 400 14px text. Errors sit under the field in words; there are no browser validation bubbles. The Viewer's own selects still use rule-strong (1.97:1) and should move to input-border (audit 2026-10-10, order 4).
 - **Focus:** a 2px ink outline.
 - **Checkbox and range:** native controls with `accent-color` set to ink.
 - **Breadcrumb selects:** borderless and transparent, with a sunken fill on hover.
+
+### Feedback (management screens)
+- **Dialog:** surface, 8px radius, Lift High, opens with opacity and scale .97→1 in about 160ms. Destructive actions (delete, unlink, remove member, cancel job) all use the same confirmation dialog; no browser `confirm`.
+- **Toast:** 8px radius, rises 8px in 180ms, leaves after about 3.2s. Errors are inline alerts, not toasts.
+- **Skeleton:** flat sunken bars that breathe in opacity. No shimmer gradient.
+- **Tags:** 4px radius, words first; tone colours them (`water` for shared and fusion, `result` for AI results).
 
 ### Navigation
 - **Tabs:** 600 13px in ink-3. The selected tab is ink with a 2px ink underline that sits on the sheet's bottom rule.
@@ -298,7 +324,7 @@ This row sits above the staff. Lead holds the reticle-icon title, the variable t
 - **Do** name state in words next to any status icon or colour.
 - **Do** place any time-aware element on the shared plot column (56px / 16px insets).
 - **Do** give shadows (Lift, Lift High) only to surfaces floating over the map or opening over chrome.
-- **Do** define both themes through the `.vx` token set. Never hard-code a light-only value.
+- **Do** define both themes through the `--fb-*` tokens in `fieldbook.css`. Never hard-code a light-only value.
 
 ### Don't:
 - **Don't** use magenta for navigation, selection, headings, links or decoration.

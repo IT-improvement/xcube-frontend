@@ -381,7 +381,7 @@ export function EstimatePanel({ estimate, hint, compact, pairing, picked }: { es
       <h3 className="area-estimate__title"><Search size={14} aria-hidden /> 예상 크기</h3>
       {estimate.status === 'idle' && <p className="xc-hint">{hint || '컬렉션·기간·영역을 정하면 계산합니다.'}</p>}
       {estimate.status === 'loading' && <p className="xc-hint" role="status"><Loader2 size={14} className="spin" aria-hidden /> 계산하는 중…</p>}
-      {estimate.status === 'error' && <Alert tone="warning">예상 크기를 계산하지 못했습니다. {estimate.error} 생성은 계속할 수 있습니다.</Alert>}
+      {estimate.status === 'error' && <Alert tone="warning">예상 크기를 계산하지 못했습니다. {estimate.error} 아래 다시 계산 버튼을 눌러 주세요.</Alert>}
       {data && (
         <>
           <dl className="meta-list area-estimate__list">

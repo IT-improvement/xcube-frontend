@@ -12,9 +12,12 @@ const USERNAME_RULE = /^[A-Za-z0-9_.-]{3,50}$/;
 /** iOS would otherwise capitalise or "correct" the first letter of the id. */
 const ID_INPUT = { autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false } as const;
 
-/** Only same-origin app paths are allowed as a post-login destination. */
+/**
+ * Only same-origin app paths are allowed as a post-login destination: it must start with one "/".
+ * "//host" and "/\\host" are rejected because browsers read both as another site.
+ */
 export function safeRedirect(value: string | null) {
-  return value && value.startsWith('/') && !value.startsWith('//') ? value : DEFAULT_REDIRECT;
+  return value && value.startsWith('/') && !/^\/[/\\]/.test(value) ? value : DEFAULT_REDIRECT;
 }
 
 type LoginState = { username?: string; notice?: string } | null;
