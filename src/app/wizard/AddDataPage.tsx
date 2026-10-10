@@ -19,7 +19,7 @@ import { FixedVariables, SarOptions } from './SarPairing';
 import { defaultSar, FIXED_NAMES, PRESET_GEE, isS2, orbitOption, pairingActive, presetSar, S2_COLLECTION, sarError, sarRequest, SarState, WATER_BANDS, WATER_NAME, withPairingBlockers } from './sarModel';
 import { withStrong } from './strong';
 import './wizard.css';
-import { formatNumber, useLanguage, useT } from '../../i18n';
+import { formatNumber, registrationFailureText, serverText, useLanguage, useT } from '../../i18n';
 import type { Lang, TFunction, TKey } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 // The wizard's text (UR-53 stage 3) loads with the wizard chunk only; it brings the management part along.
@@ -141,7 +141,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   useEffect(() => {
     if (!job) return;
     const awaitingRegistration = job.status === 'SUCCEEDED' && !registeredDatasetId(job)
-      && !(job as Partial<JobSummary>).registration?.error && registrationPolls.current < REGISTRATION_POLLS;
+      && !(job as Partial<JobSummary>).registration?.error && !(job as Partial<JobSummary>).registration?.errorCode && registrationPolls.current < REGISTRATION_POLLS;
     if (TERMINAL.includes(job.status) && !awaitingRegistration) return;
     if (awaitingRegistration) registrationPolls.current += 1;
     const timer = window.setTimeout(() => {
@@ -376,7 +376,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
                 onFile={inspectFile}
               />
               {inspectError && <Alert tone="danger">{t('wizard.file.inspectFailed', { error: inspectError })}</Alert>}
-              {inspection && <Alert tone="success">{inspection.message}</Alert>}
+              {inspection && <Alert tone="success">{serverText({ code: inspection.messageCode, params: inspection.messageParams, message: inspection.message }, lang)}</Alert>}
             </div>
           )}
 
@@ -651,8 +651,8 @@ function Result({ job, registeredId, name, projectLinked, onRestart }: { job: Ge
   const failed = status === 'FAILED' || status === 'CANCELLED';
   // Zarr registration answers with the id at once; a generation job gets it when the Backoffice registers the result.
   const datasetId = registeredId || registeredDatasetId(job);
-  const registrationError = (job as Partial<JobSummary> | null)?.registration?.error;
-  const t = useT();
+  const { lang, t } = useLanguage();
+  const registrationError = registrationFailureText((job as Partial<JobSummary> | null)?.registration, lang);
   const statusText = status && JOB_STATUSES.includes(status) ? t(`jobStatus.${status}` as TKey) : status;
   return (
     <div className="page-stack wizard">

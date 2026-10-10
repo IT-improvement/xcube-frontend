@@ -1,7 +1,7 @@
 // Labels and helpers shared by the fusion page, job center and dataset detail (S12).
 import type { Blocker, FusionRequest, Normalization } from '../api/analysisApi';
 import { blockerCode } from '../api/analysisApi';
-import { getLanguage, translate } from '../i18n';
+import { getLanguage, shownSentence, translate } from '../i18n';
 import type { Lang, TKey } from '../i18n';
 
 const BLOCKER_KEY: Record<string, TKey> = {
@@ -14,13 +14,13 @@ const BLOCKER_KEY: Record<string, TKey> = {
 };
 /**
  * Why a dry run cannot start. Korean keeps the server sentence first (as before UR-53); other languages
- * use the code's text when the code is known, then the server sentence.
+ * use the code's text when the code is known, then the server sentence if it has no Hangul (UR-53 stage 5).
  */
 export const blockerText = (blocker: Blocker, lang: Lang = getLanguage()) => {
   const code = blockerCode(blocker);
   const message = typeof blocker === 'object' ? blocker.message : undefined;
   const known = BLOCKER_KEY[code] ? translate(lang, BLOCKER_KEY[code]) : undefined;
-  return (lang === 'ko' ? message || known : known || message) || translate(lang, 'fusion.blockers.unknown', { code });
+  return (lang === 'ko' ? message || known : known || shownSentence(message, lang)) || translate(lang, 'fusion.blockers.unknown', { code });
 };
 
 // Rule option labels, as dictionary keys (translate with t(GRID_LABEL[key])).

@@ -44,7 +44,7 @@ export const areaDemo = {
     await pause(150);
     const text = query.trim();
     const items = ADMIN.filter((item) => (!level || item.level === level) && (!text || `${item.parentName ?? ''} ${item.name}`.includes(text))).slice(0, 20).map(({ geojson, ...rest }) => rest);
-    return { items, attribution: ADMIN_ATTRIBUTION };
+    return { items, attribution: ADMIN_ATTRIBUTION, attributionCode: 'SGIS_ADMDONGKOR' };
   },
   async getAdmin(code: string): Promise<AdminArea> {
     await pause(120);

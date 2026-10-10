@@ -57,3 +57,18 @@ test('estimate의 dates·bytesPerDate·estimatedSeconds를 읽고, 생성 요청
   expect(JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))).not.toHaveProperty('selectedDates');
   expect(JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body)).selectedDates).toEqual(['2024-08-14']);
 });
+
+test('upload failures keep the server code, or word the missing sentence from the dictionary (UR-53 stage 5)', async () => {
+  const { userMessage } = require('./httpClient');
+  // The add-data wizard registers these parts when it loads.
+  require('../i18n/wizard');
+  require('../i18n/codes/data');
+  jest.spyOn(global, 'fetch')
+    .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 500, headers: { 'content-type': 'application/json' } }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'GEOTIFF_READ_FAILED', message: 'GeoTIFF 파일을 읽을 수 없습니다.', params: {} }), { status: 400, headers: { 'content-type': 'application/json' } }));
+  const saved = await generationApi.uploadArea(new File(['x'], 'a.zip'), 'A').catch((error) => error);
+  expect(userMessage(saved, 'ko')).toBe('영역을 저장하지 못했습니다.');
+  const inspected = await generationApi.inspectSpatialFile('geotiff', new File(['x'], 'a.tif')).catch((error) => error);
+  expect(inspected).toMatchObject({ code: 'GEOTIFF_READ_FAILED', params: {} });
+  expect(userMessage(inspected, 'en')).toBe('Couldn’t read the GeoTIFF file.');
+});

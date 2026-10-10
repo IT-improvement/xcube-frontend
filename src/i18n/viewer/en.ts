@@ -311,7 +311,6 @@ const enViewer: ViewerTranslation = {
         unresolved: { text: 'Couldn’t check (no values)', detail: 'There are no valid values, so the value format couldn’t be checked.' },
       },
       warnVary: '{input}: the value format changes from time {n} on ({decision}).',
-      warnCheckpoint: 'The model file isn’t ready yet, so this model can’t run now.',
       status: {
         QUEUED: 'Queued',
         RUNNING: 'Running',

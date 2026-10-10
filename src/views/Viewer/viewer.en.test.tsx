@@ -189,6 +189,34 @@ describe('Legends and AI in English', () => {
     expect(unitDecisionText('dB→×100', 'en')).toEqual({ text: 'Scaled ×100', detail: 'Radar dB values are multiplied by 100 to match the training format (dB×100).' });
   });
 
+  // UR-53 stage 5: check warnings come as warningItems (code + params); the input-list repeat is dropped.
+  test('AI drawer: check warningItems in English (S1_S2_DATE_GAP)', async () => {
+    const { ai } = require('../../app/api');
+    jest.spyOn(ai, 'check').mockResolvedValue({
+      ready: true, matched: { green: 'B3', nir: 'B8' }, missing: [], unitDecisions: { green: 'DN retained', nir: 'DN retained' }, timeCount: 8, grid: { width: 3008, height: 3715 },
+      warnings: ['S1·S2 촬영 날짜 차이가 큽니다 (최대 12일)', 'green: DN retained', '새 경고 문장'],
+      warningItems: [
+        { code: 'S1_S2_DATE_GAP', params: { days: 12 }, message: 'S1·S2 촬영 날짜 차이가 큽니다 (최대 12일)' },
+        { code: 'UNIT_DECISION', params: { name: 'green', decision: 'DN retained' }, message: 'green: DN retained' },
+        { code: 'NEW_AI_WARNING', params: {}, message: '새 경고 문장' },
+      ],
+    });
+    await openViewer('nakdong');
+    fireEvent.click(screen.getByRole('button', { name: 'AI water extraction' }));
+    const drawer = screen.getByRole('complementary', { name: 'AI water extraction settings' });
+    expect(await within(drawer).findByText('The S1 and S2 acquisition dates are far apart (up to 12 days).')).toBeInTheDocument();
+    expect(within(drawer).getByText('Something went wrong (code NEW_AI_WARNING).')).toBeInTheDocument();
+    expect(within(drawer).queryByText(/DN retained/)).not.toBeInTheDocument();
+    expect(drawer).not.toHaveTextContent(/[가-힣]/);
+    jest.restoreAllMocks();
+  });
+
+  test('AI result rows: a failed job’s reason from errorCode', () => {
+    const job = { id: 'f1', name: 'Failed run', type: 'AI_WATER', status: 'FAILED' as const, errorCode: 'ORIGINAL_INPUT_REQUIRED', errorParams: null, errorMessage: 'Input must be ORIGINAL' };
+    english(<AiResultList entries={[{ key: 'f', name: 'Failed run', status: 'FAILED', job }]} selectedKey="" onMap={false} onSelect={jest.fn()} />);
+    expect(screen.getByRole('button', { name: /Failed run/ })).toHaveTextContent('Only original data can be used as input.');
+  });
+
   test('AI result rows: period, threshold and created time in English', () => {
     const year = new Date().getFullYear();
     const entry = {

@@ -205,6 +205,18 @@ const en: Translation = {
     xcubeUnavailable: 'XCube Server is unavailable.',
     xcubeTimeout: 'XCube Server took too long to respond.',
     failed: 'The request couldn’t be completed.',
+    withCode: 'Something went wrong (code {code}).',
+    serverNote: 'The server added a note that isn’t available in English.',
+    code: {
+      INTERNAL_ERROR: 'Something went wrong while handling the request.',
+      INVALID_REQUEST: 'Check the request and try again.',
+      INVALID_JSON: 'The request couldn’t be read.',
+      INVALID_JOB_STATUS: 'That job status isn’t valid.',
+      NOT_FOUND: 'Not found. It may have been deleted.',
+      UNAUTHORIZED: 'Please sign in.',
+      UPLOAD_TOO_LARGE: 'The file is larger than the upload limit.',
+      WORKER_FAILED: 'Processing stopped because of an unexpected error.',
+    },
   },
 };
 

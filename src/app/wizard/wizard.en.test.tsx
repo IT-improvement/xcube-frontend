@@ -295,3 +295,66 @@ describe('Result screen in English', () => {
     expect(document.body).not.toHaveTextContent(HANGUL);
   });
 });
+
+// UR-53 stage 5: server message codes with values, worded by the dictionaries. No Korean in English.
+describe('Server message codes in English', () => {
+  test('estimate blockerItems and warningItems: code text with values; a coded-less Korean note stays out', async () => {
+    await toGeeArea();
+    jest.spyOn(generation, 'estimateGee').mockResolvedValue({
+      areaKm2: 400, grid: { width: 2000, height: 2000 }, scenes: 2, estimatedBytes: 1e8, requestTiles: 1,
+      warnings: ['영역을 다 덮지 못해 제외한 날짜: 2024-08-01, 2024-08-06', 'SIDE_EXCEEDS_100_KM', '새 안내 문장'],
+      warningItems: [
+        { code: 'PARTIAL_COVER_DATES_DROPPED', params: { dates: ['2024-08-01', '2024-08-06'] }, message: '영역을 다 덮지 못해 제외한 날짜: 2024-08-01, 2024-08-06' },
+        { code: 'SIDE_EXCEEDS_100_KM', params: {}, message: 'SIDE_EXCEEDS_100_KM' },
+        { message: '새 안내 문장' },
+      ],
+      blockers: ['SELECTED_DATE_HAS_NO_SCENE'],
+      blockerItems: [{ code: 'SELECTED_DATE_HAS_NO_SCENE', params: { date: '2024-08-14' }, message: 'SELECTED_DATE_HAS_NO_SCENE: 2024-08-14' }],
+    });
+    setPoint('127.5', '36.4');
+    expect(await screen.findByRole('alert', undefined, { timeout: T })).toHaveTextContent('No image on a chosen date: 2024-08-14');
+    expect(screen.getByText('Left out because they don’t cover the whole area: 2024-08-01, 2024-08-06')).toBeInTheDocument();
+    expect(screen.getByText('A side of the area is over 100 km. Fetching may take a long time.')).toBeInTheDocument();
+    expect(screen.getByText('The server added a note that isn’t available in English.')).toBeInTheDocument();
+    expect(next()).toBeDisabled();
+    expect(screen.getByRole('region', { name: 'Estimated size' })).not.toHaveTextContent(HANGUL);
+  });
+
+  test('blockerText and warningText: wizard codes first, then server codes, sentences and a generic line', () => {
+    expect(blockerText({ code: 'NO_FULL_COVER_DATE', params: { dates: [] }, message: 'NO_FULL_COVER_DATE' }, 'en')).toMatch(/^No image covers 100% of this place/);
+    expect(blockerText({ code: 'COLLECTION_NOT_VERIFIED', params: { collectionId: 'X' }, message: '검증된 컬렉션만 생성할 수 있습니다.' }, 'en')).toBe('Only verified collections can be built.');
+    expect(blockerText({ code: 'NEW_CODE', message: '새 차단 사유' }, 'en')).toBe('This request can’t go ahead. (NEW_CODE)');
+    expect(blockerText({ code: 'NEW_CODE', message: '새 차단 사유' }, 'ko')).toBe('새 차단 사유');
+    expect(warningText({ code: 'MAX_SCENES_LIMITED', params: { count: 40, used: 30 } }, 'en')).toBe('Time-step limit: built 30 of 40 dates.');
+    expect(warningText({ code: 'GEE_SCENE_COUNT_UNAVAILABLE', message: 'GEE_SCENE_COUNT_UNAVAILABLE' }, 'en')).toBe('Couldn’t get the scene count from GEE.');
+  });
+
+  test('admin areas: attributionCode in English; an older server’s Korean attribution falls back to the known source', async () => {
+    const search = jest.spyOn(generation, 'searchAdminAreas').mockResolvedValue({ items: [], attribution: '경계: 새 출처', attributionCode: 'SGIS_ADMDONGKOR' });
+    await toGeeArea();
+    fireEvent.click(screen.getByRole('tab', { name: 'Administrative area' }));
+    fireEvent.change(screen.getByLabelText('Search administrative areas'), { target: { value: 'Jeju' } });
+    await waitFor(() => expect(search).toHaveBeenCalled(), { timeout: T });
+    expect(await screen.findByText('No results.', undefined, { timeout: T })).toBeInTheDocument();
+    expect(screen.getByText('Boundaries: Statistics Korea SGIS (KOGL Type 1), admdongkor (CC BY 4.0)')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(HANGUL);
+    search.mockResolvedValue({ items: [{ code: '11', level: 'sido', name: 'Seoul', bbox: [126.7, 37.4, 127.2, 37.7], areaKm2: 605 }], attribution: '경계: 옛 서버 문장' });
+    fireEvent.change(screen.getByLabelText('Search administrative areas'), { target: { value: 'Seoul' } });
+    expect(await screen.findByRole('button', { name: /Seoul/ }, { timeout: T })).toBeInTheDocument();
+    expect(screen.getByText('Boundaries: Statistics Korea SGIS (KOGL Type 1), admdongkor (CC BY 4.0)')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(HANGUL);
+  });
+
+  test('file check: messageCode and messageParams instead of the Korean message', async () => {
+    jest.spyOn(generation, 'inspect').mockResolvedValue({
+      sourceType: 'CAS500', fileName: 'cas.zip', bands: ['B', 'G', 'R', 'N'], bounds: { west: 126, south: 35, east: 127, north: 36 }, files: ['a_B.tif', 'a_G.tif', 'a_R.tif', 'a_N.tif', 'a_Aux.xml'],
+      message: 'CAS500 패키지를 확인했습니다. 4개 TIFF · 1개 Aux.xml', messageCode: 'CAS500_CHECKED', messageParams: { tiffs: 4, aux: 1 }, inputs: [{ kind: 'zip', uri: 'file:///tmp/cas.zip' }],
+    });
+    renderWizard();
+    fireEvent.click(await screen.findByRole('radio', { name: /GeoTIFF \/ CAS500/ }));
+    fireEvent.click(next());
+    fireEvent.change(screen.getByLabelText('Choose file'), { target: { files: [new File(['x'], 'cas.zip', { type: 'application/zip' })] } });
+    expect(await screen.findByText('CAS500 package checked. TIFF files: 4 · Aux.xml files: 1', undefined, { timeout: T })).toBeInTheDocument();
+    expect(screen.queryByText(/패키지를 확인했습니다/)).not.toBeInTheDocument();
+  });
+});

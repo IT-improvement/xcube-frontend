@@ -197,6 +197,29 @@ describe('Jobs in English', () => {
     expect(document.body).not.toHaveTextContent(/[가-힣]/);
   });
 
+  // UR-53 stage 5: failure reasons come from errorCode/errorParams (and registration.errorCode), not the Korean errorMessage.
+  test('failure reasons and a registration failure from their codes', async () => {
+    const geeFailed = { ...failed, id: 'g1', name: 'Lake S2', type: 'GEE_TO_ZARR', errorCode: 'PARTIAL_COVER_DATES_DROPPED', errorParams: { dates: ['2024-08-01', '2024-08-06'] }, errorMessage: '영역을 다 덮지 못해 제외한 날짜: 2024-08-01, 2024-08-06' };
+    const oldFailed = { ...failed, id: 'g2', name: 'Old job', errorCode: null, errorMessage: '알 수 없는 옛 오류' };
+    const registerFailed = { ...running, id: 'g3', name: 'Registered late', status: 'SUCCEEDED', progress: 1, finishedAt: '2026-10-02T02:05:00Z', registration: { error: 'HttpServerErrorException: 500 등록 실패', errorCode: 'REGISTRATION_FAILED', errorParams: {} } };
+    const aiFailed = { ...failed, id: 'a1', name: 'Water run', type: 'AI_WATER', errorCode: 'MODEL_CHECKPOINT_UNAVAILABLE', errorParams: null, errorMessage: 'Model checkpoint unavailable', input: {} };
+    generation.listJobs.mockResolvedValue([geeFailed, oldFailed, registerFailed]);
+    aiService.listJobs.mockResolvedValue([aiFailed]);
+    renderAt('/app/jobs');
+    expect(await screen.findByText('Lake S2')).toBeInTheDocument();
+    // The row's short reason and the detail line both use the code's text with its dates.
+    expect(screen.getByText('Left out because they don’t cover the whole area: 2024-08-01, 2024-08-06')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show details for Lake S2' }));
+    expect(screen.getByText('Why it failed: Left out because they don’t cover the whole area: 2024-08-01, 2024-08-06')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show details for Old job' }));
+    expect(screen.getByText('Why it failed: Something went wrong.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show details for Registered late' }));
+    expect(screen.getByText(/The data list service returned an error\.$/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show details for Water run' }));
+    expect(screen.getByText('Why it failed: The model file isn’t ready yet, so this model can’t run now.')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/[가-힣]/);
+  });
+
   test('the unavailable notice names the missing services and offers a retry', async () => {
     generation.listJobs.mockResolvedValue([running]);
     analysis.listJobs.mockRejectedValue(new Error('down'));

@@ -122,3 +122,8 @@ test.each(['logout', 'login'])('진행 중인 refresh의 늦은 성공은 새 %s
   await expect(pending).rejects.toMatchObject({ code: 'SESSION_CHANGED' });
   expect(session.getToken()).toBe(action === 'logout' ? null : 'new-login');
 });
+
+test('오류 body의 code·params를 오류 객체에 남긴다 (UR-53 5단계)', async () => {
+  jest.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({ code: 'ZIP_TOO_MANY_ENTRIES', message: 'ZIP 파일 항목이 너무 많습니다.', params: { limit: 1000 }, traceId: 't9' }), { status: 400, headers: { 'content-type': 'application/json' } }));
+  await expect(request('', '/x', {}, false)).rejects.toMatchObject({ status: 400, code: 'ZIP_TOO_MANY_ENTRIES', params: { limit: 1000 }, traceId: 't9', message: 'ZIP 파일 항목이 너무 많습니다.' });
+});

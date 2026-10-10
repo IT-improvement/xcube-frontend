@@ -6,3 +6,5 @@ export {
   formatDate, formatDateTime, formatNumber,
 } from './core';
 export type { Lang, TKey, TFunction, TVars } from './types';
+export { codeKey, codeText, failureText, hasHangul, preferSentence, registrationFailureText, serverItems, serverText, shownSentence } from './serverText';
+export type { ServerItem, ServerParams } from './serverText';

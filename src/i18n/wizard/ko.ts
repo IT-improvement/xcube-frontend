@@ -37,6 +37,12 @@ const koWizard = {
       zarrText: '이미 만든 Zarr를 경로로 등록합니다.',
       zarrHint: '서버 경로 또는 s3:// URI',
     },
+    /** A failed upload the server didn't word (generationApi; server sentences and codes come first). */
+    upload: {
+      areaSaveFailed: '영역을 저장하지 못했습니다.',
+      areaImportFailed: '영역을 가져오지 못했습니다.',
+      inspectFailed: '파일을 검사하지 못했습니다.',
+    },
     file: {
       kind: '파일 종류',
       geotiff: '일반 GeoTIFF',
@@ -236,7 +242,6 @@ const koWizard = {
         none: '검색 결과가 없습니다.',
         results: '행정구역 검색 결과',
         selected: '선택:',
-        attribution: '경계: 통계청 SGIS(공공누리 1유형), admdongkor(CC BY 4.0)',
       },
       clip: {
         legend: '영역 처리',
@@ -339,6 +344,8 @@ const koWizard = {
         STORAGE_USAGE_UNAVAILABLE: '지금 쓰고 있는 저장 용량을 확인하지 못했습니다.',
         NOISE_UNAVAILABLE: '영역 안 구름·그림자를 계산하지 못해 장면 전체의 구름 값으로 정렬합니다.',
         DATE_LIST_TRUNCATED: '날짜가 366개를 넘어 앞쪽 366개만 보여 줍니다.',
+        GEE_SCENE_COUNT_UNAVAILABLE: 'GEE에서 장면 수를 받지 못했습니다.',
+        ESTIMATE_USES_SELECTED_DATES: '고른 날짜로 어림했습니다.',
       },
     },
     dates: {

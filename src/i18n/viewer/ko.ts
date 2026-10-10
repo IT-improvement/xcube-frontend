@@ -319,7 +319,6 @@ const koViewer = {
         unresolved: { text: '값이 없어 확인 못 함', detail: '유효한 값이 없어 값 형식을 확인하지 못했습니다.' },
       },
       warnVary: '{input}: {n}번째 시점부터 값 형식이 달라집니다({decision}).',
-      warnCheckpoint: '모델 파일이 아직 준비되지 않아 지금은 실행할 수 없습니다.',
       status: {
         QUEUED: '대기 중',
         RUNNING: '처리 중',

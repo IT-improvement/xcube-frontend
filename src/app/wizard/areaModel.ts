@@ -1,8 +1,8 @@
 // GEE area of interest (AOI): the wizard's area state and the pure rules that turn it into a request.
 // Words come from the wizard dictionary (UR-53 stage 3); each helper takes the screen language (default: current).
-import { AdminArea, AreaGeometry, AreaRequest, Bbox, EstimateBlocker, SavedArea } from '../../api/generationApi';
-import { formatNumber, getLanguage, translate } from '../../i18n';
-import type { Lang, TKey, TVars } from '../../i18n';
+import { AdminArea, AreaGeometry, AreaRequest, Bbox, EstimateBlocker, GeeEstimate, SavedArea } from '../../api/generationApi';
+import { codeText, formatNumber, getLanguage, serverItems, serverText, shownSentence, translate } from '../../i18n';
+import type { Lang, ServerItem, TKey, TVars } from '../../i18n';
 
 export type AreaTab = 'point' | 'admin' | 'box' | 'shape';
 export const AREA_TAB_IDS: readonly AreaTab[] = ['point', 'admin', 'box', 'shape'];
@@ -14,7 +14,7 @@ export const SIZE_CHIPS = [10, 20, 30, 40] as const;
 export const DEFAULT_SIZE_KM = 30;
 export const KM_PER_DEGREE = 111.32;
 export const SIZE_LIMITS = { min: 1, max: 200 } as const;
-/** Boundary source as the server words it (demo data uses it too); screens show `wizard.area.admin.attribution`. */
+/** Boundary source as the server words it (the demo answers with it); screens show the `SGIS_ADMDONGKOR` code's text. */
 export const ADMIN_ATTRIBUTION = '경계: 통계청 SGIS(공공누리 1유형), admdongkor(CC BY 4.0)';
 
 export type AreaState = {
@@ -115,24 +115,51 @@ export const bboxText = (bbox: Bbox, lang: Lang = getLanguage()) =>
   translate(lang, 'wizard.area.bboxText', { west: bbox[0].toFixed(4), east: bbox[2].toFixed(4), south: bbox[1].toFixed(4), north: bbox[3].toFixed(4) });
 export const km2Text = (value: number, lang: Lang = getLanguage()) => `${value >= 100 ? formatNumber(Math.round(value), {}, lang) : value.toFixed(1)} km²`;
 
-/** Blocker codes the wizard words itself (others keep the server's message). */
+/** Blocker codes the wizard words itself, with advice (other codes: the server code dictionary, then the server's sentence). */
 const BLOCKER_CODES = ['NO_S1_MATCH', 'DATE_LIST_UNAVAILABLE', 'NO_FULL_COVER_DATE', 'QUOTA_EXCEEDED', 'NO_SCENES', 'AREA_TOO_LARGE', 'INVALID_AREA'];
-/** Estimate warnings in words. Size and the date list are judged again from the picked dates (`estimateWarnings`). Unknown codes (or server sentences) are shown as given. */
-const WARNING_CODES = ['SIDE_EXCEEDS_100_KM', 'ESTIMATED_SIZE_EXCEEDS_5_GIB', 'MAX_SCENES_LIMIT', 'ESTIMATE_USES_MAX_SCENES', 'STORAGE_USAGE_UNAVAILABLE', 'NOISE_UNAVAILABLE', 'DATE_LIST_TRUNCATED'];
-export const warningText = (code: string, lang: Lang = getLanguage()) => (WARNING_CODES.includes(code) ? translate(lang, `wizard.estimate.warnings.${code}` as TKey) : code);
+/** Estimate warning codes the wizard words itself. Size and the date list are judged again from the picked dates (`estimateWarnings`). */
+const WARNING_CODES = ['SIDE_EXCEEDS_100_KM', 'ESTIMATED_SIZE_EXCEEDS_5_GIB', 'MAX_SCENES_LIMIT', 'ESTIMATE_USES_MAX_SCENES', 'STORAGE_USAGE_UNAVAILABLE', 'NOISE_UNAVAILABLE', 'DATE_LIST_TRUNCATED', 'GEE_SCENE_COUNT_UNAVAILABLE', 'ESTIMATE_USES_SELECTED_DATES'];
 
-/** Warnings worth showing now: with a date list, size and the scene-count fallbacks follow the picked dates. */
-export function estimateWarnings(warnings: string[], picked: { bytes: number } | null, blocked: boolean): string[] {
-  const shown = warnings.filter((code) => !(picked && (code === 'ESTIMATED_SIZE_EXCEEDS_5_GIB' || code === 'MAX_SCENES_LIMIT'))
-    && !(blocked && (code === 'GEE_SCENE_COUNT_UNAVAILABLE' || code === 'ESTIMATE_USES_MAX_SCENES')));
+type EstimateWarning = string | ServerItem;
+const itemOf = (warning: EstimateWarning): ServerItem => (typeof warning === 'string' ? serverItems(null, [warning])[0] : warning);
+const codeOf = (warning: EstimateWarning) => (typeof warning === 'string' ? warning : warning.code ?? '');
+
+/** The estimate's warnings as items: `warningItems` (codes with values), else the plain `warnings` (older servers). */
+export const estimateWarningItems = (data: GeeEstimate): ServerItem[] => serverItems(data.warningItems, data.warnings);
+/** The estimate's blockers: `blockerItems` (codes with values) when the server sends them, else the plain `blockers`. */
+export const estimateBlockers = (data: GeeEstimate | undefined): EstimateBlocker[] =>
+  data?.blockerItems?.length ? data.blockerItems : data?.blockers ?? [];
+
+/** A warning in words: the wizard's own text for its codes, else the server code dictionary or sentence (UR-53 stage 5). */
+export const warningText = (warning: EstimateWarning, lang: Lang = getLanguage()) => {
+  const code = codeOf(warning);
+  if (WARNING_CODES.includes(code)) return translate(lang, `wizard.estimate.warnings.${code}` as TKey);
+  return serverText(itemOf(warning), lang);
+};
+
+/**
+ * Warnings worth showing now: with a date list, size and the scene-count fallbacks follow the picked dates.
+ * The estimate's note that it used the picked dates is not shown (the user picked them).
+ */
+export function estimateWarnings<T extends EstimateWarning>(warnings: T[], picked: { bytes: number } | null, blocked: boolean): Array<T | string> {
+  const shown: Array<T | string> = warnings.filter((warning) => {
+    const code = codeOf(warning);
+    return code !== 'ESTIMATE_USES_SELECTED_DATES'
+      && !(picked && (code === 'ESTIMATED_SIZE_EXCEEDS_5_GIB' || code === 'MAX_SCENES_LIMIT'))
+      && !(blocked && (code === 'GEE_SCENE_COUNT_UNAVAILABLE' || code === 'ESTIMATE_USES_MAX_SCENES'));
+  });
   if (picked && picked.bytes > 5 * 1024 ** 3) shown.push('ESTIMATED_SIZE_EXCEEDS_5_GIB');
   return shown;
 }
 
-/** Blockers in plain words; an unknown code keeps the server's message, else a generic sentence with the code. */
+/**
+ * Blockers in plain words: the wizard's own text (with advice) for its codes, else the server code
+ * dictionary, else the server's sentence (Korean only in Korean), else a generic sentence with the code.
+ */
 export const blockerText = (blocker: EstimateBlocker, lang: Lang = getLanguage()) => {
   const code = typeof blocker === 'string' ? blocker : blocker.code;
-  const message = typeof blocker === 'string' ? '' : blocker.message ?? '';
   if (BLOCKER_CODES.includes(code)) return translate(lang, `wizard.estimate.blockers.${code}` as TKey);
-  return message || translate(lang, 'wizard.estimate.blockers.unknown', { code });
+  const item = typeof blocker === 'string' ? { code } : blocker;
+  const sentence = item.message && item.message !== code ? shownSentence(item.message, lang) : undefined;
+  return codeText(code, item.params, lang) ?? sentence ?? translate(lang, 'wizard.estimate.blockers.unknown', { code });
 };

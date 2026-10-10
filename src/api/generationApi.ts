@@ -1,4 +1,6 @@
-import { ApiError, request, session } from './httpClient';
+import { ApiError, errorFromBody, request, session } from './httpClient';
+import type { TKey } from '../i18n/types';
+import type { ServerItem, ServerParams } from '../i18n/serverText';
 
 export const GENERATION_API_BASE_URL = process.env.REACT_APP_GENERATION_API_URL ?? 'http://localhost:8083';
 export const BACKOFFICE_API_BASE_URL = process.env.REACT_APP_BACKOFFICE_API_URL ?? 'http://localhost:8082';
@@ -9,8 +11,10 @@ export type JobStatus = GenerationJob['status'];
 export type JobSummary = {
   id: string; name: string; type: 'GEE_TO_ZARR' | 'GEOTIFF_BANDS' | 'CAS500' | 'SHAPEFILE' | string; status: JobStatus;
   progress?: number | null; stage?: string | null; createdAt?: string; startedAt?: string | null; finishedAt?: string | null;
-  errorCode?: string | null; errorMessage?: string | null;
-  registration?: { datacubeId?: number | string; xcubeDatasetId?: string; error?: string } | null; zarrUri?: string | null;
+  /** Why it failed: `errorCode` with `errorParams` (UR-53 stage 5), and the Korean `errorMessage`. */
+  errorCode?: string | null; errorMessage?: string | null; errorParams?: ServerParams;
+  registration?: { datacubeId?: number | string; xcubeDatasetId?: string; error?: string; errorCode?: string | null; errorParams?: ServerParams } | null; zarrUri?: string | null;
+  warnings?: string[]; warningItems?: ServerItem[];
   input?: Record<string, unknown>;
 };
 export type BandStyle = { variable: string; colorBar: string; valueMin: number; valueMax: number };
@@ -20,7 +24,9 @@ export type ValueStats = { min: number; max: number; p2?: number; p98?: number }
 /** Band or attribute details from the inspect API (FR-GEN-10·11). Older servers send only `bands`. */
 export type InspectionField = { name: string; type?: 'integer' | 'real' | 'string'; approxStats?: ValueStats; categories?: Array<{ value: string | number; count: number }> };
 export type FileInput = { kind?: string; uri?: string; path?: string; fileName?: string; [key: string]: unknown };
-export type SpatialInspection = { sourceType: 'GEOTIFF' | 'SHAPEFILE' | 'CAS500'; fileName: string; bands: string[]; fields?: InspectionField[]; bounds: { west: number; south: number; east: number; north: number } | null; width?: number; height?: number; files: string[]; message: string; inputs?: FileInput[] };
+export type SpatialInspection = { sourceType: 'GEOTIFF' | 'SHAPEFILE' | 'CAS500'; fileName: string; bands: string[]; fields?: InspectionField[]; bounds: { west: number; south: number; east: number; north: number } | null; width?: number; height?: number; files: string[]; message: string; inputs?: FileInput[];
+  /** `GEOTIFF_CHECKED`·`SHAPEFILE_CHECKED`·`CAS500_CHECKED` with values (UR-53 stage 5); older servers send only `message`. */
+  messageCode?: string; messageParams?: ServerParams };
 /** One output variable of a generation job: only selected bands/attributes become Zarr variables. */
 export type VariableSpec = { source: string; name: string; kind: 'continuous' | 'categorical'; style: { colorBar: string; min?: number; max?: number } };
 export type FileJobInput = { type: 'GEOTIFF_BANDS' | 'CAS500' | 'SHAPEFILE'; name: string; inputs: FileInput[]; variables: VariableSpec[]; params?: Record<string, unknown>; projectId?: string };
@@ -42,12 +48,13 @@ export type AreaRequest = {
 export type SavedArea = { id: string | number; name: string; bbox: Bbox; areaKm2: number; geojson?: AreaGeometry; source?: 'upload' | 'shape_dataset' | 'drawn'; createdAt?: string };
 export type AdminLevel = 'sido' | 'sigungu';
 export type AdminArea = { code: string; level: AdminLevel; name: string; parentCode?: string | null; parentName?: string | null; bbox: Bbox; areaKm2: number; geojson?: AreaGeometry };
-export type AdminSearch = { items: AdminArea[]; attribution?: string };
+/** `attributionCode` (`SGIS_ADMDONGKOR`) names the boundary source; older servers send only the Korean `attribution`. */
+export type AdminSearch = { items: AdminArea[]; attribution?: string; attributionCode?: string };
 /** `POST /areas` answers either with the saved area or, when the Shapefile holds several polygons, with the choices to make. */
 export type AreaChoice = { polygonCount: number; attributes: Array<{ name: string; values?: Array<string | number> }> };
 export type AreaUpload = { area: SavedArea; choice?: undefined } | { area?: undefined; choice: AreaChoice };
 export type AreaPick = { dissolve?: boolean; attribute?: string; value?: string };
-export type EstimateBlocker = string | { code: string; message?: string };
+export type EstimateBlocker = string | { code: string; message?: string; params?: ServerParams };
 /** Sentinel-1 pairing for an S2 request (Backend guide "GEE Sentinel-1 짝 맞춤", UR-41): location first, the date only needs to be near. */
 export type OrbitPass = 'ANY' | 'ASCENDING' | 'DESCENDING';
 export type SarPairing = { enabled: boolean; maxDaysApart: number; orbitPass: OrbitPass; minCoverage: number; dropUnpaired: boolean };
@@ -63,6 +70,8 @@ export type EstimateDate = {
 };
 export type GeeEstimate = { excludedDates?: { date: string; coverage: number }[];
   bounds?: { west: number; south: number; east: number; north: number }; areaKm2: number; grid: { width: number; height: number }; scenes: number | null; estimatedBytes: number; requestTiles: number; warnings: string[]; blockers: EstimateBlocker[];
+  /** The same lists with values (UR-53 stage 5); older servers send only the strings. */
+  warningItems?: ServerItem[]; blockerItems?: Array<{ code: string; message?: string; params?: ServerParams }>;
   pairs?: SarPair[]; pairedCount?: number; unpairedCount?: number;
   /** Every date in the period (older servers send none). */
   dates?: EstimateDate[]; bytesPerDate?: number; estimatedSeconds?: number;
@@ -71,7 +80,14 @@ export type GeeJobBody = { name: string; collectionId: string; bands: string[]; 
   /** Only the picked dates (`YYYY-MM-DD`, sorted); omitted = every date, as before. */
   selectedDates?: string[] };
 
-async function multipart<T>(path: string, data: FormData, fallback: string, accept: (status: number, body: any) => T | undefined): Promise<T> {
+/** A failed upload; with no server sentence, `fallback` (a dictionary key) words it. */
+function uploadError(status: number, body: any, fallback: TKey) {
+  const error = errorFromBody(status, body);
+  if (!body?.message) error.fallbackKey = fallback;
+  return error;
+}
+
+async function multipart<T>(path: string, data: FormData, fallback: TKey, accept: (status: number, body: any) => T | undefined): Promise<T> {
   const token = session.getToken();
   let response: Response;
   try { response = await fetch(`${GENERATION_API_BASE_URL}${path}`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: data }); }
@@ -79,7 +95,7 @@ async function multipart<T>(path: string, data: FormData, fallback: string, acce
   const body = await response.json().catch(() => ({}));
   const accepted = accept(response.status, body);
   if (accepted !== undefined) return accepted;
-  throw new ApiError(response.status, body.code ?? `HTTP_${response.status}`, body.message ?? fallback);
+  throw uploadError(response.status, body, fallback);
 }
 const areaResult = (status: number, body: any): AreaUpload | undefined => {
   if (status >= 200 && status < 300) return { area: body as SavedArea };
@@ -95,7 +111,7 @@ export const generationApi = {
     const params = new URLSearchParams({ q: query });
     if (level) params.set('level', level);
     const body = await request<AdminArea[] | AdminSearch>(GENERATION_API_BASE_URL, `/api/v1/admin-areas?${params}`);
-    return Array.isArray(body) ? { items: body } : { items: body.items ?? [], attribution: body.attribution };
+    return Array.isArray(body) ? { items: body } : { items: body.items ?? [], attribution: body.attribution, attributionCode: body.attributionCode };
   },
   getAdminArea(code: string) {
     return request<AdminArea>(GENERATION_API_BASE_URL, `/api/v1/admin-areas/${encodeURIComponent(code)}`);
@@ -115,14 +131,14 @@ export const generationApi = {
     data.append('file', file); data.append('name', name);
     if (pick.dissolve) data.append('dissolve', 'true');
     if (pick.attribute) { data.append('attribute', pick.attribute); data.append('value', pick.value ?? ''); }
-    return multipart('/api/v1/areas', data, '영역을 저장하지 못했습니다.', areaResult);
+    return multipart('/api/v1/areas', data, 'wizard.upload.areaSaveFailed', areaResult);
   },
   areaFromJob(jobId: string | number, name: string, pick: AreaPick = {}): Promise<AreaUpload> {
     const data = new FormData();
     data.append('name', name);
     if (pick.dissolve) data.append('dissolve', 'true');
     if (pick.attribute) { data.append('attribute', pick.attribute); data.append('value', pick.value ?? ''); }
-    return multipart(`/api/v1/areas/from-job/${encodeURIComponent(String(jobId))}`, data, '영역을 가져오지 못했습니다.', areaResult);
+    return multipart(`/api/v1/areas/from-job/${encodeURIComponent(String(jobId))}`, data, 'wizard.upload.areaImportFailed', areaResult);
   },
   async getCollections(): Promise<GeeCollection[]> {
     const body = await request<GeeCollection[] | { collections: GeeCollection[] }>(GENERATION_API_BASE_URL, '/api/v1/gee/collections');
@@ -166,7 +182,7 @@ export const generationApi = {
     try { response = await fetch(`${GENERATION_API_BASE_URL}/api/v1/spatial-files/inspect/${type}`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: data }); }
     catch { throw new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.'); }
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new ApiError(response.status, body.code ?? `HTTP_${response.status}`, body.message ?? '파일을 검사하지 못했습니다.');
+    if (!response.ok) throw uploadError(response.status, body, 'wizard.upload.inspectFailed');
     return body as SpatialInspection;
   },
 };

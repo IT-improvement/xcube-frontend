@@ -8,10 +8,11 @@ import { Badge, Dialog, EmptyState, RadioGroup, Skeleton, TabPanel, Tabs } from 
 import { generation } from '../api';
 import { formatBytes } from '../fusion';
 import { useLoad } from '../useLoad';
-import { formatDate, formatNumber, useLanguage } from '../../i18n';
+import { codeText, formatDate, formatNumber, shownSentence, useLanguage } from '../../i18n';
+import type { ServerItem } from '../../i18n';
 import '../../i18n/wizard';
 import AreaMap, { AreaSketch } from './AreaMap';
-import { ADMIN_ATTRIBUTION, areaTabs, AreaState, AreaTab, bboxText, blockerText, estimateWarnings, hasPolygonOptions, km2Text, ResolvedArea, SIZE_CHIPS, SIZE_LIMITS, warningText } from './areaModel';
+import { areaTabs, AreaState, AreaTab, bboxText, blockerText, estimateBlockers, estimateWarningItems, estimateWarnings, hasPolygonOptions, km2Text, ResolvedArea, SIZE_CHIPS, SIZE_LIMITS, warningText } from './areaModel';
 import { PairTable } from './SarPairing';
 import DateTable from './DateTable';
 import { estimateDates, isLong, minutesText, selectionTotals } from './dateModel';
@@ -111,19 +112,19 @@ function BoxPanel({ area, set }: { area: AreaState; set: (patch: Partial<AreaSta
 
 const LEVELS: Array<{ id: AdminLevel | ''; key: 'all' | 'sido' | 'sigungu' }> = [{ id: '', key: 'all' }, { id: 'sido', key: 'sido' }, { id: 'sigungu', key: 'sigungu' }];
 /** Hangul in a server sentence: an English screen shows its own wording instead (server texts get codes in stage 5). */
-const HANGUL = /[\uac00-\ud7a3]/;
 
 function AdminPanel({ area, set }: { area: AreaState; set: (patch: Partial<AreaState>) => void }) {
   const [query, setQuery] = useState('');
   const [level, setLevel] = useState<AdminLevel | ''>('');
   const { lang, t } = useLanguage();
   const [items, setItems] = useState<AdminArea[]>([]);
-  const [attribution, setAttribution] = useState(ADMIN_ATTRIBUTION);
+  // The boundary source: its code (`SGIS_ADMDONGKOR`, also before the first search); older servers send only the sentence.
+  const [attribution, setAttribution] = useState<ServerItem>({ code: 'SGIS_ADMDONGKOR' });
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<{ cause: unknown } | null>(null);
   const error = failure ? userMessage(failure.cause, lang) : '';
-  // Korean keeps the server's attribution as before; English uses its own unless the server's has no Hangul.
-  const attributionText = lang === 'ko' ? attribution : attribution !== ADMIN_ATTRIBUTION && !HANGUL.test(attribution) ? attribution : t('wizard.area.admin.attribution');
+  // An older server's sentence without a code: Korean shows it; English, when it has Hangul, the known source.
+  const attributionText = codeText(attribution.code, null, lang) ?? shownSentence(attribution.message, lang) ?? codeText('SGIS_ADMDONGKOR', null, lang);
   const [loadingCode, setLoadingCode] = useState('');
 
   useEffect(() => {
@@ -133,7 +134,7 @@ function AdminPanel({ area, set }: { area: AreaState; set: (patch: Partial<AreaS
     setBusy(true);
     const timer = window.setTimeout(() => {
       generation.searchAdminAreas(text, level || undefined)
-        .then((result) => { if (cancelled) return; setItems(result.items); setFailure(null); if (result.attribution) setAttribution(result.attribution); })
+        .then((result) => { if (cancelled) return; setItems(result.items); setFailure(null); if (result.attributionCode || result.attribution) setAttribution({ code: result.attributionCode, message: result.attribution }); })
         .catch((cause) => { if (!cancelled) { setItems([]); setFailure({ cause }); } })
         .finally(() => { if (!cancelled) setBusy(false); });
     }, 300);
@@ -395,7 +396,7 @@ export function EstimatePanel({ estimate, hint, compact, pairing, picked }: { es
   const seconds = totals ? totals.seconds : data?.estimatedSeconds ?? null;
   // Requests scale with the picked dates like bytes and time do.
   const requests = data ? (totals && totals.total ? Math.ceil((data.requestTiles * totals.count) / totals.total) : data.requestTiles) : 0;
-  const blockers = !data ? [] : pairing && dates ? withPairingBlockers(data, true) : data.blockers.filter((blocker) => !pairing || !isNoMatch(blocker));
+  const blockers = !data ? [] : pairing && dates ? withPairingBlockers(data, true) : estimateBlockers(data).filter((blocker) => !pairing || !isNoMatch(blocker));
   return (
     <section className={`area-estimate ${compact ? 'is-compact' : ''}`} aria-label={t('wizard.estimate.title')}>
       <h3 className="area-estimate__title"><Search size={14} aria-hidden /> {t('wizard.estimate.title')}</h3>
@@ -429,7 +430,7 @@ export function EstimatePanel({ estimate, hint, compact, pairing, picked }: { es
           </dl>
           {isLong(seconds) && <p className="xc-hint">{t(dates ? 'wizard.estimate.fewerDates' : 'wizard.estimate.smaller')}</p>}
           {requests > 1 && <p className="xc-hint">{t('wizard.estimate.split', { count: num(requests) })}</p>}
-          {estimateWarnings(data.warnings, totals, blockers.length > 0).map((warning) => <Alert key={warning} tone="warning">{warningText(warning, lang)}</Alert>)}
+          {estimateWarnings(estimateWarningItems(data), totals, blockers.length > 0).map((warning, index) => <Alert key={index} tone="warning">{warningText(warning, lang)}</Alert>)}
           {blockers.map((blocker, index) => <Alert key={index} tone="danger" role="alert">{blockerText(blocker, lang)}</Alert>)}
           {pairing && !dates && <PairTable data={data} keepUnpaired={pairing.keepUnpaired} />}
         </>
