@@ -41,7 +41,7 @@ const metric = (value: number | undefined) => (value == null ? "—" : value.toF
 const thresholdText = (value: number | undefined) => (value == null ? "—" : value.toFixed(2));
 
 /** `--fb-ai-water` of fieldbook.css per theme: the legend, layer swatch and area bar use the same token. */
-export const AI_WATER = { light: "#1f9ae0", dark: "#5cbcf2" } as const;
+export const AI_WATER = { light: "#3fb4ff", dark: "#7fcbff" } as const;
 /**
  * water_mask (1 물, 0 물 아님, 255 값 없음) painted in exactly the AI water colour. xcube 1.13 accepts a user colour map as JSON
  * in `cmap`; a categorical map with the single class 1 leaves 0, 255 and NaN outside its bins, so they stay transparent.
