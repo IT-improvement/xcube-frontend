@@ -185,6 +185,7 @@ export function AiRunForm({
   times,
   run,
   runError,
+  starting = false,
   onRun,
   onCancel,
   onRetry,
@@ -194,6 +195,8 @@ export function AiRunForm({
   /** The latest run on this dataset, while it runs or right after it ended. */
   run: AiWaterJob | null;
   runError: string;
+  /** The run request is on its way (the service checks inputs first, a few seconds): no second click. */
+  starting?: boolean;
   onRun: (request: AiJobRequest) => void;
   onCancel: () => void;
   onRetry: () => void;
@@ -257,7 +260,7 @@ export function AiRunForm({
   });
   const busy = isRunning(run);
   const missing = check?.missing ?? [];
-  const canRun = !!model && !!check?.ready && !checking && !rangeInvalid && !busy;
+  const canRun = !!model && !!check?.ready && !checking && !rangeInvalid && !busy && !starting;
   const submit = () => {
     if (!canRun || !model) return;
     onRun({
@@ -416,7 +419,9 @@ export function AiRunForm({
       {runError && <p className="vx-note vx-note--bad" role="alert">{runError}</p>}
 
       <button type="submit" className="vx-btn vx-btn--ink vx-btn--block" disabled={!canRun}>
-        {busy ? <><LoaderCircle size={16} className="vx-spin" aria-hidden="true" />{t("viewer.ai.form.running")}</> : t("viewer.ai.form.run")}
+        {busy ? <><LoaderCircle size={16} className="vx-spin" aria-hidden="true" />{t("viewer.ai.form.running")}</>
+          : starting ? <><LoaderCircle size={16} className="vx-spin" aria-hidden="true" />{t("viewer.ai.form.starting")}</>
+          : t("viewer.ai.form.run")}
       </button>
       {!canRun && !busy && model && (
         <p className="vx-section__hint">
