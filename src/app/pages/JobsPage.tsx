@@ -8,6 +8,7 @@ import { Card, ConfirmDialog, EmptyState, PageHeader, Skeleton, useToast } from 
 import { aiViewerHref, formatDateTime, jobs as jobService, unavailableJobsNotice } from '../api';
 import { elapsed, isActive, JOB_TYPE_LABEL, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
 import { useLoad } from '../useLoad';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 type TypeFilter = '' | 'GEE_TO_ZARR' | 'GEOTIFF_BANDS,CAS500' | 'SHAPEFILE' | 'FUSION' | 'AI_WATER';
 type StatusFilter = '' | 'QUEUED,RUNNING' | 'SUCCEEDED' | 'FAILED,CANCELLED';
@@ -17,6 +18,7 @@ const pick = <T extends string>(value: string | null, allowed: T[]) => (allowed.
 
 /** S10 작업 센터: the user's generation, fusion and AI jobs with progress, steps, cancel and retry (FR-JOB-01·02). */
 export default function JobsPage() {
+  useDocumentTitle('작업');
   // Filters live in the URL (?type=FUSION&status=QUEUED,RUNNING) so reloads and links keep them.
   const [params, setParams] = useSearchParams();
   const type = pick(params.get('type'), TYPES);

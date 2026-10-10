@@ -1,8 +1,8 @@
 import { ChevronDown, ExternalLink, LogOut, Menu, Plus, X } from 'lucide-react';
-import { KeyboardEvent, RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { KeyboardEvent, RefObject, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
-import { ButtonLink, Logo } from '../components/ui';
+import { ButtonLink, Logo, RouteFallback } from '../components/ui';
 import { appApi } from './api';
 import { useActiveJobCount } from './jobs';
 import './app.css';
@@ -156,7 +156,10 @@ export default function AppShell() {
       )}
 
       <main id="app-main" className="app-main" tabIndex={-1}>
-        <Outlet />
+        {/* Pages download on first visit; the top bar stays while one loads. */}
+        <Suspense fallback={<RouteFallback inline />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );

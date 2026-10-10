@@ -1,5 +1,5 @@
 import { AlertCircle, CheckCircle2, Eye, EyeOff, Info, TriangleAlert } from 'lucide-react';
-import { AnchorHTMLAttributes, ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, useId, useState } from 'react';
+import { AnchorHTMLAttributes, ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, useEffect, useId, useState } from 'react';
 import { Link, LinkProps } from 'react-router-dom';
 import './ui.css';
 
@@ -101,15 +101,40 @@ export function Logo({ to = '/', href, label = 'XCube 홈', newTab }: { to?: str
   return <Link to={to} className="xc-logo" aria-label={label}>{content}</Link>;
 }
 
-export function StatusScreen({ title, text, busy, role = 'status', action }: { title: string; text?: string; busy?: boolean; role?: 'status' | 'alert'; action?: ReactNode }) {
+/** Full-screen message. `heading` makes the title the page's h1 (a page of its own, e.g. the 404). */
+export function StatusScreen({ title, text, busy, role = 'status', action, heading }: { title: string; text?: string; busy?: boolean; role?: 'status' | 'alert'; action?: ReactNode; heading?: boolean }) {
+  const Title = heading ? 'h1' : 'p';
   return (
     <main className="xc xc-status">
-      <div className="xc-status__box" role={role}>
+      <div className="xc-status__box" role={heading ? undefined : role}>
         {busy && <div className="xc-spinner" aria-hidden />}
-        <p className="xc-status__title">{title}</p>
+        <Title className="xc-status__title">{title}</Title>
         {text && <p className="xc-status__text">{text}</p>}
         {action}
       </div>
     </main>
   );
+}
+
+/**
+ * Suspense fallback while a page's code downloads. It stays blank for a moment so a fast load
+ * does not flash a spinner, then shows a quiet status. `inline` fills the app shell's main area
+ * (the top bar stays); otherwise it covers the screen like StatusScreen.
+ */
+export function RouteFallback({ inline, delay = 300 }: { inline?: boolean; delay?: number }) {
+  const [shown, setShown] = useState(delay <= 0);
+  useEffect(() => {
+    if (delay <= 0) return;
+    const timer = window.setTimeout(() => setShown(true), delay);
+    return () => window.clearTimeout(timer);
+  }, [delay]);
+  if (inline) {
+    return (
+      <div className="xc-route-wait" role="status" aria-live="polite">
+        {shown && <><div className="xc-spinner" aria-hidden /><span className="sr-only">화면을 불러오는 중</span></>}
+      </div>
+    );
+  }
+  if (!shown) return <div className="xc xc-status" aria-busy="true" />;
+  return <StatusScreen busy title="화면을 불러오고 있습니다…" />;
 }

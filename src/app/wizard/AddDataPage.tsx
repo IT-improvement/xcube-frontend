@@ -18,6 +18,7 @@ import VariableStyleEditor, { autoRange, defaultChoice, toVariableSpecs, validat
 import { FixedVariables, SarOptions } from './SarPairing';
 import { defaultSar, FIXED_NAMES, PRESET_GEE, isS2, ORBIT_OPTIONS, pairingActive, presetSar, S2_COLLECTION, sarError, sarRequest, SarState, WATER_BANDS, WATER_NAME, withPairingBlockers } from './sarModel';
 import './wizard.css';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 type Method = 'geotiff' | 'shape' | 'gee' | 'zarr';
 type RasterKind = 'geotiff' | 'cas500';
@@ -71,6 +72,7 @@ export const registeredDatasetId = (job: GenerationJob | null) => {
 
 /** S4 data add wizard. "다른 데이터 추가" starts a fresh wizard (new state) without reloading the page. */
 export default function AddDataPage() {
+  useDocumentTitle('데이터 추가');
   const [run, setRun] = useState(0);
   return <AddDataWizard key={run} onRestart={() => setRun((value) => value + 1)} />;
 }

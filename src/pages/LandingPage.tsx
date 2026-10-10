@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { Button, ButtonAnchor, ButtonLink, Logo } from '../components/ui';
 import './landing.css';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 const CONTACT_EMAIL = process.env.REACT_APP_CONTACT_EMAIL;
 const VERSION = process.env.REACT_APP_VERSION;
@@ -79,6 +80,7 @@ const VIEWER_PATH = '/app/viewer';
 const VIEWER_LOGIN = `/login?redirect=${encodeURIComponent(VIEWER_PATH)}`;
 
 export default function LandingPage() {
+  useDocumentTitle();
   const { user, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -254,7 +256,7 @@ export default function LandingPage() {
                   height={1280}
                   loading="lazy"
                   decoding="async"
-                  alt="원본 대비 결과 패널 실제 화면. AI 수체 결과와 원본 레이어 불투명도, 임계값 0.50에서 추정 면적 54.60 km², 참조 자료 대비 IoU 0.854, F1 0.922, 정밀도 0.873, 재현율 0.975."
+                  alt="원본 대비 결과 패널 실제 화면. AI 수체 결과(파란 물색, 불투명도 90%)와 원본 레이어(100%), 임계값 0.50에서 추정 면적 54.60 km², 참조 자료 대비 IoU 0.854, F1 0.922, 정밀도 0.873, 재현율 0.975."
                 />
               </Link>
               <figcaption className="lp-caption">원본 대비 결과 패널 · 같은 화면의 오른쪽</figcaption>

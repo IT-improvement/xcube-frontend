@@ -165,9 +165,45 @@ test('reason=idle이면 비활동 로그아웃 안내를 보여준다', () => {
   expect(screen.getByText(/장시간 사용하지 않아 로그아웃되었습니다/)).toBeInTheDocument();
 });
 
-test('없는 주소는 안내 화면을 보여준다', () => {
+test('없는 주소는 h1이 있는 안내 화면을 보여주고 탭 제목을 바꾼다', () => {
   window.history.replaceState({}, '', '/no-such-page');
   render(<App />);
-  expect(screen.getByText('페이지를 찾을 수 없습니다')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { level: 1, name: '페이지를 찾을 수 없습니다' })).toBeInTheDocument();
   expect(screen.getByRole('link', { name: '홈으로' })).toHaveAttribute('href', '/');
+  expect(document.title).toBe('페이지를 찾을 수 없습니다 · XCube');
+});
+
+test('/app 아래 없는 주소는 상단 바가 있는 앱 화면 안에서 안내한다', async () => {
+  window.history.replaceState({}, '', '/app/no-such-page');
+  mockLastActivity.mockReturnValue(Date.now());
+  mockMe.mockResolvedValue({ id: 1, name: '홍길동' });
+  render(<App />);
+  expect(await screen.findByRole('heading', { level: 1, name: '페이지를 찾을 수 없습니다' })).toBeInTheDocument();
+  expect(screen.getByRole('navigation', { name: '주 메뉴' })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: '대시보드로' })).toHaveAttribute('href', '/app');
+  expect(screen.queryByRole('link', { name: '홈으로' })).not.toBeInTheDocument();
+  expect(document.title).toBe('페이지를 찾을 수 없습니다 · XCube');
+});
+
+test.each([
+  ['/', 'XCube — 위성 데이터를 작게, 지도에서'],
+  ['/login', '로그인 · XCube'],
+  ['/signup', '회원가입 · XCube'],
+])('%s 경로의 탭 제목은 "%s"이다', (path, title) => {
+  window.history.replaceState({}, '', path);
+  render(<App />);
+  expect(document.title).toBe(title);
+});
+
+test('로그인 후 화면은 경로마다 탭 제목을 붙인다', async () => {
+  mockLastActivity.mockReturnValue(Date.now());
+  mockMe.mockResolvedValue({ id: 1, name: '홍길동' });
+  window.history.replaceState({}, '', '/app');
+  const { unmount } = render(<App />);
+  await screen.findByRole('heading', { name: '대시보드 화면' });
+  unmount();
+  window.history.replaceState({}, '', '/app/viewer?dataset=7');
+  render(<App />);
+  await screen.findByText('Viewer user: 홍길동 dataset: 7');
+  expect(document.title).toBe('Viewer · XCube');
 });
