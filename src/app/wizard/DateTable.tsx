@@ -5,13 +5,17 @@ import { useEffect, useState } from 'react';
 import { GeeEstimate } from '../../api/generationApi';
 import { Alert, Button } from '../../components/ui';
 import { Badge } from '../../components/ui/kit';
+import { useLanguage } from '../../i18n';
+import '../../i18n/wizard';
 import { byLeastCloud, cloudText, estimateDates, leastCloudy } from './dateModel';
 import { CAUTION_DAYS, coverageText, dateOnly, daysText, orbitLabel } from './sarModel';
+import { withStrong } from './strong';
 
 type Props = { data: GeeEstimate; picked: string[]; onChange: (next: string[]) => void; pairing?: { keepUnpaired: boolean } };
 type Order = 'clear' | 'date';
 
 export default function DateTable({ data, picked, onChange, pairing }: Props) {
+  const { lang, t } = useLanguage();
   const dates = estimateDates(data) ?? [];
   const excluded = data.excludedDates ?? [];
   const chosen = new Set(picked);
@@ -39,52 +43,52 @@ export default function DateTable({ data, picked, onChange, pairing }: Props) {
   const unpairedPicked = unpaired.filter((item) => chosen.has(item.date)).length;
 
   return (
-    <section className="date-pick" aria-label="날짜 고르기">
+    <section className="date-pick" aria-label={t('wizard.dates.title')}>
       <div className="date-pick__head">
-        <h3 className="area-estimate__title">날짜 고르기</h3>
-        <p className="date-pick__count tabular" aria-live="polite">선택 <strong>{count}</strong> / 전체 {dates.length}개 날짜</p>
+        <h3 className="area-estimate__title">{t('wizard.dates.title')}</h3>
+        <p className="date-pick__count tabular" aria-live="polite">{withStrong(t, 'wizard.dates.count', 'picked', count, { count: dates.length })}</p>
       </div>
-      <div className="date-pick__actions" role="group" aria-label="날짜 고르기 도구">
+      <div className="date-pick__actions" role="group" aria-label={t('wizard.dates.tools')}>
         <span className="date-pick__clear">
-          <label htmlFor="date-pick-count">만들 날짜 수</label>
+          <label htmlFor="date-pick-count">{t('wizard.dates.wanted')}</label>
           <input
             id="date-pick-count" className="xc-field__input date-pick__n tabular" type="number" min={1} max={dates.length} step={1}
             value={wanted} onChange={(event) => setCount(event.target.value)} aria-invalid={!nOk || undefined}
             aria-describedby="date-pick-count-hint"
           />
-          <span aria-hidden>개 / {dates.length}개</span>
+          <span aria-hidden>{t('wizard.dates.wantedOf', { count: dates.length })}</span>
         </span>
-        <Button size="sm" variant="ghost" onClick={() => onChange(all)} disabled={count === dates.length}>전체</Button>
-        <Button size="sm" variant="ghost" onClick={() => onChange([])} disabled={count === 0}>모두 해제</Button>
-        <span className="date-pick__order" role="group" aria-label="표 정렬">
-          <Button size="sm" variant={order === 'clear' ? 'secondary' : 'ghost'} aria-pressed={order === 'clear'} onClick={() => setOrder('clear')}>구름 적은 순</Button>
-          <Button size="sm" variant={order === 'date' ? 'secondary' : 'ghost'} aria-pressed={order === 'date'} onClick={() => setOrder('date')}>날짜순</Button>
+        <Button size="sm" variant="ghost" onClick={() => onChange(all)} disabled={count === dates.length}>{t('wizard.dates.all')}</Button>
+        <Button size="sm" variant="ghost" onClick={() => onChange([])} disabled={count === 0}>{t('wizard.dates.none')}</Button>
+        <span className="date-pick__order" role="group" aria-label={t('wizard.dates.order')}>
+          <Button size="sm" variant={order === 'clear' ? 'secondary' : 'ghost'} aria-pressed={order === 'clear'} onClick={() => setOrder('clear')}>{t('wizard.dates.byCloud')}</Button>
+          <Button size="sm" variant={order === 'date' ? 'secondary' : 'ghost'} aria-pressed={order === 'date'} onClick={() => setOrder('date')}>{t('wizard.dates.byDate')}</Button>
         </span>
       </div>
       <p className="xc-hint" id="date-pick-count-hint">
-        {hasNoise ? '영역 안 구름·그림자가 적은 순' : '구름이 적은 순'}으로 {nOk ? n : '원하는 수'}개를 고릅니다. 체크로 직접 바꿀 수도 있습니다.
+        {nOk ? t(hasNoise ? 'wizard.dates.rankHintNoise' : 'wizard.dates.rankHint', { count: n }) : t(hasNoise ? 'wizard.dates.rankHintNoiseAny' : 'wizard.dates.rankHintAny')}
       </p>
       <p className="xc-hint tabular">
-        위치를 100% 덮는 날짜만 보여 줍니다.
-        {excluded.length > 0 && ` 다 덮지 못해 뺀 날짜 ${excluded.length}개: ${excluded.map((item) => `${item.date}(${coverageText(item.coverage)}%)`).join(', ')}`}
+        {t('wizard.dates.fullCoverOnly')}
+        {excluded.length > 0 && t('wizard.dates.excluded', { count: excluded.length, list: excluded.map((item) => `${item.date}(${coverageText(item.coverage)}%)`).join(', ') })}
       </p>
       {pairing && (
         <p className="xc-hint tabular">
-          레이더 짝 {dates.length - unpaired.length} / {dates.length}개 날짜
-          {unpaired.length > 0 && ` · 짝 없음 ${unpaired.length}개 ${pairing.keepUnpaired ? '(레이더 없이 남김)' : '(제외)'}`}
+          {t('wizard.sar.pairCount', { paired: dates.length - unpaired.length, count: dates.length })}
+          {unpaired.length > 0 && t('wizard.sar.unpairedNote', { count: unpaired.length, how: t(pairing.keepUnpaired ? 'wizard.sar.keptNote' : 'wizard.sar.droppedNote') })}
         </p>
       )}
       <div className="xc-table-wrap date-pick__wrap">
-        <table className="xc-table date-pick__table" aria-label={pairing ? '날짜 고르기 · 광학·레이더 날짜 짝' : '날짜 고르기'}>
+        <table className="xc-table date-pick__table" aria-label={t(pairing ? 'wizard.dates.tableLabelPaired' : 'wizard.dates.tableLabel')}>
           <thead>
             <tr>
-              <th scope="col" className="date-pick__check"><span className="sr-only">선택</span></th>
-              <th scope="col">구름 순위</th>
-              <th scope="col">날짜</th>
-              {hasNoise && <th scope="col">영역 구름·그림자 %</th>}
-              <th scope="col">{hasNoise ? '타일 구름 %' : '구름 %'}</th>
-              <th scope="col">장면</th>
-              {pairing && <><th scope="col">레이더 날짜</th><th scope="col">차이(일)</th></>}
+              <th scope="col" className="date-pick__check"><span className="sr-only">{t('wizard.dates.select')}</span></th>
+              <th scope="col">{t('wizard.dates.rank')}</th>
+              <th scope="col">{t('wizard.dates.date')}</th>
+              {hasNoise && <th scope="col">{t('wizard.dates.noise')}</th>}
+              <th scope="col">{t(hasNoise ? 'wizard.dates.tileCloud' : 'wizard.dates.cloud')}</th>
+              <th scope="col">{t('wizard.dates.scenes')}</th>
+              {pairing && <><th scope="col">{t('wizard.sar.radarDate')}</th><th scope="col">{t('wizard.sar.daysApart')}</th></>}
             </tr>
           </thead>
           <tbody>
@@ -95,7 +99,7 @@ export default function DateTable({ data, picked, onChange, pairing }: Props) {
               return (
                 <tr key={item.date} className={[noPass ? 'is-unpaired' : '', on ? 'is-picked' : ''].join(' ').trim() || undefined}>
                   <td className="date-pick__check">
-                    <input type="checkbox" checked={on} onChange={(event) => toggle(item.date, event.target.checked)} aria-label={`${item.date} 선택`} />
+                    <input type="checkbox" checked={on} onChange={(event) => toggle(item.date, event.target.checked)} aria-label={t('wizard.dates.selectDate', { date: item.date })} />
                   </td>
                   <td className="tabular">{rank.get(item.date)}</td>
                   <td className="tabular">{item.date}</td>
@@ -103,11 +107,11 @@ export default function DateTable({ data, picked, onChange, pairing }: Props) {
                   <td className="tabular">{cloudText(item.cloudPercent)}</td>
                   <td className="tabular">{item.sceneCount}</td>
                   {pairing && (noPass ? (
-                    <td colSpan={2}>{pairing.keepUnpaired ? '레이더 없음 – 레이더 없이 남김' : '레이더 없음 – 제외'}</td>
+                    <td colSpan={2}>{t(pairing.keepUnpaired ? 'wizard.sar.noRadarKept' : 'wizard.sar.noRadarDropped')}</td>
                   ) : (
                     <>
-                      <td className="tabular">{item.s1 ? `${dateOnly(item.s1.date)} ${orbitLabel(item.s1.orbitPass)}` : '—'}</td>
-                      <td className="tabular">{daysText(item.s1?.daysApart)}{far && <> <Badge tone="warning">주의 · {CAUTION_DAYS}일 넘음</Badge></>}</td>
+                      <td className="tabular">{item.s1 ? `${dateOnly(item.s1.date)} ${orbitLabel(item.s1.orbitPass, lang)}` : '—'}</td>
+                      <td className="tabular">{daysText(item.s1?.daysApart)}{far && <> <Badge tone="warning">{t('wizard.sar.caution', { days: CAUTION_DAYS })}</Badge></>}</td>
                     </>
                   ))}
                 </tr>
@@ -116,10 +120,10 @@ export default function DateTable({ data, picked, onChange, pairing }: Props) {
           </tbody>
         </table>
       </div>
-      {count === 0 && <Alert tone="warning" role="alert">날짜를 하나 이상 고르세요. 고른 날짜만 만듭니다.</Alert>}
+      {count === 0 && <Alert tone="warning" role="alert">{t('wizard.dates.pickOne')}</Alert>}
       {unpairedPicked > 0 && (
         <p className="xc-hint" role="status">
-          레이더 짝이 없는 날짜 {unpairedPicked}개를 골랐습니다. {pairing?.keepUnpaired ? '이 날짜는 레이더 없이 생성됩니다.' : '이 날짜는 생성할 때 빠집니다.'} (짝 맞춤 설정 “짝이 없는 날짜”를 따릅니다)
+          {t('wizard.sar.unpairedPicked', { count: unpairedPicked, what: t(pairing?.keepUnpaired ? 'wizard.sar.unpairedPickedKept' : 'wizard.sar.unpairedPickedDropped') })}
         </p>
       )}
     </section>

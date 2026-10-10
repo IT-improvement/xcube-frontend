@@ -33,6 +33,11 @@ const enApp: AppTranslation = {
     dataListFailed: 'Couldn’t load your data. {error}',
     jobListFailed: 'Couldn’t load jobs. {error}',
   },
+  orbit: {
+    ANY: 'Any',
+    ASCENDING: 'Ascending',
+    DESCENDING: 'Descending',
+  },
   kinds: {
     original: 'Original',
     fusion: 'Band math result',
@@ -147,6 +152,8 @@ const enApp: AppTranslation = {
     datasetId: 'Dataset ID',
     radarPairs: 'Radar pairs',
     pairsLabel: 'Sentinel-1 pair for each time',
+    pairLine: 'S1 pair: {date} {orbit} ({days}-day gap)',
+    pairNone: 'No S1 pair (radar values empty)',
     title: 'Title',
     units: 'Units',
     defaultShown: 'Shown first',

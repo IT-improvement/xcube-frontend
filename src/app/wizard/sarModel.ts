@@ -1,6 +1,8 @@
 // "수체 분석용 S1+S2" (UR-41): S2 optical bands plus the Sentinel-1 pass that covers the same area on a nearby date.
 // Pure rules shared by the wizard, the estimate pair table and the tests.
 import { EstimateBlocker, GeeEstimate, OrbitPass, SarPair, SarPairing, WaterReference } from '../../api/generationApi';
+import { getLanguage, translate } from '../../i18n';
+import type { Lang } from '../../i18n';
 
 /** "100% 덮음" (UR-45): footprints are compared with 10 m geometry error, ~0.1 % of a 30 km area. */
 export const FULL_COVER = 0.998;
@@ -19,12 +21,11 @@ export const FIXED_NAMES = ['vv', 'vh', 'water_gt'] as const;
 export const MAX_DAYS = { min: 1, max: 30, default: 15 } as const;
 /** Pairs further apart than this get a caution mark (the AI check warns from the same value). */
 export const CAUTION_DAYS = 7;
-export const ORBIT_OPTIONS: Array<{ id: OrbitPass; label: string }> = [
-  { id: 'ANY', label: '상관없음' },
-  { id: 'ASCENDING', label: '상승' },
-  { id: 'DESCENDING', label: '하강' },
-];
-export const orbitLabel = (pass?: string | null) => (pass === 'ASCENDING' ? '상승' : pass === 'DESCENDING' ? '하강' : pass || '—');
+export const ORBIT_PASSES: readonly OrbitPass[] = ['ANY', 'ASCENDING', 'DESCENDING'];
+/** Orbit words live in the app part (`orbit.*`): the dataset page shows them too. */
+export const orbitOption = (pass: OrbitPass, lang: Lang = getLanguage()) => translate(lang, `orbit.${pass}`);
+export const orbitLabel = (pass?: string | null, lang: Lang = getLanguage()) =>
+  (pass === 'ASCENDING' || pass === 'DESCENDING' ? translate(lang, `orbit.${pass}`) : pass || '—');
 
 export type SarState = { enabled: boolean; maxDaysApart: string; orbitPass: OrbitPass; keepUnpaired: boolean; waterReference: boolean };
 export const defaultSar = (waterReference = false): SarState => ({ enabled: true, maxDaysApart: String(MAX_DAYS.default), orbitPass: 'ANY', keepUnpaired: false, waterReference });
@@ -36,10 +37,10 @@ export const isS2 = (collectionId: string) => collectionId === S2_COLLECTION;
 export const pairingActive = (collectionId: string, sar: SarState) => isS2(collectionId) && sar.enabled;
 
 /** Problem with the pairing settings, or ''. */
-export function sarError(sar: SarState): string {
+export function sarError(sar: SarState, lang: Lang = getLanguage()): string {
   const days = Number(sar.maxDaysApart);
   if (!sar.enabled) return '';
-  if (sar.maxDaysApart.trim() === '' || !Number.isInteger(days) || days < MAX_DAYS.min || days > MAX_DAYS.max) return `날짜 차이 최대는 ${MAX_DAYS.min}~${MAX_DAYS.max}일 사이 정수로 입력하세요.`;
+  if (sar.maxDaysApart.trim() === '' || !Number.isInteger(days) || days < MAX_DAYS.min || days > MAX_DAYS.max) return translate(lang, 'wizard.sar.maxDaysError', { min: MAX_DAYS.min, max: MAX_DAYS.max });
   return '';
 }
 
@@ -87,5 +88,8 @@ export const dateOnly = (value?: string | null) => (value ? value.slice(0, 10) :
 
 /** `xcube_pairs[]` root attribute of a paired Zarr (one entry per time). */
 export type ZarrPair = { time?: string; s1Time?: string | null; orbitPass?: string | null; daysApart?: number | null; coverage?: number | null };
-export const pairLine = (pair: ZarrPair) =>
-  pair.s1Time ? `S1 짝: ${dateOnly(pair.s1Time)} ${orbitLabel(pair.orbitPass)} (${daysText(pair.daysApart)}일 차이)` : 'S1 짝 없음 (레이더 값 비어 있음)';
+/** One line per time on the dataset page; its words are in the app part (`dataset.pairLine`), which that page loads. */
+export const pairLine = (pair: ZarrPair, lang: Lang = getLanguage()) =>
+  pair.s1Time
+    ? translate(lang, 'dataset.pairLine', { date: dateOnly(pair.s1Time), orbit: orbitLabel(pair.orbitPass, lang), days: daysText(pair.daysApart) })
+    : translate(lang, 'dataset.pairNone');

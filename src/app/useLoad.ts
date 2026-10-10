@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { userMessage } from '../api/httpClient';
 import { useLanguage } from '../i18n';
-import type { Lang } from '../i18n';
 
 export type Load<T> = { data: T | null; loading: boolean; error: string; status?: number; reload: () => void; setData: (update: (current: T | null) => T | null) => void };
 
 /**
  * Loads data on mount and whenever `key` changes; keeps the error message and HTTP status. The message
- * follows the screen language (it is worded at render, so switching language rewords it); pass `lang`
- * to pin it, as the Korean-only add-data wizard does.
+ * follows the screen language (it is worded at render, so switching language rewords it).
  */
-export function useLoad<T>(loader: () => Promise<T>, key: unknown[] = [], lang?: Lang): Load<T> {
+export function useLoad<T>(loader: () => Promise<T>, key: unknown[] = []): Load<T> {
   const screenLang = useLanguage().lang;
   const [data, setDataState] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,7 +30,7 @@ export function useLoad<T>(loader: () => Promise<T>, key: unknown[] = [], lang?:
   const reload = useCallback(() => setTick((value) => value + 1), []);
   const setData = useCallback((update: (current: T | null) => T | null) => setDataState(update), []);
   const cause = failure?.cause as { status?: unknown } | undefined;
-  const error = failure ? userMessage(failure.cause, lang ?? screenLang) : '';
+  const error = failure ? userMessage(failure.cause, screenLang) : '';
   const status = typeof cause?.status === 'number' ? cause.status : undefined;
   return { data, loading, error, status, reload, setData };
 }

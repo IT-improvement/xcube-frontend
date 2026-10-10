@@ -6,6 +6,8 @@ import en from './en';
 import ko from './ko';
 import enApp from './app/en';
 import koApp from './app/ko';
+import enWizard from './wizard/en';
+import koWizard from './wizard/ko';
 import { detectLanguage, formatDate, formatDateTime, formatNumber, pickLanguage, STORAGE_KEY, translate } from './core';
 import { LanguageProvider } from './LanguageProvider';
 
@@ -86,10 +88,11 @@ describe('사전', () => {
   const placeholders = (texts: string[]) => Array.from(new Set(texts.flatMap((text) => text.match(/\{\w+\}/g) ?? []))).sort();
 
   test('ko와 en은 같은 키를 가지고, 같은 자리표시자를 쓰며, 빈 문장이 없다', () => {
-    // Both parts: the main dictionary and the app part (management screens, UR-53 stage 2).
-    const koKeys = flatten({ ...ko, ...koApp } as unknown as Tree);
-    const enKeys = flatten({ ...en, ...enApp } as unknown as Tree);
+    // Every part: the main dictionary, the app part (management screens, UR-53 stage 2) and the wizard part (stage 3).
+    const koKeys = flatten({ ...ko, ...koApp, ...koWizard } as unknown as Tree);
+    const enKeys = flatten({ ...en, ...enApp, ...enWizard } as unknown as Tree);
     expect(Object.keys(koApp).filter((name) => name in ko)).toEqual([]);
+    expect(Object.keys(koWizard).filter((name) => name in ko || name in koApp)).toEqual([]);
     expect(Array.from(enKeys.keys()).sort()).toEqual(Array.from(koKeys.keys()).sort());
     koKeys.forEach((texts, key) => {
       const english = enKeys.get(key)!;
