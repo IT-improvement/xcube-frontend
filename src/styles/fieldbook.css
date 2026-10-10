@@ -24,7 +24,7 @@
   --fb-water: #1769aa;          /* data */
   --fb-water-soft: #e2eef8;
   --fb-result: #0f7a6e;         /* AI results */
-  --fb-ai-water: #1f9ae0;       /* AI water mask on the map: reads as water, lighter than data blue */
+  --fb-ai-water: #3fb4ff;       /* AI water mask on the map: reads as water, lighter than data blue */
   --fb-basemap: #7f9a7f;
   --fb-ok: #2e7a3c;
   --fb-warn: #94580a;
@@ -70,7 +70,7 @@
   --fb-water: #6db3ec;
   --fb-water-soft: #172b3c;
   --fb-result: #4fc4b4;
-  --fb-ai-water: #5cbcf2;
+  --fb-ai-water: #7fcbff;
   --fb-basemap: #7d977d;
   --fb-ok: #6fcf7f;
   --fb-warn: #f0b45a;

@@ -187,7 +187,7 @@ The palette is green-grey paper and graphite ink, with three data hues and one o
 - **Water Blue** (water): the colour of data. It is used for the time-series line and points, the source-layer swatch, and the loading pulse. **Water Wash** (water-soft) backs the variable tag and info notes.
 
 ### Tertiary
-- **Result Teal** (result): AI interface accents, such as the `AI 결과` tag, the run progress bar and the area title icon. **AI Water** (ai-water, `#1f9ae0`, dark `#5cbcf2`): the AI water mask on the map, sent to xcube as a JSON colormap, plus its hatched legend, layer swatch and area bars. It reads as water and is lighter than Data Water (UR-52, UX6). **Basemap Sage** (basemap): the basemap layer swatch.
+- **Result Teal** (result): AI interface accents, such as the `AI 결과` tag, the run progress bar and the area title icon. **AI Water** (ai-water, `#3fb4ff`, dark `#7fcbff`): the AI water mask on the map, sent to xcube as a JSON colormap, plus its hatched legend, layer swatch and area bars. It reads as water and is lighter than Data Water (UR-52, UX6). **Basemap Sage** (basemap): the basemap layer swatch.
 
 ### Neutral
 - **Field-Book Ground** (ground): the app background, the map's empty state and the scope strip inside popovers.
