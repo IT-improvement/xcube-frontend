@@ -1,3 +1,5 @@
+import { translate } from '../i18n/core';
+import type { Lang, TKey } from '../i18n/types';
 export type ApiErrorBody = { code?: string; message?: string; timestamp?: string; traceId?: string };
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public traceId?: string) { super(message); }
@@ -92,12 +94,17 @@ export async function requestBlob(baseUrl: string, path: string): Promise<Blob> 
   return response.blob();
 }
 
-export function userMessage(error: unknown): string {
-  if (!(error instanceof ApiError)) return '예상하지 못한 오류가 발생했습니다.';
-  if (error.status === 0) return '서버에 연결할 수 없습니다. 실행 상태를 확인해 주세요.';
-  if (error.status === 401) return '세션이 만료되었습니다. 다시 로그인해 주세요.';
-  if (error.status === 409) return error.code === 'DATASET_NOT_REGISTERED' ? 'XCube 등록을 동기화하는 중입니다. 잠시 후 다시 시도해 주세요.' : '이미 존재하거나 현재 상태와 충돌합니다.';
-  if (error.status === 503) return 'XCube Server를 사용할 수 없습니다.';
-  if (error.status === 504) return 'XCube Server 응답 시간이 초과되었습니다.';
-  return error.message || '요청을 처리하지 못했습니다.';
+/**
+ * A failed request in plain words. Korean by default, so the screens that are still Korean-only (add-data
+ * wizard, Viewer) stay Korean; translated screens pass their language. A server sentence is shown as given.
+ */
+export function userMessage(error: unknown, lang: Lang = 'ko'): string {
+  const say = (key: TKey) => translate(lang, key);
+  if (!(error instanceof ApiError)) return say('errors.unexpected');
+  if (error.status === 0) return say('errors.network');
+  if (error.status === 401) return say('errors.sessionExpired');
+  if (error.status === 409) return say(error.code === 'DATASET_NOT_REGISTERED' ? 'errors.syncing' : 'errors.conflict');
+  if (error.status === 503) return say('errors.xcubeUnavailable');
+  if (error.status === 504) return say('errors.xcubeTimeout');
+  return error.message || say('errors.failed');
 }

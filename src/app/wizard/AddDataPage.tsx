@@ -108,9 +108,9 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const [submitError, setSubmitError] = useState('');
   const [job, setJob] = useState<GenerationJob | null>(null);
   const [registeredId, setRegisteredId] = useState('');
-  const colorBars = useLoad<ColorBarOption[]>(() => generation.colorBars());
-  const collections = useLoad<GeeCollection[]>(() => (method === 'gee' ? generation.collections() : Promise.resolve([])), [method]);
-  const projects = useLoad(() => appApi.listProjects());
+  const colorBars = useLoad<ColorBarOption[]>(() => generation.colorBars(), [], 'ko'); // wizard stays Korean until UR-53 stage 3
+  const collections = useLoad<GeeCollection[]>(() => (method === 'gee' ? generation.collections() : Promise.resolve([])), [method], 'ko');
+  const projects = useLoad(() => appApi.listProjects(), [], 'ko');
   const headingRef = useRef<HTMLHeadingElement>(null);
   const registrationPolls = useRef(0);
   const done = !!job || !!registeredId;

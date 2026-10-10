@@ -1,7 +1,7 @@
 // Language detection, text lookup and Intl formatting. No React here, so plain modules can use it.
 import en from './en';
 import ko from './ko';
-import type { Lang, Plural, TFunction, TKey, Translation, TVars } from './types';
+import type { Lang, Plural, TFunction, TKey, TVars } from './types';
 
 export const LANGS: readonly Lang[] = ['ko', 'en'];
 /** Each option is named in its own language, so anyone can find theirs. */
@@ -9,7 +9,16 @@ export const LANGUAGE_NAMES: Record<Lang, string> = { ko: '한국어', en: 'Engl
 export const LOCALES: Record<Lang, string> = { ko: 'ko-KR', en: 'en-US' };
 export const STORAGE_KEY = 'xcube.lang';
 
-const DICTS: Record<Lang, Translation> = { ko, en };
+// Main dictionaries; parts that load later (the app pages' text) are added by registerDictionaries.
+const DICTS: Record<Lang, Record<string, unknown>> = { ko, en };
+
+/**
+ * Adds a later-loaded part (its top-level namespaces are new, e.g. "jobs") to every language. The app part
+ * calls this when an app module loads (./app/index.ts); lookups made after that find its keys.
+ */
+export function registerDictionaries(parts: Record<Lang, object>) {
+  for (const lang of LANGS) DICTS[lang] = { ...DICTS[lang], ...parts[lang] };
+}
 
 const isLang = (value: unknown): value is Lang => value === 'ko' || value === 'en';
 
@@ -56,7 +65,7 @@ export const setCurrentLanguage = (lang: Lang) => { current = lang; };
 
 const isPlural = (value: unknown): value is Plural => typeof value === 'object' && value !== null && 'other' in value;
 
-function lookup(dict: Translation, key: string): string | Plural | undefined {
+function lookup(dict: Record<string, unknown>, key: string): string | Plural | undefined {
   let node: unknown = dict;
   for (const part of key.split('.')) {
     if (typeof node !== 'object' || node === null) return undefined;

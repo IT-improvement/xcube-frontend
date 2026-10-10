@@ -11,11 +11,13 @@ import { apiId, asFusionRequest, blockerText, defaultName, EXTENT_LABEL, formatB
 import { useLoad } from '../useLoad';
 import '../wizard/wizard.css';
 import './fusion.css';
-import { useT } from '../../i18n';
+import { formatNumber, useLanguage } from '../../i18n';
+import type { Lang, TFunction, TKey } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+// The management screens' text (UR-53 stage 2) loads with these pages, not with the main bundle.
+import '../../i18n/app';
 
-const STEPS = ['입력', '수식', '규칙', '미리보기·실행'];
-const FUNCTION_HELP = 'abs(x)  sqrt(x)  log(x)  log10(x)  exp(x)  min(a, b, …)  max(a, b, …)  where(조건, 참값, 거짓값)  clip(x, 최소, 최대)';
+const STEPS: TKey[] = ['fusion.steps.inputs', 'fusion.steps.formula', 'fusion.steps.rules', 'fusion.steps.run'];
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 type NormMode = 'auto' | 'none' | 'custom';
@@ -91,9 +93,22 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="xc-field"><span className="xc-label">{label}</span>{children}</label>;
 }
 
+const FORMULA_ERROR_CODES = ['EMPTY_FORMULA', 'STRING_NOT_ALLOWED', 'ATTRIBUTE_NOT_ALLOWED', 'SUBSCRIPT_NOT_ALLOWED', 'KEYWORD_ARG_NOT_ALLOWED', 'UNEXPECTED_CHAR', 'NAME_FORBIDDEN', 'FUNCTION_NOT_ALLOWED', 'ARITY', 'UNKNOWN_NAME', 'SYNTAX'];
+/**
+ * A formula error in words. Korean shows the server sentence as before; other languages word a known code
+ * themselves ({token} is the marked part of the formula) and fall back to the server sentence.
+ */
+export function formulaErrorText(formula: string, error: FormulaError, lang: Lang, t: TFunction) {
+  if (lang === 'ko' || !FORMULA_ERROR_CODES.includes(error.code)) return error.message;
+  const start = Math.min(error.position, formula.length);
+  const token = formula.slice(start, start + Math.max(1, error.length)).trim();
+  return t(`fusion.formulaErrors.${error.code}` as TKey, { token });
+}
+
 /** S12 수식 융합: inputs → formula → rules → dry-run preview and run (FR-FUS-01~11). */
 export default function FusionPage() {
-  useDocumentTitle(useT()('titles.fusion'));
+  const { lang, t } = useLanguage();
+  useDocumentTitle(t('titles.fusion'));
   const location = useLocation();
   const [params] = useSearchParams();
   const fromJob = params.get('from');
@@ -133,15 +148,15 @@ export default function FusionPage() {
     if (!fromJob) return;
     let cancelled = false;
     fusion.getJob(fromJob)
-      .then((job) => { const loaded = asFusionRequest(job.input); if (!cancelled && loaded) apply(loaded); else if (!cancelled) setPrefillError('이전 작업의 요청 정보를 찾을 수 없습니다.'); })
-      .catch((cause) => { if (!cancelled) setPrefillError(`이전 작업을 불러오지 못했습니다. ${userMessage(cause)}`); });
+      .then((job) => { const loaded = asFusionRequest(job.input); if (!cancelled && loaded) apply(loaded); else if (!cancelled) setPrefillError(t('fusion.prefillMissing')); })
+      .catch((cause) => { if (!cancelled) setPrefillError(t('fusion.prefillFailed', { error: userMessage(cause, lang) })); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromJob, state]);
 
-  // Default result name: {first dataset}_융합_{date}, until the user types their own.
+  // Default result name: {first dataset}_융합_{date} (en: _bandmath_), until the user types their own.
   const firstName = find(rows[0]?.datasetId)?.name;
-  useEffect(() => { if (!nameTouched) setName(defaultName(firstName)); }, [firstName, nameTouched]);
+  useEffect(() => { if (!nameTouched) setName(defaultName(firstName, new Date(), lang)); }, [firstName, nameTouched, lang]);
 
   useEffect(() => { headingRef.current?.focus(); }, [step]);
   useEffect(() => {
@@ -166,7 +181,7 @@ export default function FusionPage() {
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [formula, lettersKey]);
 
-  const request = buildRequest({ name: name || defaultName(firstName), formula, rows, rules, outputVariable, projectId });
+  const request = buildRequest({ name: name || defaultName(firstName, new Date(), lang), formula, rows, rules, outputVariable, projectId });
   // The dry-run depends on everything except name, result variable and project.
   const ruleKey = JSON.stringify({ ...request, name: '', outputVariable: '', projectId: null });
   const requestRef = useRef(request);
@@ -175,25 +190,25 @@ export default function FusionPage() {
     setPreview({ key, loading: true });
     fusion.dryRun(requestRef.current)
       .then((data) => setPreview((current) => (current?.key === key ? { key, loading: false, data } : current)))
-      .catch((cause) => setPreview((current) => (current?.key === key ? { key, loading: false, error: userMessage(cause) } : current)));
+      .catch((cause) => setPreview((current) => (current?.key === key ? { key, loading: false, error: userMessage(cause, lang) } : current)));
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (step === 3 && !started) runDryRun(ruleKey); }, [step, ruleKey, started]);
 
   const stepProblem = (index: number): string => {
     if (index === 0) {
-      if (rows.some((row) => !row.datasetId || !row.variable)) return '모든 변수에 데이터와 변수를 골라 주세요.';
+      if (rows.some((row) => !row.datasetId || !row.variable)) return t('fusion.problems.pickAll');
       const bad = rows.find((row) => row.norm === 'custom' && (!Number.isFinite(Number(row.scale)) || row.scale.trim() === '' || !Number.isFinite(Number(row.offset)) || row.offset.trim() === ''));
-      if (bad) return `${bad.letter}의 정규화 계수(배율·보정값)는 숫자여야 합니다.`;
+      if (bad) return t('fusion.problems.badCoefficient', { letter: bad.letter });
     }
     if (index === 1) {
-      if (!formula.trim()) return '수식을 입력해 주세요.';
-      if (check.status === 'checking' || check.status === 'idle') return '수식을 확인하는 중입니다. 잠시 후 다시 시도해 주세요.';
-      if (check.status === 'error') return '수식 오류를 고쳐 주세요.';
+      if (!formula.trim()) return t('fusion.problems.formulaRequired');
+      if (check.status === 'checking' || check.status === 'idle') return t('fusion.problems.checking');
+      if (check.status === 'error') return t('fusion.problems.fixFormula');
     }
     if (index === 2) {
-      if (rules.reference === 'datacube' && !letters.some((letter) => rows.find((row) => row.letter === letter)?.datasetId === rules.gridDatasetId)) return '격자 기준으로 쓸 데이터를 입력 중에서 골라 주세요.';
-      if (rules.timeMode === 'nearest' && !(Number.isInteger(Number(rules.tolerance)) && Number(rules.tolerance) >= 0 && rules.tolerance.trim() !== '')) return '허용 오차는 0 이상의 정수(일)로 입력해 주세요.';
+      if (rules.reference === 'datacube' && !letters.some((letter) => rows.find((row) => row.letter === letter)?.datasetId === rules.gridDatasetId)) return t('fusion.problems.gridData');
+      if (rules.timeMode === 'nearest' && !(Number.isInteger(Number(rules.tolerance)) && Number(rules.tolerance) >= 0 && rules.tolerance.trim() !== '')) return t('fusion.problems.tolerance');
     }
     return '';
   };
@@ -204,7 +219,7 @@ export default function FusionPage() {
 
   const data = preview?.key === ruleKey ? preview.data : undefined;
   const blockers = data?.blockers ?? [];
-  const nameProblem = !name.trim() ? '결과 이름을 입력해 주세요.' : !outputVariable.trim() ? '결과 변수 이름을 입력해 주세요.' : /^[A-Za-z_][A-Za-z0-9_]*$/.test(outputVariable.trim()) ? '' : '결과 변수 이름은 영문·숫자·밑줄만 쓸 수 있습니다.';
+  const nameProblem = !name.trim() ? t('fusion.problems.nameRequired') : !outputVariable.trim() ? t('fusion.problems.variableRequired') : /^[A-Za-z_][A-Za-z0-9_]*$/.test(outputVariable.trim()) ? '' : t('fusion.problems.variableRule');
   const canRun = !!data && !blockers.length && !nameProblem && !submitting && !preview?.loading;
   const run = async () => {
     if (!canRun) return;
@@ -212,9 +227,9 @@ export default function FusionPage() {
     try {
       const job = await fusion.createJob(request);
       setStarted({ id: job.id, name: request.name });
-      toast.show('융합 작업을 시작했습니다.');
+      toast.show(t('fusion.started'));
     } catch (cause) {
-      setSubmitError(userMessage(cause));
+      setSubmitError(userMessage(cause, lang));
     } finally { setSubmitting(false); }
   };
 
@@ -225,16 +240,16 @@ export default function FusionPage() {
   if (started) {
     return (
       <div className="page-stack wizard">
-        <PageHeader title="수식 융합" />
+        <PageHeader title={t('titles.fusion')} />
         <Card>
           <div className="wizard-result">
             <span className="wizard-result__icon" aria-hidden><CheckCircle2 size={28} /></span>
-            <h2 className="wizard-title">융합 작업을 시작했습니다</h2>
-            <p role="status">“{started.name}” 작업이 대기열에 들어갔습니다. 이 화면을 닫아도 작업은 계속되며, 끝나면 데이터 목록에 “융합 결과”로 나타납니다.</p>
+            <h2 className="wizard-title">{t('fusion.startedTitle')}</h2>
+            <p role="status">{t('fusion.startedText', { name: started.name })}</p>
             <div className="wizard-result__actions">
-              <ButtonLink to="/app/jobs">작업 센터에서 보기</ButtonLink>
-              <ButtonLink to="/app/data" variant="secondary">데이터 목록</ButtonLink>
-              <Button variant="ghost" onClick={() => { setStarted(null); setStep(0); setPreview(null); }}>다른 융합 만들기</Button>
+              <ButtonLink to="/app/jobs">{t('app.inJobCenter')}</ButtonLink>
+              <ButtonLink to="/app/data" variant="secondary">{t('fusion.dataList')}</ButtonLink>
+              <Button variant="ghost" onClick={() => { setStarted(null); setStep(0); setPreview(null); }}>{t('fusion.another')}</Button>
             </div>
           </div>
         </Card>
@@ -246,67 +261,67 @@ export default function FusionPage() {
   return (
     <div className="page-stack wizard fusion">
       <PageHeader
-        back={<Link className="page-back" to="/app/data"><ArrowLeft size={16} aria-hidden />데이터</Link>}
-        title="수식 융합"
-        description="여러 Zarr의 변수를 수식으로 계산해 새 Zarr를 만듭니다. 예: (A - B) / (A + B)"
+        back={<Link className="page-back" to="/app/data"><ArrowLeft size={16} aria-hidden />{t('titles.data')}</Link>}
+        title={t('titles.fusion')}
+        description={t('fusion.description')}
       />
       {prefillError && <Alert tone="warning" role="alert">{prefillError}</Alert>}
-      <ol className="wizard-steps" aria-label="진행 단계">
-        {STEPS.map((label, index) => (
-          <li key={label} className={index === step ? 'is-current' : index < step ? 'is-done' : ''} aria-current={index === step ? 'step' : undefined}>
+      <ol className="wizard-steps" aria-label={t('fusion.steps.label')}>
+        {STEPS.map((key, index) => (
+          <li key={key} className={index === step ? 'is-current' : index < step ? 'is-done' : ''} aria-current={index === step ? 'step' : undefined}>
             <span className="wizard-steps__dot">{index < step ? <Check size={14} aria-hidden /> : index + 1}</span>
-            <span className="wizard-steps__label">{label}</span>
+            <span className="wizard-steps__label">{t(key)}</span>
           </li>
         ))}
       </ol>
 
       <Card className="wizard-card">
         <div className="wizard-body">
-          <h2 className="wizard-title" ref={headingRef} tabIndex={-1}>{STEPS[step]}</h2>
+          <h2 className="wizard-title" ref={headingRef} tabIndex={-1}>{t(STEPS[step])}</h2>
 
           {step === 0 && (
             <div className="wizard-section">
-              <p className="xc-hint">수식에서 쓸 변수 문자(A, B, C…)마다 데이터와 변수를 고릅니다. 내 데이터와 공유받은 데이터를 모두 쓸 수 있습니다.</p>
-              {datasets.error && <Alert tone="danger">데이터 목록을 불러오지 못했습니다. {datasets.error}</Alert>}
+              <p className="xc-hint">{t('fusion.inputsHint')}</p>
+              {datasets.error && <Alert tone="danger">{t('app.dataListFailed', { error: datasets.error })}</Alert>}
               <ul className="fusion-bindings">
                 {rows.map((row) => {
                   const dataset = find(row.datasetId);
                   return (
                     <li key={row.letter} className="fusion-binding">
                       <span className="fusion-binding__letter" aria-hidden>{row.letter}</span>
-                      <Field label={`${row.letter} 데이터`}>
+                      <Field label={t('fusion.letterData', { letter: row.letter })}>
                         <select className="xc-select" value={row.datasetId} disabled={datasets.loading} onChange={(event) => { const picked = find(event.target.value); setRow(row.letter, { datasetId: event.target.value, variable: picked?.defaultVariable && picked.variables.includes(picked.defaultVariable) ? picked.defaultVariable : picked?.variables[0] ?? '' }); }}>
-                          <option value="">{datasets.loading ? '불러오는 중…' : '데이터 선택'}</option>
-                          {items.map((item) => <option key={item.id} value={item.id}>{item.name}{isOwned(item) ? '' : ' (공유받음)'}{item.kind === 'FUSION' ? ' · 융합 결과' : ''}</option>)}
+                          <option value="">{datasets.loading ? t('fusion.loadingOption') : t('fusion.pickData')}</option>
+                          {items.map((item) => <option key={item.id} value={item.id}>{item.name}{isOwned(item) ? '' : ` (${t('app.shared')})`}{item.kind === 'FUSION' ? ` · ${t('kinds.fusion')}` : ''}</option>)}
                         </select>
                       </Field>
-                      <Field label={`${row.letter} 변수`}>
+                      <Field label={t('fusion.letterVariable', { letter: row.letter })}>
                         <select className="xc-select" value={row.variable} disabled={!dataset} onChange={(event) => setRow(row.letter, { variable: event.target.value })}>
-                          <option value="">변수 선택</option>
+                          <option value="">{t('fusion.pickVariable')}</option>
                           {(dataset?.variables ?? []).map((variable) => <option key={variable} value={variable}>{variable}</option>)}
                         </select>
                       </Field>
-                      <Field label={`${row.letter} 정규화`}>
+                      <Field label={t('fusion.letterNorm', { letter: row.letter })}>
                         <select className="xc-select" value={row.norm} onChange={(event) => setRow(row.letter, { norm: event.target.value as NormMode })}>
-                          <option value="auto">자동 (위성별 계수)</option>
-                          <option value="none">적용 안 함</option>
-                          <option value="custom">계수 직접 입력</option>
+                          <option value="auto">{t('fusion.normAuto')}</option>
+                          <option value="none">{t('fusion.normNone')}</option>
+                          <option value="custom">{t('fusion.normCustom')}</option>
                         </select>
                       </Field>
-                      <Button variant="ghost" size="sm" className="fusion-binding__remove" disabled={rows.length <= 1} onClick={() => setRows((current) => current.filter((item) => item.letter !== row.letter))} aria-label={`${row.letter} 입력 삭제`}><Trash2 size={16} aria-hidden /></Button>
+                      <Button variant="ghost" size="sm" className="fusion-binding__remove" disabled={rows.length <= 1} onClick={() => setRows((current) => current.filter((item) => item.letter !== row.letter))} aria-label={t('fusion.removeLetter', { letter: row.letter })}><Trash2 size={16} aria-hidden /></Button>
                       {row.norm === 'custom' && (
                         <div className="fusion-binding__custom">
-                          <TextField label={`${row.letter} 배율 (scale)`} inputMode="decimal" value={row.scale} onChange={(event) => setRow(row.letter, { scale: event.target.value })} />
-                          <TextField label={`${row.letter} 보정값 (offset)`} inputMode="decimal" value={row.offset} onChange={(event) => setRow(row.letter, { offset: event.target.value })} />
-                          <p className="xc-hint">값 × 배율 + 보정값으로 계산합니다.</p>
+                          <TextField label={t('fusion.scale', { letter: row.letter })} inputMode="decimal" value={row.scale} onChange={(event) => setRow(row.letter, { scale: event.target.value })} />
+                          <TextField label={t('fusion.offset', { letter: row.letter })} inputMode="decimal" value={row.offset} onChange={(event) => setRow(row.letter, { offset: event.target.value })} />
+                          <p className="xc-hint">{t('fusion.customHint')}</p>
                         </div>
                       )}
                     </li>
                   );
                 })}
               </ul>
-              <div><Button variant="secondary" size="sm" onClick={() => setRows((current) => [...current, emptyRow(nextLetter(current))])} disabled={!nextLetter(rows)}><Plus size={16} aria-hidden />변수 추가</Button></div>
-              <p className="xc-hint">정규화 “자동”은 위성·band별 계수로 원본 값을 반사도 등으로 바꿉니다. 이미 정규화된 값이거나 계수가 없는 위성은 서버가 그대로 쓰고 미리보기에서 알려 줍니다.</p>
+              <div><Button variant="secondary" size="sm" onClick={() => setRows((current) => [...current, emptyRow(nextLetter(current))])} disabled={!nextLetter(rows)}><Plus size={16} aria-hidden />{t('fusion.addVariable')}</Button></div>
+              <p className="xc-hint">{t('fusion.normHint')}</p>
             </div>
           )}
 
@@ -314,14 +329,14 @@ export default function FusionPage() {
             <div className="wizard-section">
               <TextField
                 id="fusion-formula"
-                label="수식"
+                label={t('fusion.formula')}
                 className="fusion-formula"
                 value={formula}
                 onChange={(event) => setFormula(event.target.value)}
                 placeholder="(A - B) / (A + B)"
                 autoComplete="off"
                 spellCheck={false}
-                help={`사용 가능한 변수: ${letters.join(', ')}`}
+                help={t('fusion.formulaHelp', { letters: letters.join(', ') })}
                 aria-invalid={check.status === 'error' ? true : undefined}
                 aria-describedby="fusion-formula-help fusion-formula-status"
               />
@@ -329,20 +344,20 @@ export default function FusionPage() {
                 {check.status === 'error' && check.error && (
                   <div role="alert" className="fusion-error">
                     <FormulaMarker formula={formula} error={check.error} />
-                    <p>{check.error.position + 1}번째 글자: {check.error.message}</p>
+                    <p>{t('fusion.errorAt', { position: check.error.position + 1, message: formulaErrorText(formula, check.error, lang, t) })}</p>
                   </div>
                 )}
-                {check.status === 'ok' && <p role="status" className="fusion-ok"><CheckCircle2 size={16} aria-hidden />사용 가능한 수식입니다.</p>}
-                {check.status === 'checking' && <p role="status" className="xc-hint">수식을 확인하는 중…</p>}
-                {check.status === 'unavailable' && <p role="status" className="xc-hint">수식을 확인할 수 없습니다. 실행 전 확인에서 다시 검사합니다.</p>}
+                {check.status === 'ok' && <p role="status" className="fusion-ok"><CheckCircle2 size={16} aria-hidden />{t('fusion.formulaOk')}</p>}
+                {check.status === 'checking' && <p role="status" className="xc-hint">{t('fusion.formulaChecking')}</p>}
+                {check.status === 'unavailable' && <p role="status" className="xc-hint">{t('fusion.formulaUnavailable')}</p>}
               </div>
               <details className="fusion-help">
-                <summary>사용할 수 있는 연산·함수</summary>
+                <summary>{t('fusion.help.summary')}</summary>
                 <dl className="meta-list">
-                  <dt>연산</dt><dd><code>+ - * / **</code> (거듭제곱), 괄호, 단항 <code>+ -</code>, 숫자</dd>
-                  <dt>비교·조건</dt><dd><code>&lt; &lt;= &gt; &gt;= == !=</code> (결과 1 또는 0), <code>&amp;</code> <code>|</code> (조건 결합)</dd>
-                  <dt>함수</dt><dd><code>{FUNCTION_HELP}</code></dd>
-                  <dt>금지</dt><dd>속성 접근(<code>A.x</code>), 첨자(<code>A[0]</code>), 문자열, 그 밖의 함수</dd>
+                  <dt>{t('fusion.help.operators')}</dt><dd><code>+ - * / **</code> {t('fusion.help.operatorsMid')} <code>+ -</code>, {t('fusion.help.operatorsEnd')}</dd>
+                  <dt>{t('fusion.help.compare')}</dt><dd><code>&lt; &lt;= &gt; &gt;= == !=</code> {t('fusion.help.compareResult')}, <code>&amp;</code> <code>|</code> {t('fusion.help.compareCombine')}</dd>
+                  <dt>{t('fusion.help.functions')}</dt><dd><code>{t('fusion.functionHelp')}</code></dd>
+                  <dt>{t('fusion.help.forbidden')}</dt><dd>{t('fusion.help.attribute')}(<code>A.x</code>), {t('fusion.help.subscript')}(<code>A[0]</code>), {t('fusion.help.forbiddenRest')}</dd>
                 </dl>
               </details>
             </div>
@@ -350,55 +365,55 @@ export default function FusionPage() {
 
           {step === 2 && (
             <div className="wizard-section">
-              <p className="xc-hint">입력 데이터의 해상도·범위·시점이 서로 다를 때 맞추는 방법입니다. 기본값은 대부분의 경우에 안전합니다.</p>
+              <p className="xc-hint">{t('fusion.rulesHint')}</p>
               <div className="form-grid">
-                <Field label="격자 기준">
+                <Field label={t('fusion.gridReference')}>
                   <select className="xc-select" value={rules.reference} onChange={(event) => setRules({ ...rules, reference: event.target.value as Rules['reference'] })}>
-                    {(Object.keys(GRID_LABEL) as Array<keyof typeof GRID_LABEL>).map((key) => <option key={key} value={key}>{GRID_LABEL[key]}{key === 'coarsest' ? ' (기본)' : ''}</option>)}
+                    {(Object.keys(GRID_LABEL) as Array<keyof typeof GRID_LABEL>).map((key) => <option key={key} value={key}>{t(GRID_LABEL[key])}{key === 'coarsest' ? t('fusion.defaultSuffix') : ''}</option>)}
                   </select>
                 </Field>
                 {rules.reference === 'datacube' && (
-                  <Field label="기준 데이터">
+                  <Field label={t('fusion.gridData')}>
                     <select className="xc-select" value={rules.gridDatasetId} onChange={(event) => setRules({ ...rules, gridDatasetId: event.target.value })}>
-                      <option value="">데이터 선택</option>
+                      <option value="">{t('fusion.pickData')}</option>
                       {usedDatasets.map((id) => <option key={id} value={id}>{find(id)?.name ?? id}</option>)}
                     </select>
                   </Field>
                 )}
-                <Field label="리샘플링">
+                <Field label={t('fusion.resampling')}>
                   <select className="xc-select" value={rules.resampling} onChange={(event) => setRules({ ...rules, resampling: event.target.value as Rules['resampling'] })}>
-                    {(Object.keys(RESAMPLING_LABEL) as Array<keyof typeof RESAMPLING_LABEL>).map((key) => <option key={key} value={key}>{RESAMPLING_LABEL[key]}{key === 'average' ? ' (기본)' : ''}</option>)}
+                    {(Object.keys(RESAMPLING_LABEL) as Array<keyof typeof RESAMPLING_LABEL>).map((key) => <option key={key} value={key}>{t(RESAMPLING_LABEL[key])}{key === 'average' ? t('fusion.defaultSuffix') : ''}</option>)}
                   </select>
                 </Field>
               </div>
               <fieldset className="bounds-fieldset">
-                <legend className="xc-label">범위</legend>
-                <div className="segmented" role="group" aria-label="범위">
+                <legend className="xc-label">{t('fusion.extent')}</legend>
+                <div className="segmented" role="group" aria-label={t('fusion.extent')}>
                   {(Object.keys(EXTENT_LABEL) as Array<keyof typeof EXTENT_LABEL>).map((key) => (
-                    <button key={key} type="button" aria-pressed={rules.extent === key} onClick={() => setRules({ ...rules, extent: key })}>{EXTENT_LABEL[key]}{key === 'intersection' ? ' (기본)' : ''}</button>
+                    <button key={key} type="button" aria-pressed={rules.extent === key} onClick={() => setRules({ ...rules, extent: key })}>{t(EXTENT_LABEL[key])}{key === 'intersection' ? t('fusion.defaultSuffix') : ''}</button>
                   ))}
                 </div>
-                <p className="xc-hint">교집합은 모든 입력이 겹치는 곳만, 합집합은 전체 범위를 만들고 비는 곳은 값 없음(nodata)이 됩니다.</p>
+                <p className="xc-hint">{t('fusion.extentHint')}</p>
               </fieldset>
               <div className="form-grid">
-                <Field label="시간 매칭">
+                <Field label={t('fusion.timeMatching')}>
                   <select className="xc-select" value={rules.timeMode} onChange={(event) => setRules({ ...rules, timeMode: event.target.value as Rules['timeMode'] })}>
-                    {(Object.keys(TIME_LABEL) as Array<keyof typeof TIME_LABEL>).map((key) => <option key={key} value={key}>{TIME_LABEL[key]}{key === 'exact' ? ' (기본)' : ''}</option>)}
+                    {(Object.keys(TIME_LABEL) as Array<keyof typeof TIME_LABEL>).map((key) => <option key={key} value={key}>{t(TIME_LABEL[key])}{key === 'exact' ? t('fusion.defaultSuffix') : ''}</option>)}
                   </select>
                 </Field>
                 {rules.timeMode === 'nearest' && (
-                  <TextField label="허용 오차 (일)" inputMode="numeric" value={rules.tolerance} onChange={(event) => setRules({ ...rules, tolerance: event.target.value })} help="정수 일수 안에서 가장 가까운 시점을 짝지어 줍니다." />
+                  <TextField label={t('fusion.tolerance')} inputMode="numeric" value={rules.tolerance} onChange={(event) => setRules({ ...rules, tolerance: event.target.value })} help={t('fusion.toleranceHelp')} />
                 )}
                 {rules.timeMode === 'aggregate' && (
                   <>
-                    <Field label="집계 단위">
+                    <Field label={t('fusion.aggPeriod')}>
                       <select className="xc-select" value={rules.period} onChange={(event) => setRules({ ...rules, period: event.target.value as Rules['period'] })}>
-                        {(Object.keys(PERIOD_LABEL) as Array<keyof typeof PERIOD_LABEL>).map((key) => <option key={key} value={key}>{PERIOD_LABEL[key]}</option>)}
+                        {(Object.keys(PERIOD_LABEL) as Array<keyof typeof PERIOD_LABEL>).map((key) => <option key={key} value={key}>{t(PERIOD_LABEL[key])}</option>)}
                       </select>
                     </Field>
-                    <Field label="집계 방법">
+                    <Field label={t('fusion.aggMethod')}>
                       <select className="xc-select" value={rules.agg} onChange={(event) => setRules({ ...rules, agg: event.target.value as Rules['agg'] })}>
-                        {(Object.keys(AGG_LABEL) as Array<keyof typeof AGG_LABEL>).map((key) => <option key={key} value={key}>{AGG_LABEL[key]}</option>)}
+                        {(Object.keys(AGG_LABEL) as Array<keyof typeof AGG_LABEL>).map((key) => <option key={key} value={key}>{t(AGG_LABEL[key])}</option>)}
                       </select>
                     </Field>
                   </>
@@ -410,23 +425,23 @@ export default function FusionPage() {
           {step === 3 && (
             <div className="wizard-section">
               <div className="form-grid">
-                <TextField label="결과 이름" value={name} onChange={(event) => { setName(event.target.value); setNameTouched(true); }} />
-                <TextField label="결과 변수 이름" value={outputVariable} onChange={(event) => setOutputVariable(event.target.value)} help="영문·숫자·밑줄" />
-                <Field label="연결할 프로젝트 (선택)">
+                <TextField label={t('fusion.resultName')} value={name} onChange={(event) => { setName(event.target.value); setNameTouched(true); }} />
+                <TextField label={t('fusion.outputVariable')} value={outputVariable} onChange={(event) => setOutputVariable(event.target.value)} help={t('fusion.outputHelp')} />
+                <Field label={t('fusion.project')}>
                   <select className="xc-select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                    <option value="">프로젝트 없음</option>
+                    <option value="">{t('app.noProject')}</option>
                     {editableProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                   </select>
                 </Field>
               </div>
               {nameProblem && <p role="alert" className="fusion-error"><span>{nameProblem}</span></p>}
-              <section aria-label="실행 전 확인" className="fusion-preview">
+              <section aria-label={t('fusion.preCheck')} className="fusion-preview">
                 <div className="fusion-preview__head">
-                  <h3 className="xc-card__title">실행 전 확인</h3>
-                  <Button variant="ghost" size="sm" onClick={() => runDryRun(ruleKey)} disabled={preview?.loading}><RefreshCw size={14} aria-hidden />다시 계산</Button>
+                  <h3 className="xc-card__title">{t('fusion.preCheck')}</h3>
+                  <Button variant="ghost" size="sm" onClick={() => runDryRun(ruleKey)} disabled={preview?.loading}><RefreshCw size={14} aria-hidden />{t('fusion.recalculate')}</Button>
                 </div>
-                {(!preview || preview.loading) && !data ? <Skeleton lines={4} label="실행 전 확인 중" /> : preview?.error ? (
-                  <Alert tone="danger">실행 전 확인에 실패했습니다. {preview.error}</Alert>
+                {(!preview || preview.loading) && !data ? <Skeleton lines={4} label={t('fusion.checkingPreview')} /> : preview?.error ? (
+                  <Alert tone="danger">{t('fusion.previewFailed', { error: preview.error })}</Alert>
                 ) : data ? <PreviewPanel data={data} /> : null}
               </section>
               {submitError && <Alert tone="danger">{submitError}</Alert>}
@@ -436,22 +451,24 @@ export default function FusionPage() {
           {problem && <Alert tone="warning" role="alert">{problem}</Alert>}
         </div>
         <div className="wizard-foot">
-          <Button variant="secondary" onClick={back} disabled={step === 0 || submitting}><ArrowLeft size={16} aria-hidden />이전</Button>
+          <Button variant="secondary" onClick={back} disabled={step === 0 || submitting}><ArrowLeft size={16} aria-hidden />{t('fusion.prev')}</Button>
           <span className="xc-hint">{step + 1} / {STEPS.length}</span>
           {step < STEPS.length - 1 ? (
-            <Button onClick={next}>다음<ArrowRight size={16} aria-hidden /></Button>
+            <Button onClick={next}>{t('fusion.next')}<ArrowRight size={16} aria-hidden /></Button>
           ) : (
-            <Button onClick={run} disabled={!canRun}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />요청 중…</> : '융합 실행'}</Button>
+            <Button onClick={run} disabled={!canRun}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />{t('fusion.submitting')}</> : t('fusion.run')}</Button>
           )}
         </div>
       </Card>
-      {step === 3 && !!data && !!blockers.length && <p className="xc-hint" role="status">위 확인 사항을 해결하면 실행할 수 있습니다.</p>}
+      {step === 3 && !!data && !!blockers.length && <p className="xc-hint" role="status">{t('fusion.resolveFirst')}</p>}
       {toast.node}
     </div>
   );
 }
 
 function PreviewPanel({ data }: { data: DryRun }) {
+  const { lang, t } = useLanguage();
+  const number = (value: number) => formatNumber(value, {}, lang);
   const { quota } = data;
   const total = Math.max(quota.limitBytes, 1);
   const usedPercent = Math.min(100, (quota.usedBytes / total) * 100);
@@ -462,43 +479,43 @@ function PreviewPanel({ data }: { data: DryRun }) {
     <div className="fusion-preview__body">
       {data.blockers.length > 0 && (
         <Alert tone="danger">
-          <strong>실행할 수 없습니다</strong>
-          <ul className="fusion-list">{data.blockers.map((blocker) => <li key={blockerCode(blocker)}>{blockerText(blocker)}</li>)}</ul>
+          <strong>{t('fusion.preview.cannotRun')}</strong>
+          <ul className="fusion-list">{data.blockers.map((blocker) => <li key={blockerCode(blocker)}>{blockerText(blocker, lang)}</li>)}</ul>
         </Alert>
       )}
       {data.warnings.length > 0 && (
         <Alert tone="warning">
-          <strong>확인해 주세요</strong>
+          <strong>{t('fusion.preview.checkThese')}</strong>
           <ul className="fusion-list">{data.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
         </Alert>
       )}
-      {!data.blockers.length && <Alert tone="success">실행할 수 있습니다.</Alert>}
+      {!data.blockers.length && <Alert tone="success">{t('fusion.preview.canRun')}</Alert>}
       <dl className="meta-list" style={{ padding: 0 }}>
-        <dt>결과 시점 수</dt><dd className="tabular">{data.timeCount.toLocaleString('ko-KR')}</dd>
-        <dt>격자</dt><dd className="tabular">{data.grid.width.toLocaleString('ko-KR')} × {data.grid.height.toLocaleString('ko-KR')} · 해상도 {Number(data.grid.resolution.toPrecision(4))}°</dd>
-        <dt>범위</dt><dd className="tabular">경도 {west.toFixed(4)} ~ {east.toFixed(4)}, 위도 {south.toFixed(4)} ~ {north.toFixed(4)}</dd>
-        <dt>값 형식</dt><dd>{data.dtype}</dd>
-        <dt>예상 용량</dt><dd className="tabular">{formatBytes(data.estimatedBytes)}</dd>
-        <dt>남은 quota</dt><dd className="tabular">{formatBytes(remaining)} <span className="xc-hint">(한도 {formatBytes(quota.limitBytes)})</span></dd>
+        <dt>{t('fusion.preview.timeCount')}</dt><dd className="tabular">{number(data.timeCount)}</dd>
+        <dt>{t('fusion.preview.grid')}</dt><dd className="tabular">{t('fusion.preview.gridValue', { width: number(data.grid.width), height: number(data.grid.height), resolution: Number(data.grid.resolution.toPrecision(4)) })}</dd>
+        <dt>{t('fusion.extent')}</dt><dd className="tabular">{t('app.extentValue', { west: west.toFixed(4), east: east.toFixed(4), south: south.toFixed(4), north: north.toFixed(4) })}</dd>
+        <dt>{t('fusion.preview.dtype')}</dt><dd>{data.dtype}</dd>
+        <dt>{t('fusion.preview.size')}</dt><dd className="tabular">{formatBytes(data.estimatedBytes)}</dd>
+        <dt>{t('fusion.preview.quotaLeft')}</dt><dd className="tabular">{formatBytes(remaining)} <span className="xc-hint">{t('fusion.preview.quotaLimit', { limit: formatBytes(quota.limitBytes) })}</span></dd>
       </dl>
-      <div className="fusion-quota" role="img" aria-label={`저장 용량: 사용 ${formatBytes(quota.usedBytes)}, 이 결과 ${formatBytes(data.estimatedBytes)}, 한도 ${formatBytes(quota.limitBytes)}`}>
+      <div className="fusion-quota" role="img" aria-label={t('fusion.preview.quotaAria', { used: formatBytes(quota.usedBytes), result: formatBytes(data.estimatedBytes), limit: formatBytes(quota.limitBytes) })}>
         <i className="is-used" style={{ width: `${usedPercent}%` }} />
         <i className={quota.allowed ? 'is-new' : 'is-over'} style={{ width: `${thisPercent}%` }} />
       </div>
-      <p className="xc-hint">진한 부분은 지금 사용 중인 용량, 색이 있는 부분은 이 결과가 더할 용량입니다.</p>
+      <p className="xc-hint">{t('fusion.preview.quotaHint')}</p>
       {data.normalization.length > 0 && (
         <div className="xc-table-wrap">
           <table className="xc-table">
-            <caption className="fusion-caption">정규화</caption>
-            <thead><tr><th scope="col">변수</th><th scope="col">위성·제품</th><th scope="col">band</th><th scope="col">정규화식</th><th scope="col">적용</th></tr></thead>
+            <caption className="fusion-caption">{t('fusion.preview.normalization')}</caption>
+            <thead><tr><th scope="col">{t('fusion.preview.variable')}</th><th scope="col">{t('fusion.preview.sensor')}</th><th scope="col">{t('fusion.preview.band')}</th><th scope="col">{t('fusion.preview.expression')}</th><th scope="col">{t('fusion.preview.applied')}</th></tr></thead>
             <tbody>
               {data.normalization.map((row) => (
                 <tr key={row.binding}>
                   <td><strong>{row.binding}</strong></td>
                   <td>{row.sensor ?? '—'}</td>
                   <td>{row.band ?? '—'}</td>
-                  <td className="tabular">{row.expression ?? '정규화식이 없습니다'}</td>
-                  <td>{row.applied ? <Badge tone="success">적용</Badge> : <Badge>적용 안 함</Badge>}</td>
+                  <td className="tabular">{row.expression ?? t('fusion.preview.noExpression')}</td>
+                  <td>{row.applied ? <Badge tone="success">{t('fusion.preview.applied')}</Badge> : <Badge>{t('fusion.preview.notApplied')}</Badge>}</td>
                 </tr>
               ))}
             </tbody>

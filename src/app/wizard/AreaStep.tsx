@@ -186,7 +186,7 @@ function PolygonOptions({ area, set }: { area: AreaState; set: (patch: Partial<A
 type Pending = { name: string; file?: File; jobId?: string | number; choice: AreaChoice };
 
 function ShapePanel({ area, set }: { area: AreaState; set: (patch: Partial<AreaState>) => void }) {
-  const areas = useLoad<SavedArea[]>(() => generation.listAreas());
+  const areas = useLoad<SavedArea[]>(() => generation.listAreas(), [], 'ko'); // wizard stays Korean until UR-53 stage 3
   const [deleting, setDeleting] = useState<SavedArea | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -346,7 +346,7 @@ function ShapePanel({ area, set }: { area: AreaState; set: (patch: Partial<AreaS
 }
 
 function FromJobs({ busy, onImport }: { busy: boolean; onImport: (job: JobSummary) => void }) {
-  const jobs = useLoad<JobSummary[]>(() => generation.listJobs({ type: 'SHAPEFILE', status: 'SUCCEEDED' }));
+  const jobs = useLoad<JobSummary[]>(() => generation.listJobs({ type: 'SHAPEFILE', status: 'SUCCEEDED' }), [], 'ko');
   if (jobs.loading) return <Skeleton lines={2} label="Shapefile 데이터를 불러오는 중" />;
   if (jobs.error) return <Alert tone="danger" role="alert">{jobs.error}</Alert>;
   const items = (jobs.data ?? []).filter((job) => job.status === 'SUCCEEDED');
