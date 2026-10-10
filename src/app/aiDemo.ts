@@ -50,7 +50,7 @@ export function checkDemo(dataset: ZarrDataset | undefined, modelId: string): Ai
     if (found) matched[input.name] = found; else missing.push(input.name);
   }
   const unitDecisions: Record<string, string> = {};
-  for (const name of Object.keys(matched)) unitDecisions[name] = name === 'vv' || name === 'vh' ? 'dB → ×100' : 'DN 그대로';
+  for (const name of Object.keys(matched)) unitDecisions[name] = name === 'vv' || name === 'vh' ? 'dB→×100' : 'DN retained';
   const warnings = dataset?.id === 'nakdong' && model?.kind === 'deep' ? ['CAS500 광학 band만 있는 데이터입니다. (데모)'] : [];
   return { ready: !!model && !!dataset && missing.length === 0, matched, missing, unitDecisions, timeCount: dataset?.times.length ?? 0, grid: { width: 3008, height: 3715 }, warnings };
 }

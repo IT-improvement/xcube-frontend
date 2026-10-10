@@ -38,6 +38,7 @@ import ProjectQuickMenu from "./ProjectQuickMenu";
 import { BottomGraphPanel, PixelMarker } from "./PixelGraph";
 import DatasetPicker from "./DatasetPicker";
 import LayerControl from "./LayerControl";
+import SourceLegend from "./SourceLegend";
 import {
   CompareMap,
   CompareModes,
@@ -56,6 +57,7 @@ import {
   AiResultList,
   AiResultPanel,
   AiRunForm,
+  entryDetail,
   isRunning,
   matchTime,
   ResultEntry,
@@ -83,6 +85,8 @@ function resultEntries(aiJobs: AiWaterJob[], linked: AiJob[]): ResultEntry[] {
     modelId: job.input?.modelId ? String(job.input.modelId) : undefined,
     threshold: typeof job.input?.threshold === "number" ? job.input.threshold : job.result?.threshold,
     createdAt: job.createdAt,
+    timeStart: job.result?.times?.[0]?.time ?? (typeof job.input?.timeStart === "string" ? job.input.timeStart : undefined),
+    timeEnd: job.result?.times?.length ? job.result.times[job.result.times.length - 1].time : typeof job.input?.timeEnd === "string" ? job.input.timeEnd : undefined,
   }));
   for (const link of linked)
     if (link.outputDatacubeId && !entries.some((entry) => entry.datacubeId === link.outputDatacubeId))
@@ -128,6 +132,8 @@ function ownsKeys(target: EventTarget | null, key: string) {
 
 /** How often and how long the Viewer asks whether a new AI result is on the map yet (pod restart, FR-AI). */
 const RESULT_PUBLISH_POLL_MS = 3000;
+/** A frame that takes longer than this to draw shows "불러오는 중…" beside the date. */
+const FRAME_WAIT_DELAY_MS = 150;
 const RESULT_PUBLISH_WAIT_MS = 4 * 60 * 1000;
 
 export default function Viewer({
@@ -274,6 +280,12 @@ export default function Viewer({
       ),
     [selected],
   );
+  // Bands of the RGB composite (xcube rgbSchema), or the red/green/blue variables it is built from.
+  const rgbBands = useMemo(() => {
+    if (selected?.rgbBands?.length === 3) return selected.rgbBands;
+    const named = ["red", "green", "blue"].map((band) => selected?.variables.find((variable) => variable.toLowerCase() === band));
+    return named.every(Boolean) ? (named as string[]) : undefined;
+  }, [selected]);
   const fail = useCallback(
     (cause: unknown) => {
       setApiError(userMessage(cause));
@@ -709,7 +721,18 @@ export default function Viewer({
     // Warm the next frame only while playing, after the current one is drawn.
     frameBuffer.current?.preload(nextTileUrl && frameReady ? nextTileUrl : null);
   }, [map, nextTileUrl, frameReady]);
-  const playbackWaiting = playing && frameDue && !frameReady;
+  // The date moves at once while the map still shows the old frame until the new tiles arrive. Say so — while
+  // playing only once the frame is overdue, by hand after 150 ms so a quick swap never flickers (S7, UX8).
+  const frameWaiting = !frameReady && (!playing || frameDue);
+  const [waitShown, setWaitShown] = useState(false);
+  useEffect(() => {
+    if (!frameWaiting) {
+      setWaitShown(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setWaitShown(true), FRAME_WAIT_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [frameWaiting]);
 
   const compareTileUrl =
     displayMode !== "single" &&
@@ -1076,7 +1099,7 @@ export default function Viewer({
         : "연결 안 됨";
   // ABSENT: everything of this user is already merged into the main xcube, so show the main server.
   const showPod = !!podState && podState !== "ABSENT";
-  const statusText = showPod ? podLabel[podState!] ?? podState! : `XCube Server ${connectionLabel}`;
+  const statusText = showPod ? podLabel[podState!] ?? podState! : `지도 서버 ${connectionLabel}`;
   // Status is said in words; the icon shape differs per state so colour is never the only cue.
   const statusTone: "online" | "offline" | "starting" | "unknown" = showPod
     ? podState === "READY"
@@ -1445,14 +1468,6 @@ export default function Viewer({
               <div className="result-overlay" style={{ opacity: resultOpacity / 100 }} />
             </div>
           )}
-          {selected && selectedResult && (resultVisible || aiCompare) && !(aiCompare && displayMode === "swipe") && (
-            <AiLegend
-              entry={selectedResult}
-              timeLabel={times[timeIndex]?.label}
-              covered={!!resultTime}
-              publishing={resultPublishing}
-            />
-          )}
           {compareActive && (
             <CompareTargetSwitch
               value={aiCompare ? "ai" : "time"}
@@ -1463,20 +1478,20 @@ export default function Viewer({
               aiAvailable={readyEntries.length > 0}
             />
           )}
-          {selected && !compareActive && (
-            <div className="vx-mapinfo" aria-hidden="true">
-              {activeVariable && (
-                <span className="vx-mapinfo__var">
-                  {activeVariable === "rgb" ? "RGB 합성" : activeVariable}
-                </span>
+          {/* Legends stack bottom-left: the source colour bar, and the AI result above it when shown (S7). */}
+          {selected && (
+            <div className="vx-legends">
+              {selectedResult && (resultVisible || aiCompare) && !(aiCompare && displayMode === "swipe") && (
+                <AiLegend
+                  entry={selectedResult}
+                  timeLabel={times[timeIndex]?.label}
+                  covered={!!resultTime}
+                  publishing={resultPublishing}
+                />
               )}
-              {variableStyle?.colorBarMin != null && variableStyle?.colorBarMax != null && (
-                <span className="tabular">
-                  {variableStyle.colorBarMin} – {variableStyle.colorBarMax}
-                  {variableStyle.units && variableStyle.units !== "1" ? ` ${variableStyle.units}` : ""}
-                </span>
+              {activeVariable && sourceVisible && (
+                <SourceLegend variable={activeVariable} style={variableStyle} rgbBands={rgbBands} />
               )}
-              <span>좌표계 EPSG:4326</span>
             </div>
           )}
           {pixel && <PixelMarker map={map} coordinate={pixel} />}
@@ -1611,7 +1626,7 @@ export default function Viewer({
                     )}
                     {selected && (
                       <LayerControl
-                        label="원본 Zarr"
+                        label="원본 영상"
                         accent="source"
                         checked={sourceVisible}
                         onChecked={setSourceVisible}
@@ -1627,7 +1642,7 @@ export default function Viewer({
                           onChange={(e) => setBaseVisible(e.target.checked)}
                         />
                         <i className="vx-swatch vx-swatch--base" aria-hidden="true" />
-                        <span>OpenLayers 배경지도</span>
+                        <span>배경지도</span>
                       </label>
                     </div>
                   </div>
@@ -1783,7 +1798,7 @@ export default function Viewer({
                       <span>결과 고르기</span>
                       <select aria-label="비교할 AI 결과" value={resultKey} onChange={(event) => setResultKey(event.target.value)}>
                         {readyEntries.map((entry) => (
-                          <option key={entry.key} value={entry.key}>{entry.name}</option>
+                          <option key={entry.key} value={entry.key}>{`${entry.name} · ${entryDetail(entry)}`}</option>
                         ))}
                       </select>
                     </label>
@@ -1832,6 +1847,7 @@ export default function Viewer({
               timeCount={times.length}
               compareTime={compareActive && !aiCompare ? times[compareIndex]?.iso : undefined}
               compareLabel={compareActive && !aiCompare ? times[compareIndex]?.label : undefined}
+              announce={!playing}
             />
           )}
           {selectedResult && resultStats && resultStats.times.length > 0 && (resultVisible || aiCompare) && (
@@ -1899,11 +1915,15 @@ export default function Viewer({
                     </b>
                   )}
                   {times[timeIndex]?.label ?? "시점 없음"}
-                  {playbackWaiting && (
-                    <span className="vx-current__wait" role="status">
-                      불러오는 중
-                    </span>
-                  )}
+                  {/* Always present so screen readers hear it appear; silent while playing (1.5 s steps). */}
+                  <span className="vx-current__live" role="status" aria-live={playing ? "off" : "polite"}>
+                    {waitShown && (
+                      <span className="vx-current__wait">
+                        <LoaderCircle size={12} className="vx-spin" aria-hidden="true" />
+                        <span className="vx-current__wait-text">불러오는 중…</span>
+                      </span>
+                    )}
+                  </span>
                 </strong>
                 {aiCompare ? (
                   <span className="vx-btime vx-btime--ai">

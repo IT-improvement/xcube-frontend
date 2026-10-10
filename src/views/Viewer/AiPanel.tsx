@@ -21,12 +21,39 @@ export type ResultEntry = {
   modelId?: string;
   threshold?: number;
   createdAt?: string;
+  /** First and last time the result covers (its statistics, else the requested range). */
+  timeStart?: string;
+  timeEnd?: string;
 };
 
 export const INPUT_LABEL: Record<string, string> = {
   blue: "Blue(파랑)", green: "Green(초록)", red: "Red(빨강)", nir: "NIR(근적외)",
   swir: "SWIR(단파적외)", vv: "VV(레이더)", vh: "VH(레이더)",
 };
+/** The AI service's input decisions (worker `unit_decision`) in plain Korean; the original stays in the tooltip. */
+const UNIT_DECISION: Record<string, { text: string; detail: string }> = {
+  "DN retained": { text: "원래 값 그대로", detail: "영상의 원래 값(DN)을 바꾸지 않고 모델에 넣습니다." },
+  "dB×100 retained": { text: "원래 값 그대로", detail: "레이더 값이 이미 학습 형식(dB×100)이라 그대로 넣습니다." },
+  "dB→×100": { text: "100배로 맞춤", detail: "레이더 dB 값을 학습 형식(dB×100)에 맞게 100배 합니다." },
+  "reflectance→×10000": { text: "10000배로 맞춤", detail: "반사도(0–1) 값을 학습 형식(DN)에 맞게 10000배 합니다." },
+  "no valid values; units unresolved": { text: "값이 없어 확인 못 함", detail: "유효한 값이 없어 값 형식을 확인하지 못했습니다." },
+};
+export function unitDecisionText(decision: string) {
+  return UNIT_DECISION[decision.trim()] ?? { text: decision, detail: decision };
+}
+/**
+ * Check warnings in plain Korean. "{input}: {decision}" only repeats the input list, so it is dropped (null);
+ * a unit change between times and a missing checkpoint are reworded; anything else (already Korean) stays.
+ */
+export function aiWarningText(warning: string, decisions?: Record<string, string>): string | null {
+  const vary = /^(\w+): units vary at time index (\d+): (.+)$/.exec(warning);
+  if (vary)
+    return `${INPUT_LABEL[vary[1]] ?? vary[1]}: ${Number(vary[2]) + 1}번째 시점부터 값 형식이 달라집니다(${unitDecisionText(vary[3]).text}).`;
+  const own = /^(\w+): (.+)$/.exec(warning);
+  if (own && decisions?.[own[1]] === own[2]) return null;
+  if (warning.trim() === "Model checkpoint unavailable") return "모델 파일이 아직 준비되지 않아 지금은 실행할 수 없습니다.";
+  return warning;
+}
 const STATUS_LABEL: Record<string, string> = { QUEUED: "대기 중", RUNNING: "처리 중", SUCCEEDED: "완료", FAILED: "실패", CANCELLED: "취소됨" };
 const STAGE_LABEL: Record<string, string> = { prepare: "입력 준비", infer: "추론", register: "등록" };
 export const isRunning = (job?: { status: string } | null) => job?.status === "QUEUED" || job?.status === "RUNNING";
@@ -227,12 +254,13 @@ export function AiRunForm({
             {model.inputs.map((input) => {
               const matched = check?.matched[input.name];
               const absent = missing.includes(input.name);
+              const decision = check?.unitDecisions?.[input.name];
               return (
                 <li key={input.name} className={absent ? "is-missing" : matched ? "is-matched" : ""}>
                   {absent ? <CircleAlert size={14} aria-hidden="true" /> : matched ? <CircleCheck size={14} aria-hidden="true" /> : <i aria-hidden="true" />}
                   <span>{INPUT_LABEL[input.name] ?? input.name}</span>
-                  <small className="tabular">
-                    {absent ? "없음" : matched ? `← ${matched}${check?.unitDecisions?.[input.name] ? ` · ${check.unitDecisions[input.name]}` : ""}` : "확인 중"}
+                  <small className="tabular" title={decision ? `${unitDecisionText(decision).detail} (${decision})` : undefined}>
+                    {absent ? "없음" : matched ? `← ${matched}${decision ? ` · ${unitDecisionText(decision).text}` : ""}` : "확인 중"}
                   </small>
                 </li>
               );
@@ -247,7 +275,10 @@ export function AiRunForm({
                 : " Green과 NIR band가 있는 데이터를 고르세요."}
             </p>
           )}
-          {check?.warnings?.map((warning) => <p key={warning} className="vx-section__hint">{warning}</p>)}
+          {check?.warnings?.map((warning) => {
+            const text = aiWarningText(warning, check.unitDecisions);
+            return text && <p key={warning} className="vx-section__hint" title={text !== warning ? warning : undefined}>{text}</p>;
+          })}
         </section>
       )}
 
@@ -363,12 +394,12 @@ export function AiResultList({
             <button type="button" className="vx-result" aria-current={entry.key === selectedKey ? "true" : undefined} disabled={!ready} onClick={() => onSelect(entry)}>
               <i className="vx-swatch vx-swatch--result" aria-hidden="true" />
               <span>
-                <strong>{entry.name}</strong>
+                <strong title={entry.name}>{entry.name}</strong>
                 <small>
                   <span className={`vx-job__state is-${entry.status.toLowerCase()}`}>{STATUS_LABEL[entry.status] ?? entry.status}</span>
                   {entry.modelId && <span>{modelLabel(entry.modelId, models)}</span>}
-                  {entry.threshold != null && <span className="tabular">임계값 {thresholdText(entry.threshold)}</span>}
                 </small>
+                <small className="vx-result__detail tabular">{entryDetail(entry)}</small>
                 {entry.job?.status === "FAILED" && entry.job.errorMessage && <small className="vx-results__error">{entry.job.errorMessage}</small>}
               </span>
               {onMap && entry.key === selectedKey && <em>지도에 표시 중</em>}
@@ -378,6 +409,29 @@ export function AiResultList({
       })}
     </ul>
   );
+}
+
+const two = (value: number) => String(value).padStart(2, "0");
+/** 2021.11.27 — compact date for result rows (local calendar day). */
+export function shortDate(iso?: string) {
+  const date = iso ? new Date(iso) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}.${two(date.getMonth() + 1)}.${two(date.getDate())}`;
+}
+/** 10.09 14:32 (this year) or 2025.10.09 14:32. */
+export function shortDateTime(iso?: string, now = new Date()) {
+  const date = iso ? new Date(iso) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  const day = `${two(date.getMonth() + 1)}.${two(date.getDate())}`;
+  return `${date.getFullYear() === now.getFullYear() ? day : `${date.getFullYear()}.${day}`} ${two(date.getHours())}:${two(date.getMinutes())}`;
+}
+/** What tells same-name results apart: period · threshold · created time (S7·S8 결과 목록). */
+export function entryDetail(entry: ResultEntry) {
+  const start = shortDate(entry.timeStart);
+  const end = shortDate(entry.timeEnd);
+  const period = start && end ? (start === end ? start : `${start}–${end}`) : start ? `${start}부터` : end ? `${end}까지` : "전체 기간";
+  const created = shortDateTime(entry.createdAt);
+  return [period, entry.threshold != null ? `임계값 ${thresholdText(entry.threshold)}` : "", created ? `${created} 만듦` : ""].filter(Boolean).join(" · ");
 }
 
 /** Teal hatch swatch + words: the result is never told by colour alone. */
@@ -460,7 +514,7 @@ export function AiResultPanel({
       <section className="vx-field" aria-label="결과 레이어">
         <div className="vx-layers">
           <LayerControl label="AI 수체 결과" accent="result" checked={resultVisible} onChecked={onResultVisible} opacity={resultOpacity} onOpacity={onResultOpacity} />
-          <LayerControl label="원본 Zarr" accent="source" checked={sourceVisible} onChecked={onSourceVisible} opacity={sourceOpacity} onOpacity={onSourceOpacity} />
+          <LayerControl label="원본 영상" accent="source" checked={sourceVisible} onChecked={onSourceVisible} opacity={sourceOpacity} onOpacity={onSourceOpacity} />
         </div>
         <p className="vx-section__hint">원본 위에 물로 판정한 곳을 물색(파랑)으로 칠해 겹칩니다. 아래 “스와이프”에서 비교 대상을 “AI 결과”로 바꾸면 원본과 나란히 밀어 볼 수 있습니다.</p>
       </section>

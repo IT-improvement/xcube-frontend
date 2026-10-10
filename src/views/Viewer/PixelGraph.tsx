@@ -76,6 +76,7 @@ export function BottomGraphPanel({
   timeCount,
   compareTime,
   compareLabel,
+  announce = true,
 }: {
   expanded: boolean;
   onToggle: () => void;
@@ -91,6 +92,8 @@ export function BottomGraphPanel({
   /** Time B while comparing: the tail then shows A, B and the change. */
   compareTime?: string;
   compareLabel?: string;
+  /** Read the value line aloud when it changes; off during playback so it is not re-read every step. */
+  announce?: boolean;
 }) {
   const units = dataset.variableMetadata?.[variable]?.units;
   const label = expanded
@@ -121,12 +124,21 @@ export function BottomGraphPanel({
           percent: from !== 0 ? ((to - from) / Math.abs(from)) * 100 : null,
         }
       : null;
+  const valueText = (value: number | null) => (value != null ? `${numberFormat.format(value)}${unitText ? ` ${unitText}` : ""}` : "값 없음");
+  // One short sentence for screen readers instead of the whole panel (coordinates, chart, A/B table).
+  const status = !points.length
+    ? ""
+    : compareTime
+      ? `A ${currentLabel ?? ""} ${valueText(a)}, B ${compareLabel ?? ""} ${valueText(b)}`
+      : `${currentLabel ?? "현재 시점"} ${variable} 값 ${valueText(a)}`;
   return (
     <section
       className={`vx-graph ${expanded ? "expanded" : "hidden"}`}
       aria-label="픽셀 시계열 그래프 패널"
-      aria-live="polite"
     >
+      <p className="vx-sr" role="status" aria-live="polite">
+        {announce ? status : ""}
+      </p>
       <div className="vx-reading">
         <span className="vx-reading__title">
           <Crosshair size={14} aria-hidden="true" />

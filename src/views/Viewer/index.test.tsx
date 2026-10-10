@@ -29,7 +29,7 @@ test('Zarr를 선택하기 전에는 배경지도만 유지하고 데이터 도�
   expect(screen.getByRole('button', { name: '테스트 지도' })).toBeInTheDocument();
   expect(screen.queryByRole('region', { name: '시계열 탐색기' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /AI 수체 추출/ })).not.toBeInTheDocument();
-  expect(screen.queryByText('원본 Zarr')).not.toBeInTheDocument();
+  expect(screen.queryByText('원본 영상')).not.toBeInTheDocument();
 });
 
 test('원본 Zarr 선택 후 시간 도구와 원본 레이어만 표시한다', async () => {
@@ -41,7 +41,7 @@ test('원본 Zarr 선택 후 시간 도구와 원본 레이어만 표시한다',
   expect(screen.getByRole('button', { name: /AI 수체 추출/ })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: '결과' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
-  expect(screen.getByText('원본 Zarr')).toBeInTheDocument();
+  expect(screen.getByText('원본 영상')).toBeInTheDocument();
   expect(screen.queryByText('AI 결과 Zarr')).not.toBeInTheDocument();
 });
 
