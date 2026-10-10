@@ -59,7 +59,7 @@ type StepState = 'done' | 'current' | 'failed' | 'todo';
 /** 검사 → 변환 → 검증 → 등록 → XCube 반영, derived from status, stage and the Backoffice registration. */
 export function jobSteps(job: JobSummary, lang: Lang = getLanguage()): Array<{ label: string; state: StepState }> {
   const registered = !!job.registration?.datacubeId || !!job.registration?.xcubeDatasetId;
-  const registrationFailed = !!job.registration?.error;
+  const registrationFailed = !!job.registration?.error || !!job.registration?.errorCode;
   const converting = job.status === 'RUNNING' && job.stage !== 'validate';
   const failedAt = job.status === 'FAILED' ? (job.stage === 'validate' ? 2 : 1) : -1;
   const states: StepState[] = [

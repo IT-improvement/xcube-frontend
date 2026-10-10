@@ -74,6 +74,9 @@ function lookup(dict: Record<string, unknown>, key: string): string | Plural | u
   return typeof node === 'string' || isPlural(node) ? node : undefined;
 }
 
+/** Whether `key` has text in the loaded dictionaries (Korean, the source). Parts not loaded yet have none. */
+export const hasText = (key: string) => lookup(DICTS.ko, key) !== undefined;
+
 const pluralRules: Partial<Record<Lang, Intl.PluralRules>> = {};
 
 /** Looks a key up in `lang` (Korean if missing), picks the count form and fills {placeholders}. */

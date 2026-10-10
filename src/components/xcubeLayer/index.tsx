@@ -3,7 +3,7 @@ import XYZ from "ol/source/XYZ";
 import TileState from "ol/TileState";
 import Map from "ol/Map";
 import { session } from "../../api/httpClient";
-import { ApiError } from "../../api/httpClient";
+import { ApiError, errorFromBody } from "../../api/httpClient";
 
 /** A layer none of whose tiles has drawn yet retries after these waits (ms), about 2 minutes in all: the
  *  owner's pod restarts to serve new data (an AI result, a new Zarr) and answers 404 meanwhile, measured
@@ -52,7 +52,7 @@ export default async function addDynamicXcubeLayer({
         const token = session.getToken();
         const controller = new AbortController(); controllers.add(controller);
         fetch(src, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal })
-          .then(async (response) => { if (!response.ok) { let body: any = {}; try { body = await response.json(); } catch { /* binary error */ } if (response.status === 401) session.clearIfCurrent(token); throw new ApiError(response.status, body.code ?? `HTTP_${response.status}`, body.message ?? response.statusText, body.traceId); } return response.blob(); })
+          .then(async (response) => { if (!response.ok) { let body: any = {}; try { body = await response.json(); } catch { /* binary error */ } if (response.status === 401) session.clearIfCurrent(token); throw errorFromBody(response.status, body, response.statusText); } return response.blob(); })
           .then((blob) => { drawn = true; const objectUrl = URL.createObjectURL(blob); objectUrls.add(objectUrl); const release = () => { URL.revokeObjectURL(objectUrl); objectUrls.delete(objectUrl); }; image.onload = release; image.onerror = release; image.src = objectUrl; })
           .catch((error) => {
             if (error?.name !== 'AbortError') failed(error instanceof ApiError ? error : new ApiError(0, 'NETWORK_ERROR', 'Tile request failed'));

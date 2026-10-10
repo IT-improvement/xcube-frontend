@@ -70,4 +70,29 @@ describe('Band math in English', () => {
     expect(screen.getByText('The output variable name can use only letters, digits and underscores.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Run band math' })).toBeDisabled();
   });
+
+  // UR-53 stage 5: dry-run warnings come as warningItems; NORMALIZATION_MISSING is worded from its values.
+  test('pre-run check: the NORMALIZATION_MISSING warning in English', async () => {
+    const { fusion } = require('../api');
+    const real = fusion.dryRun;
+    jest.spyOn(fusion, 'dryRun').mockImplementation(async (request: unknown) => {
+      const data = await real(request);
+      return {
+        ...data,
+        warnings: ['A: S2/B8의 정규화 계수가 registry에 없어 원본 값으로 계산합니다.'],
+        warningItems: [{ code: 'NORMALIZATION_MISSING', params: { name: 'A', sensor: 'S2', band: null }, message: 'A: S2/None의 정규화 계수가 registry에 없어 원본 값으로 계산합니다.' }],
+      };
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText('A data')).not.toBeDisabled(), longWait);
+    pick('A data', 'sentinel'); pick('A variable', 'NDWI');
+    pick('B data', 'landsat'); pick('B variable', 'NDWI');
+    fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Formula' }), { target: { value: 'A - B' } });
+    expect(await screen.findByText('The formula is valid.', {}, longWait)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+    expect(await screen.findByText('A: the registry has no normalization coefficients for S2/—, so the original values are used.', {}, longWait)).toBeInTheDocument();
+    expect(screen.queryByText(/정규화 계수/)).not.toBeInTheDocument();
+  });
 });

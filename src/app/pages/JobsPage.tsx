@@ -8,7 +8,7 @@ import { Card, ConfirmDialog, EmptyState, PageHeader, Skeleton, useToast } from 
 import { aiViewerHref, formatDateTime, jobs as jobService, unavailableJobsNotice } from '../api';
 import { elapsed, isActive, jobTypeLabel, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
 import { useLoad } from '../useLoad';
-import { formatDate, useLanguage } from '../../i18n';
+import { failureText, formatDate, registrationFailureText, useLanguage } from '../../i18n';
 import type { TKey } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 // The management screens' text (UR-53 stage 2) loads with these pages, not with the main bundle.
@@ -141,7 +141,7 @@ export default function JobsPage() {
                             {expanded ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
                           </button>
                         </td>
-                        <td className="cell-main"><span className="xc-cell-main"><strong>{job.name || t('app.noName')}</strong>{job.errorMessage && <small className="job-error">{job.errorMessage}</small>}</span></td>
+                        <td className="cell-main"><span className="xc-cell-main"><strong>{job.name || t('app.noName')}</strong>{job.errorMessage && <small className="job-error">{failureText(job, lang)}</small>}</span></td>
                         <td className="nowrap jobs-table__type">{jobTypeLabel(job.type, lang)}</td>
                         <td><JobStatusBadge job={job} /></td>
                         <td className="jobs-table__progress">
@@ -174,8 +174,8 @@ export default function JobsPage() {
                           <td colSpan={8} className="cell-full">
                             <div className="job-detail">
                               <JobSteps job={job} />
-                              {job.status === 'FAILED' && <Alert tone="danger">{t('jobs.failReason', { reason: job.errorMessage || job.errorCode || t('jobs.unknown') })}</Alert>}
-                              {job.registration?.error && <Alert tone="warning">{t('jobs.registerFailed', { error: job.registration.error })}</Alert>}
+                              {job.status === 'FAILED' && <Alert tone="danger">{t('jobs.failReason', { reason: failureText(job, lang) || t('jobs.unknown') })}</Alert>}
+                              {registrationFailureText(job.registration, lang) && <Alert tone="warning">{t('jobs.registerFailed', { error: registrationFailureText(job.registration, lang) })}</Alert>}
                               <JobInputSummary job={job} />
                             </div>
                           </td>

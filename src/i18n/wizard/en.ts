@@ -37,6 +37,11 @@ const enWizard: WizardTranslation = {
       zarrText: 'Register an existing Zarr by its path.',
       zarrHint: 'Server path or s3:// URI',
     },
+    upload: {
+      areaSaveFailed: 'Couldn’t save the area.',
+      areaImportFailed: 'Couldn’t import the area.',
+      inspectFailed: 'The server didn’t say why.',
+    },
     file: {
       kind: 'File type',
       geotiff: 'Standard GeoTIFF',
@@ -234,7 +239,6 @@ const enWizard: WizardTranslation = {
         none: 'No results.',
         results: 'Administrative area results',
         selected: 'Selected:',
-        attribution: 'Boundaries: Statistics Korea SGIS (KOGL Type 1), admdongkor (CC BY 4.0)',
       },
       clip: {
         legend: 'Area handling',
@@ -336,6 +340,8 @@ const enWizard: WizardTranslation = {
         STORAGE_USAGE_UNAVAILABLE: 'Couldn’t check how much storage you are using.',
         NOISE_UNAVAILABLE: 'Couldn’t compute cloud and shadow inside the area, so dates are ranked by the whole-scene cloud value.',
         DATE_LIST_TRUNCATED: 'More than 366 dates; only the first 366 are shown.',
+        GEE_SCENE_COUNT_UNAVAILABLE: 'Couldn’t get the scene count from GEE.',
+        ESTIMATE_USES_SELECTED_DATES: 'Estimated from the dates you picked.',
       },
     },
     dates: {

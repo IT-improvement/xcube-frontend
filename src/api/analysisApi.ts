@@ -1,6 +1,7 @@
 // Data Analysis API (수식 융합, M6). Contract: docs/Backend/technical-guide.md "M6 계약".
 import { request } from './httpClient';
 import type { JobSummary } from './generationApi';
+import type { ServerItem } from '../i18n/serverText';
 
 export const ANALYSIS_API_BASE_URL = process.env.REACT_APP_ANALYSIS_API_URL ?? 'http://localhost:8084';
 
@@ -33,6 +34,8 @@ export type DryRun = {
   quota: { usedBytes: number; limitBytes: number; allowed: boolean };
   normalization: Array<{ binding: string; sensor?: string | null; band?: string | null; expression?: string | null; applied: boolean }>;
   warnings: string[]; blockers: Blocker[];
+  /** `warnings` with codes and values (e.g. NORMALIZATION_MISSING), same order (UR-53 stage 5). */
+  warningItems?: ServerItem[];
 };
 export type FusionJob = JobSummary & { type: 'FUSION'; input?: Partial<FusionRequest> };
 

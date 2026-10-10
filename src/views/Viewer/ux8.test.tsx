@@ -83,11 +83,15 @@ describe('AI 입력 확인 문구', () => {
     expect(unitDecisionText('알 수 없는 값').text).toBe('알 수 없는 값');
   });
 
+  // UR-53 stage 5: the service sends warningItems (code + params), so the checks use those instead of the
+  // English sentences the earlier pattern matching read. The Korean results are the same as before.
   test('경고: 입력 줄과 같은 내용은 빼고, 영문 경고는 한국어로 바꾼다', () => {
     const decisions = { green: 'DN retained', vv: 'dB→×100' };
-    expect(aiWarningText('green: DN retained', decisions)).toBeNull();
-    expect(aiWarningText('vv: units vary at time index 3: dB×100 retained', decisions)).toBe('VV(레이더): 4번째 시점부터 값 형식이 달라집니다(원래 값 그대로).');
-    expect(aiWarningText('Model checkpoint unavailable', decisions)).toBe('모델 파일이 아직 준비되지 않아 지금은 실행할 수 없습니다.');
+    expect(aiWarningText({ code: 'UNIT_DECISION', params: { name: 'green', decision: 'DN retained' }, message: 'green: DN retained' }, decisions)).toBeNull();
+    expect(aiWarningText({ code: 'UNITS_VARY_BY_TIME', params: { name: 'vv', index: 3, decision: 'dB×100 retained' }, message: 'vv: units vary at time index 3: dB×100 retained' }, decisions)).toBe('VV(레이더): 4번째 시점부터 값 형식이 달라집니다(원래 값 그대로).');
+    expect(aiWarningText({ code: 'MODEL_CHECKPOINT_UNAVAILABLE', message: 'Model checkpoint unavailable' }, decisions)).toBe('모델 파일이 아직 준비되지 않아 지금은 실행할 수 없습니다.');
+    expect(aiWarningText({ code: 'S1_S2_DATE_GAP', params: { days: 9 }, message: 'S1·S2 촬영 날짜 차이가 큽니다 (최대 9일)' }, decisions)).toBe('S1·S2 촬영 날짜 차이가 큽니다 (최대 9일)');
+    // An older service without codes: its sentence as given (Korean screen).
     expect(aiWarningText('S1·S2 촬영 날짜 차이가 큽니다 (최대 9일)', decisions)).toBe('S1·S2 촬영 날짜 차이가 큽니다 (최대 9일)');
   });
 });

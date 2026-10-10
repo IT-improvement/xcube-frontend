@@ -77,11 +77,11 @@ function demoInspection(type: 'geotiff' | 'shapefile' | 'cas500', file: File): S
       { name: 'adm_code', type: 'string' as const, categories: [{ value: '31110', count: 1 }, { value: '31140', count: 1 }] },
       { name: 'updated_yr', type: 'integer' as const, approxStats: { min: 2015, max: 2026, p2: 2016, p98: 2026 } },
     ];
-    return { sourceType: 'SHAPEFILE', fileName: file.name, bands: fields.map((field) => field.name), fields, bounds, files: ['admin.shp', 'admin.shx', 'admin.dbf', 'admin.prj', 'admin.cpg'], message: '필수 구성파일 4개와 추가파일을 확인했습니다. (데모)' };
+    return { sourceType: 'SHAPEFILE', fileName: file.name, bands: fields.map((field) => field.name), fields, bounds, files: ['admin.shp', 'admin.shx', 'admin.dbf', 'admin.prj', 'admin.cpg'], message: '필수 구성파일 4개와 추가파일을 확인했습니다. (데모)', messageCode: 'SHAPEFILE_CHECKED' };
   }
   const names = type === 'cas500' ? ['B', 'G', 'R', 'N'] : ['band_1', 'band_2', 'band_3', 'band_4'];
   const fields = names.map((name, index) => ({ name, type: 'integer' as const, approxStats: { min: 0, max: 10000 + index * 500, p2: 180 + index * 40, p98: 3600 + index * 300 } }));
-  return { sourceType: type === 'cas500' ? 'CAS500' : 'GEOTIFF', fileName: file.name, bands: names, fields, bounds, width: 4096, height: 3072, files: [file.name], message: 'GDAL로 파일을 확인했습니다. (데모)' };
+  return { sourceType: type === 'cas500' ? 'CAS500' : 'GEOTIFF', fileName: file.name, bands: names, fields, bounds, width: 4096, height: 3072, files: [file.name], message: 'GDAL로 파일을 확인했습니다. (데모)', ...(type === 'cas500' ? { messageCode: 'CAS500_CHECKED', messageParams: { tiffs: names.length, aux: 1 } } : { messageCode: 'GEOTIFF_CHECKED' }) };
 }
 
 /** Generation calls used by the add-data wizard; demo mode answers locally. */

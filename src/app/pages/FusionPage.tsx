@@ -11,7 +11,7 @@ import { apiId, asFusionRequest, blockerText, defaultName, EXTENT_LABEL, formatB
 import { useLoad } from '../useLoad';
 import '../wizard/wizard.css';
 import './fusion.css';
-import { formatNumber, useLanguage } from '../../i18n';
+import { formatNumber, serverItems, serverText, useLanguage } from '../../i18n';
 import type { Lang, TFunction, TKey } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 // The management screens' text (UR-53 stage 2) loads with these pages, not with the main bundle.
@@ -96,10 +96,12 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 const FORMULA_ERROR_CODES = ['EMPTY_FORMULA', 'STRING_NOT_ALLOWED', 'ATTRIBUTE_NOT_ALLOWED', 'SUBSCRIPT_NOT_ALLOWED', 'KEYWORD_ARG_NOT_ALLOWED', 'UNEXPECTED_CHAR', 'NAME_FORBIDDEN', 'FUNCTION_NOT_ALLOWED', 'ARITY', 'UNKNOWN_NAME', 'SYNTAX'];
 /**
  * A formula error in words. Korean shows the server sentence as before; other languages word a known code
- * themselves ({token} is the marked part of the formula) and fall back to the server sentence.
+ * themselves ({token} is the marked part of the formula) and fall back to the server sentence (UR-53 stage 5:
+ * a Korean one only in Korean; otherwise the server code dictionary or a line with the code).
  */
 export function formulaErrorText(formula: string, error: FormulaError, lang: Lang, t: TFunction) {
-  if (lang === 'ko' || !FORMULA_ERROR_CODES.includes(error.code)) return error.message;
+  if (lang === 'ko') return error.message;
+  if (!FORMULA_ERROR_CODES.includes(error.code)) return serverText({ code: error.code, message: error.message }, lang);
   const start = Math.min(error.position, formula.length);
   const token = formula.slice(start, start + Math.max(1, error.length)).trim();
   return t(`fusion.formulaErrors.${error.code}` as TKey, { token });
@@ -475,6 +477,8 @@ function PreviewPanel({ data }: { data: DryRun }) {
   const thisPercent = Math.min(100 - usedPercent, (data.estimatedBytes / total) * 100);
   const [west, south, east, north] = data.grid.bbox;
   const remaining = Math.max(0, quota.limitBytes - quota.usedBytes);
+  // `warningItems` carry codes and values (UR-53 stage 5); older servers send only the sentences.
+  const warnings = serverItems(data.warningItems, data.warnings);
   return (
     <div className="fusion-preview__body">
       {data.blockers.length > 0 && (
@@ -483,10 +487,10 @@ function PreviewPanel({ data }: { data: DryRun }) {
           <ul className="fusion-list">{data.blockers.map((blocker) => <li key={blockerCode(blocker)}>{blockerText(blocker, lang)}</li>)}</ul>
         </Alert>
       )}
-      {data.warnings.length > 0 && (
+      {warnings.length > 0 && (
         <Alert tone="warning">
           <strong>{t('fusion.preview.checkThese')}</strong>
-          <ul className="fusion-list">{data.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+          <ul className="fusion-list">{warnings.map((warning, index) => <li key={index}>{serverText(warning, lang)}</li>)}</ul>
         </Alert>
       )}
       {!data.blockers.length && <Alert tone="success">{t('fusion.preview.canRun')}</Alert>}

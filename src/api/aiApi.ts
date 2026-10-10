@@ -1,6 +1,7 @@
 // AI Processing API (수체 추출, M7). Contract: docs/Backend/technical-guide.md "M7 계약".
 import { request } from './httpClient';
 import type { JobSummary } from './generationApi';
+import type { ServerItem } from '../i18n/serverText';
 
 export const AI_API_BASE_URL = process.env.REACT_APP_AI_API_URL ?? 'http://localhost:8085';
 
@@ -13,6 +14,8 @@ export type AiCheck = {
   ready: boolean; matched: Record<string, string>; missing: string[];
   unitDecisions?: Record<string, string>; timeCount: number;
   grid?: { width: number; height: number }; warnings?: string[];
+  /** `warnings` with codes and values, same order (UR-53 stage 5): S1_S2_DATE_GAP, UNIT_DECISION, UNITS_VARY_BY_TIME, MODEL_CHECKPOINT_UNAVAILABLE. */
+  warningItems?: ServerItem[];
 };
 export type AiJobRequest = {
   datacubeId: number | string; modelId: string; threshold?: number;

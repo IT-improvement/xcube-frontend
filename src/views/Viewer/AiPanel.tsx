@@ -6,8 +6,8 @@ import type { AiCheck, AiCurvePoint, AiJobRequest, AiModel, AiResult, AiWaterJob
 import type { TimePoint, ZarrDataset } from "../../api/viewerAdapter";
 import { userMessage } from "../../api/httpClient";
 import { ai } from "../../app/api";
-import { formatDate, formatNumber, getLanguage, translate, useLanguage } from "../../i18n";
-import type { Lang, TKey, TVars } from "../../i18n";
+import { failureText, formatDate, formatNumber, getLanguage, serverItems, serverText, translate, useLanguage } from "../../i18n";
+import type { Lang, ServerItem, TKey, TVars } from "../../i18n";
 import "../../i18n/viewer";
 import LayerControl from "./LayerControl";
 import { PLOT_INSET } from "./TimeStaff";
@@ -49,17 +49,20 @@ export function unitDecisionText(decision: string, lang: Lang = getLanguage()) {
   };
 }
 /**
- * Check warnings in plain words. "{input}: {decision}" only repeats the input list, so it is dropped (null);
- * a unit change between times and a missing checkpoint are reworded; anything else (a service sentence) stays.
+ * A check warning in plain words (UR-53 stage 5, `warningItems`). UNIT_DECISION ("{input}: {decision}") only
+ * repeats the input list, so it is dropped (null); a unit change between times names the input and the time;
+ * other codes use the AI code dictionary (S1_S2_DATE_GAP, MODEL_CHECKPOINT_UNAVAILABLE…). A warning without a
+ * code (older server) is its sentence, Korean only in Korean.
  */
-export function aiWarningText(warning: string, decisions?: Record<string, string>, lang: Lang = getLanguage()): string | null {
-  const vary = /^(\w+): units vary at time index (\d+): (.+)$/.exec(warning);
-  if (vary)
-    return translate(lang, "viewer.ai.warnVary", { input: inputLabel(vary[1], lang), n: Number(vary[2]) + 1, decision: unitDecisionText(vary[3], lang).text });
-  const own = /^(\w+): (.+)$/.exec(warning);
-  if (own && decisions?.[own[1]] === own[2]) return null;
-  if (warning.trim() === "Model checkpoint unavailable") return translate(lang, "viewer.ai.warnCheckpoint");
-  return warning;
+export function aiWarningText(warning: ServerItem | string, decisions?: Record<string, string>, lang: Lang = getLanguage()): string | null {
+  const item: ServerItem = typeof warning === "string" ? { message: warning } : warning;
+  const params = item.params ?? {};
+  const name = typeof params.name === "string" ? params.name : "";
+  const decision = typeof params.decision === "string" ? params.decision : "";
+  if (item.code === "UNIT_DECISION") return decisions?.[name] === decision || !name ? null : translate(lang, "aiCodes.UNIT_DECISION", { name: inputLabel(name, lang), decision: unitDecisionText(decision, lang).text });
+  if (item.code === "UNITS_VARY_BY_TIME" && name && typeof params.index === "number")
+    return translate(lang, "viewer.ai.warnVary", { input: inputLabel(name, lang), n: params.index + 1, decision: unitDecisionText(decision, lang).text });
+  return serverText(item, lang) || null;
 }
 const STATUSES = ["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"];
 const STAGES = ["prepare", "infer", "register"];
@@ -330,9 +333,9 @@ export function AiRunForm({
               {t(model.kind === "deep" ? "viewer.ai.form.missingDeep" : "viewer.ai.form.missingIndex")}
             </p>
           )}
-          {check?.warnings?.map((warning) => {
+          {check && serverItems(check.warningItems, check.warnings).map((warning, index) => {
             const text = aiWarningText(warning, check.unitDecisions, lang);
-            return text && <p key={warning} className="vx-section__hint" title={text !== warning ? warning : undefined}>{text}</p>;
+            return text && <p key={index} className="vx-section__hint">{text}</p>;
           })}
         </section>
       )}
@@ -408,7 +411,7 @@ export function AiRunForm({
             </span>
           )}
           <small>{run.name}</small>
-          {run.status === "FAILED" && <p className="vx-note vx-note--bad" role="alert">{t("viewer.ai.form.failedReason", { reason: run.errorMessage || run.errorCode || t("viewer.ai.form.unknown") })}</p>}
+          {run.status === "FAILED" && <p className="vx-note vx-note--bad" role="alert">{t("viewer.ai.form.failedReason", { reason: failureText(run, lang) || t("viewer.ai.form.unknown") })}</p>}
           {busy && <button type="button" className="vx-btn vx-btn--line" onClick={onCancel}><Square size={14} aria-hidden="true" />{t("common.cancel")}</button>}
           {(run.status === "FAILED" || run.status === "CANCELLED") && <button type="button" className="vx-btn vx-btn--line" onClick={onRetry}><RotateCcw size={14} aria-hidden="true" />{t("viewer.ai.form.retrySame")}</button>}
         </div>
@@ -459,7 +462,7 @@ export function AiResultList({
                   {entry.modelId && <span>{modelLabel(entry.modelId, models, lang)}</span>}
                 </small>
                 <small className="vx-result__detail tabular">{entryDetail(entry, lang)}</small>
-                {entry.job?.status === "FAILED" && entry.job.errorMessage && <small className="vx-results__error">{entry.job.errorMessage}</small>}
+                {entry.job?.status === "FAILED" && entry.job.errorMessage && <small className="vx-results__error">{failureText(entry.job, lang)}</small>}
               </span>
               {onMap && entry.key === selectedKey && <em>{t("viewer.ai.list.onMap")}</em>}
             </button>

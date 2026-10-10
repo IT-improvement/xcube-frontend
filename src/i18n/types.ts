@@ -2,6 +2,8 @@ import type ko from './ko';
 import type koApp from './app/ko';
 import type koWizard from './wizard/ko';
 import type koViewer from './viewer/ko';
+import type koAiCodes from './codes/ai/ko';
+import type koDataCodes from './codes/data/ko';
 
 export type Lang = 'ko' | 'en';
 
@@ -10,8 +12,9 @@ export type Lang = 'ko' | 'en';
  * the main part (landing, sign-in, shell, request errors) and the app part (management screens), which is
  * loaded with the app pages and registered then (see ./app/index.ts). The add-data wizard has a third part
  * (./wizard/), loaded and registered with the wizard (stage 3), and the Viewer a fourth (./viewer/, stage 4).
+ * Server message codes (stage 5) come in two more: ./codes/ai (Viewer and app) and ./codes/data (app, wizard).
  */
-export type Dict = typeof ko & typeof koApp & typeof koWizard & typeof koViewer;
+export type Dict = typeof ko & typeof koApp & typeof koWizard & typeof koViewer & typeof koAiCodes & typeof koDataCodes;
 
 /** English-style count forms. `one` is used when the plural rule says "one" (count 1 in English). */
 export type Plural = { one: string; other: string };
@@ -27,6 +30,11 @@ export type AppTranslation = DeepStringify<typeof koApp>;
 export type WizardTranslation = DeepStringify<typeof koWizard>;
 /** Shape of viewer/en.ts (Viewer part). */
 export type ViewerTranslation = DeepStringify<typeof koViewer>;
+
+/** Shape of codes/ai/en.ts (AI Processing message codes). */
+export type AiCodesTranslation = DeepStringify<typeof koAiCodes>;
+/** Shape of codes/data/en.ts (Data Generation and Analysis message codes). */
+export type DataCodesTranslation = DeepStringify<typeof koDataCodes>;
 
 /** Dot paths to the texts in `T`, e.g. "landing.hero.title". */
 type Path<T> = { [K in keyof T & string]: T[K] extends string ? K : `${K}.${Path<T[K]>}` }[keyof T & string];

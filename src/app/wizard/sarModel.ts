@@ -3,6 +3,7 @@
 import { EstimateBlocker, GeeEstimate, OrbitPass, SarPair, SarPairing, WaterReference } from '../../api/generationApi';
 import { getLanguage, translate } from '../../i18n';
 import type { Lang } from '../../i18n';
+import { estimateBlockers } from './areaModel';
 
 /** "100% 덮음" (UR-45): footprints are compared with 10 m geometry error, ~0.1 % of a 30 km area. */
 export const FULL_COVER = 0.998;
@@ -65,13 +66,13 @@ export function pairSummary(data?: GeeEstimate): { pairs: SarPair[] | null; pair
   const pairs = Array.isArray(data?.pairs) ? data!.pairs : datePairs(data);
   const paired = data?.pairedCount ?? pairs?.filter((pair) => !!pair.s1Date).length ?? 0;
   const unpaired = data?.unpairedCount ?? pairs?.filter((pair) => !pair.s1Date).length ?? 0;
-  const blocked = (data?.blockers ?? []).some((blocker) => (typeof blocker === 'string' ? blocker : blocker.code) === 'NO_S1_MATCH');
+  const blocked = estimateBlockers(data).some((blocker) => (typeof blocker === 'string' ? blocker : blocker.code) === 'NO_S1_MATCH');
   return { pairs, paired, unpaired, noMatch: blocked || (!!pairs && pairs.length > 0 && paired === 0) };
 }
 
 /** Blockers with NO_S1_MATCH added when every S2 time is unpaired but the server did not say so itself. */
 export function withPairingBlockers(data: GeeEstimate | undefined, active: boolean): EstimateBlocker[] {
-  const blockers = data?.blockers ?? [];
+  const blockers = estimateBlockers(data);
   if (!active || !data) return blockers;
   const { noMatch } = pairSummary(data);
   const code = (blocker: EstimateBlocker) => (typeof blocker === 'string' ? blocker : blocker.code);

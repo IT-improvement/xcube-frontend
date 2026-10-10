@@ -207,6 +207,24 @@ const ko = {
     xcubeUnavailable: 'XCube Server를 사용할 수 없습니다.',
     xcubeTimeout: 'XCube Server 응답 시간이 초과되었습니다.',
     failed: '요청을 처리하지 못했습니다.',
+    /** A server code with no text here and no sentence to show (English never shows a Korean server sentence). */
+    withCode: '처리하지 못했습니다. (코드 {code})',
+    /** A server note without a code whose sentence can't be shown in this language. */
+    serverNote: '서버 안내가 있습니다.',
+    /**
+     * Server message codes every service shares (UR-53 stage 5, Backend guide "코드 목록 (I18N5)"). Codes of one
+     * service are in ./codes/ai and ./codes/data, loaded with the screens that show them. See serverText.ts.
+     */
+    code: {
+      INTERNAL_ERROR: '요청 처리 중 오류가 발생했습니다.',
+      INVALID_REQUEST: '요청 형식을 확인하세요.',
+      INVALID_JSON: '요청 내용을 읽을 수 없습니다.',
+      INVALID_JOB_STATUS: '작업 상태 조건이 올바르지 않습니다.',
+      NOT_FOUND: '찾을 수 없습니다. 삭제되었을 수 있습니다.',
+      UNAUTHORIZED: '로그인이 필요합니다.',
+      UPLOAD_TOO_LARGE: '파일이 업로드 허용 크기를 초과했습니다.',
+      WORKER_FAILED: '처리 중 예상하지 못한 오류가 발생했습니다.',
+    },
   },
 };
 
