@@ -62,6 +62,7 @@ export type ResolvedArea = {
   /** Human-readable name of the area for summaries. */
   label: string;
   modeLabel: string;
+  /** "사각형 그대로" (point, box, or a polygon kept as its box) or "경계로 자르기". */
   clipLabel: string;
 };
 
@@ -79,7 +80,7 @@ export function resolveArea(state: AreaState, lang: Lang = getLanguage()): Resol
     if (!Number.isFinite(sizeKm) || sizeKm < SIZE_LIMITS.min || sizeKm > SIZE_LIMITS.max) return { error: say('wizard.area.errors.size', SIZE_LIMITS), label: '', modeLabel, clipLabel: '' };
     const bbox = pointBbox(lon, lat, sizeKm);
     return {
-      error: '', bbox, areaKm2: sizeKm * sizeKm, label: say('wizard.area.pointLabel', { lon: lon.toFixed(4), lat: lat.toFixed(4), size: sizeKm }), modeLabel, clipLabel: say('wizard.area.mode.box'),
+      error: '', bbox, areaKm2: sizeKm * sizeKm, label: say('wizard.area.pointLabel', { lon: lon.toFixed(4), lat: lat.toFixed(4), size: sizeKm }), modeLabel, clipLabel: say('wizard.area.clip.bbox'),
       request: { mode: 'point', point: { lon, lat, sizeKm }, clip: 'bbox', maskVariable: false, ...common },
     };
   }
@@ -90,7 +91,7 @@ export function resolveArea(state: AreaState, lang: Lang = getLanguage()): Resol
     const [west, south, east, north] = keys.map((key) => Number(state[key]));
     if (west >= east || south >= north) return { error: say('wizard.area.errors.boxOrder'), label: '', modeLabel, clipLabel: '' };
     const bbox: Bbox = [west, south, east, north];
-    return { error: '', bbox, areaKm2: bboxAreaKm2(bbox), label: say('wizard.area.boxLabel', { west, south, east, north }), modeLabel, clipLabel: modeLabel, request: { mode: 'box', box: { west, south, east, north }, clip: 'bbox', maskVariable: false, ...common } };
+    return { error: '', bbox, areaKm2: bboxAreaKm2(bbox), label: say('wizard.area.boxLabel', { west, south, east, north }), modeLabel, clipLabel: say('wizard.area.clip.bbox'), request: { mode: 'box', box: { west, south, east, north }, clip: 'bbox', maskVariable: false, ...common } };
   }
   const isAdmin = state.tab === 'admin';
   const modeLabel = say(isAdmin ? 'wizard.area.mode.admin' : 'wizard.area.mode.shape');

@@ -33,6 +33,12 @@ export const defaultSar = (waterReference = false): SarState => ({ enabled: true
 export const presetSar = (): SarState => defaultSar(true);
 /** AI models were trained on 10 m S2 + S1; the research scenes used a 40 % cloud filter. */
 export const PRESET_GEE = { scaleMeters: '10', maxCloudPercent: '40' } as const;
+/**
+ * Display of the preset's optical bands (audit D-wizard U3): S2 L2A reflectance is stored as DN (×10,000)
+ * and 0–3,000 shows land and water well; reflectance reads as grayscale (RGB is built as well), not viridis.
+ * Used only when the server offers this colour map.
+ */
+export const PRESET_STYLE = { colorBar: 'Greys', min: '0', max: '3000' } as const;
 
 export const isS2 = (collectionId: string) => collectionId === S2_COLLECTION;
 export const pairingActive = (collectionId: string, sar: SarState) => isS2(collectionId) && sar.enabled;

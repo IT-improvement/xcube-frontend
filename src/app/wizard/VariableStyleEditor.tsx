@@ -8,6 +8,7 @@ import { Badge } from '../../components/ui/kit';
 import { formatNumber, getLanguage, translate, useLanguage } from '../../i18n';
 import type { Lang } from '../../i18n';
 import '../../i18n/wizard';
+import { PRESET_STYLE } from './sarModel';
 
 export type VariableChoice = {
   source: string;
@@ -16,6 +17,8 @@ export type VariableChoice = {
   colorBar: string;
   min: string;
   max: string;
+  /** Where the display values came from when not from the file statistics: the water preset (UR-41). Not sent. */
+  origin?: 'preset';
 };
 
 
@@ -74,8 +77,9 @@ function ColorBarField({ value, options, onChange, label }: { value: string; opt
     <label className="vse-colorbar">
       <span className="xc-label">{t('wizard.style.colorBar')}</span>
       <span className="vse-colorbar__control">
+        {/* The server's preview only; without one the swatch stays an empty sunken box (no hand-made gradients). */}
         <span className="vse-colorbar__swatch" aria-hidden>
-          {selected?.preview ? <img src={`data:image/png;base64,${selected.preview}`} alt="" /> : <i data-name={value} />}
+          {selected?.preview && <img src={`data:image/png;base64,${selected.preview}`} alt="" />}
         </span>
         <select className="xc-select" value={value} onChange={(event) => onChange(event.target.value)} aria-label={label} disabled={!options.length}>
           {!options.length && <option value="">{t('wizard.style.noColorBars')}</option>}
@@ -100,6 +104,8 @@ export default function VariableStyleEditor({
   renamable = true,
   continuousOnly = false,
   errors = {},
+  show = 'all',
+  channels = {},
 }: {
   fields: InspectionField[];
   value: VariableChoice[];
@@ -111,6 +117,10 @@ export default function VariableStyleEditor({
   renamable?: boolean;
   continuousOnly?: boolean;
   errors?: Record<string, string>;
+  /** `pick`: only the band/attribute checklist (GEE "자료" step); `style`: only the display rows (review); `all`: both. */
+  show?: 'all' | 'pick' | 'style';
+  /** RGB channel of a source, shown as a tag on its row ("RGB R"). */
+  channels?: Record<string, 'R' | 'G' | 'B'>;
 }) {
   const { lang, t } = useLanguage();
   const fmt = (number: number) => formatValue(number, lang);
@@ -131,7 +141,7 @@ export default function VariableStyleEditor({
 
   return (
     <div className="vse">
-      {fields.length > 0 && (
+      {fields.length > 0 && show !== 'style' && (
         <fieldset className="vse-pick">
           <legend className="vse-pick__legend">
             <span><strong>{t('wizard.style.pickTitle', { noun: t(noun === 'band' ? 'wizard.style.band' : 'wizard.style.attribute') })}</strong> <span className="xc-hint">{t('wizard.style.pickHint', { picked: value.length, count: fields.length })}</span></span>
@@ -160,9 +170,9 @@ export default function VariableStyleEditor({
         </fieldset>
       )}
 
-      {allowCustom && (
+      {allowCustom && show !== 'pick' && (
         <div className="vse-custom">
-          <label className="xc-field" style={{ flex: 1 }}>
+          <label className="xc-field vse-custom__field">
             <span className="xc-label">{t('wizard.style.addName')}</span>
             <input className="xc-field__input" value={custom} placeholder={t('wizard.style.addPlaceholder')} onChange={(event) => setCustom(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addCustom(); } }} />
           </label>
@@ -170,7 +180,7 @@ export default function VariableStyleEditor({
         </div>
       )}
 
-      {value.length > 0 && (
+      {value.length > 0 && show !== 'pick' && (
         <div className="vse-rows">
           {value.map((choice) => {
             const field = fieldBySource.get(choice.source);
@@ -184,6 +194,8 @@ export default function VariableStyleEditor({
                 <div className="vse-row__head">
                   <strong>{choice.source}</strong>
                   {field?.type && <Badge>{typeLabel(field.type)}</Badge>}
+                  {channels[choice.source] && <Badge tone="primary">{t('wizard.style.rgbBadge', { channel: channels[choice.source] })}</Badge>}
+                  {choice.name !== choice.source && !renamable && <span className="xc-hint">{choice.name}</span>}
                   <span className="toolbar__spacer" />
                   {field && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => toggle(field)} aria-label={t('wizard.style.excludeNamed', { name: choice.source })}>{t('wizard.style.exclude')}</button>}
                   {!field && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => onChange(value.filter((item) => item.source !== choice.source))} aria-label={t('wizard.style.removeNamed', { name: choice.source })}>{t('wizard.style.remove')}</button>}
@@ -221,7 +233,7 @@ export default function VariableStyleEditor({
                           </button>
                         </>
                       ) : (
-                        <span className="xc-hint">{t('wizard.style.noAuto')}</span>
+                        <span className="xc-hint">{choice.origin === 'preset' ? t('wizard.style.presetRange', { min: fmt(Number(PRESET_STYLE.min)), max: formatNumber(Number(PRESET_STYLE.max), {}, lang) }) : t('wizard.style.noAuto')}</span>
                       )}
                     </div>
                   </div>

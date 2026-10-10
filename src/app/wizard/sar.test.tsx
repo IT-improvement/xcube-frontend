@@ -10,6 +10,7 @@ const adapter = require('../../api').activeViewerAdapter as Record<string, jest.
 const { generation } = require('../api');
 const { pairLine, pairSummary, sarRequest, defaultSar, withPairingBlockers } = require('./sarModel');
 const AddDataPage = require('./AddDataPage').default;
+const { geeFlow } = require('./geeFlow.testutil');
 
 const T = 4000;
 const S2 = 'COPERNICUS/S2_SR_HARMONIZED';
@@ -29,11 +30,23 @@ async function toCatalog() {
   fireEvent.click(screen.getByRole('button', { name: /다음/ }));
   await screen.findByRole('radio', { name: /Sentinel-2 L2A/ });
 }
-function fillPeriodAndPoint() {
-  fireEvent.change(screen.getByLabelText('시작 날짜'), { target: { value: '2024-08-01' } });
-  fireEvent.change(screen.getByLabelText('끝 날짜'), { target: { value: '2024-08-20' } });
-  fireEvent.change(screen.getByLabelText('중심 경도'), { target: { value: '127.63' } });
-  fireEvent.change(screen.getByLabelText('중심 위도'), { target: { value: '36.45' } });
+// UR-54: from 자료, a point on 영역, then the period on 기간·날짜 (where the estimate and the date table are).
+const flow = geeFlow();
+async function fillPeriodAndPoint() {
+  await flow.toArea();
+  flow.setPoint('127.63', '36.45');
+  await flow.toDates();
+  flow.setPeriod('2024-08-01', '2024-08-20');
+}
+const next = () => screen.getByRole('button', { name: /^다음/ });
+/** Back to 자료, `change` something there, and forward to 기간·날짜 again. */
+async function changeData(change: () => void) {
+  fireEvent.click(screen.getByRole('button', { name: /이전/ }));
+  fireEvent.click(screen.getByRole('button', { name: /이전/ }));
+  change();
+  fireEvent.click(next());
+  fireEvent.click(next());
+  await screen.findByLabelText('시작 날짜');
 }
 const sarCheckbox = () => screen.queryByRole('checkbox', { name: /AI 수체 분석용으로 Sentinel-1 VV·VH 함께 받기/ });
 
@@ -72,9 +85,14 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
     fireEvent.click(preset);
     expect(preset).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: /Sentinel-2 L2A/ })).toHaveAttribute('aria-checked', 'false');
+    // The preset's fixed settings are one line on its card; the pairing is a summary until "바꾸기".
+    expect(preset).toHaveTextContent('Sentinel-2 band 5개 + Sentinel-1 VV·VH · 참조 수체(JRC) · 구름 40% 이하 · 픽셀 10 m');
+    expect(sarCheckbox()).toBeNull();
+    expect(screen.getByText(/^Sentinel-1 VV·VH · 날짜 차이 최대 15일 · 궤도 상관없음 · 짝 없는 날짜 제외 · 참조 수체\(JRC\)$/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '레이더 짝 바꾸기' }));
     expect(sarCheckbox()).toBeChecked();
     expect(screen.getByRole('checkbox', { name: /참조 수체\(JRC\) 함께 저장 — 비교용, 정답 아님/ })).toBeChecked();
-    fillPeriodAndPoint();
+    await fillPeriodAndPoint();
     // The demo server sends `dates`, so the pair columns join the date table (UR-43).
     const table = await screen.findByRole('table', { name: '날짜 고르기 · 광학·레이더 날짜 짝' }, { timeout: T });
     expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['선택', '구름 순위', '날짜', '구름 %', '장면', '레이더 날짜', '차이(일)']);
@@ -82,10 +100,12 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
     expect((estimate.mock.calls.at(-1)![0] as any).sarPairing).toEqual({ enabled: true, maxDaysApart: 15, orbitPass: 'ANY', minCoverage: 0.998, dropUnpaired: true });
     expect(estimate.mock.calls.at(-1)![0]).toMatchObject({ scaleMeters: 10, maxCloudPercent: 40 });
 
-    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-    expect(await screen.findByText(/같은 위치\(영역을 99% 이상 덮음\), 가까운 날짜의 레이더 영상/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-    fireEvent.change(await screen.findByLabelText('데이터 이름'), { target: { value: '대청호 S1S2' } });
+    await flow.toReview();
+    fireEvent.change(screen.getByLabelText('데이터 이름'), { target: { value: '대청호 S1S2' } });
+    // Display settings are folded for the preset; "바꾸기" opens the band rows.
+    expect(screen.getByText('수체 분석 기본값 (band 5 · 레이더 2 · 참조 1)')).toBeInTheDocument();
+    expect(screen.queryByLabelText('B2 변수 이름')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '표시 설정 바꾸기' }));
     expect(screen.getByLabelText('B2 변수 이름')).toHaveValue('blue');
     expect(screen.getByLabelText('B11 변수 이름')).toHaveValue('swir');
     const fixed = screen.getByRole('region', { name: '함께 저장되는 변수' });
@@ -93,8 +113,7 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
     expect(fixed).toHaveTextContent('vh');
     expect(fixed).toHaveTextContent('water_gt');
     expect(within(fixed).queryByRole('textbox')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-    fireEvent.click(await screen.findByRole('button', { name: '생성 시작' }));
+    fireEvent.click(await flow.createButton());
     await waitFor(() => expect(create).toHaveBeenCalled(), { timeout: T });
     const body = create.mock.calls[0][0] as any;
     expect(body.collectionId).toBe(S2);
@@ -110,7 +129,7 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
   test('S2를 직접 고르면 체크가 기본으로 켜지고, 다른 컬렉션에서는 숨기고 보내지 않는다', async () => {
     const estimate = jest.spyOn(generation, 'estimateGee');
     await toCatalog();
-    fireEvent.click(screen.getByRole('radio', { name: /Sentinel-2 L2A/ }));
+    flow.choose(/Sentinel-2 L2A/, ['B8']);
     expect(sarCheckbox()).toBeChecked();
     expect(screen.getByRole('checkbox', { name: /참조 수체\(JRC\)/ })).not.toBeChecked();
     fireEvent.change(screen.getByLabelText(/날짜 차이 최대/), { target: { value: '40' } });
@@ -118,13 +137,15 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
     fireEvent.change(screen.getByLabelText(/날짜 차이 최대/), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText('궤도 방향'), { target: { value: 'DESCENDING' } });
     fireEvent.click(screen.getByRole('button', { name: '레이더 없이 남기기' }));
-    fillPeriodAndPoint();
+    await fillPeriodAndPoint();
     await waitFor(() => expect(estimate).toHaveBeenCalled(), { timeout: T });
     expect((estimate.mock.calls.at(-1)![0] as any).sarPairing).toEqual({ enabled: true, maxDaysApart: 10, orbitPass: 'DESCENDING', minCoverage: 0.998, dropUnpaired: false });
     expect((estimate.mock.calls.at(-1)![0] as any).waterReference).toBeUndefined();
 
-    fireEvent.click(screen.getByRole('radio', { name: /Landsat 9/ }));
-    expect(sarCheckbox()).toBeNull();
+    await changeData(() => {
+      flow.choose(/Landsat 9/, ['SR_B4']);
+      expect(sarCheckbox()).toBeNull();
+    });
     await waitFor(() => expect((estimate.mock.calls.at(-1)![0] as any).collectionId).toBe('LANDSAT/LC09/C02/T1_L2'), { timeout: T });
     const body = estimate.mock.calls.at(-1)![0] as any;
     expect(body).not.toHaveProperty('sarPairing');
@@ -143,8 +164,8 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
       pairedCount: 2, unpairedCount: 1,
     });
     await toCatalog();
-    fireEvent.click(screen.getByRole('radio', { name: /Sentinel-2 L2A/ }));
-    fillPeriodAndPoint();
+    flow.choose(/Sentinel-2 L2A/, ['B8']);
+    await fillPeriodAndPoint();
     const table = await screen.findByRole('table', { name: '광학·레이더 날짜 짝' }, { timeout: T });
     const rows = within(table).getAllByRole('row').slice(1);
     expect(rows[0]).toHaveTextContent('2024-08-14');
@@ -157,16 +178,16 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
     expect(rows[2]).toHaveClass('is-unpaired');
     expect(rows[2]).toHaveTextContent('레이더 없음 – 제외');
     expect(screen.getByText(/짝 없음 1개/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /다음/ })).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: '레이더 없이 남기기' }));
+    await waitFor(() => expect(next()).toBeEnabled(), { timeout: T });
+    await changeData(() => fireEvent.click(screen.getByRole('button', { name: '레이더 없이 남기기' })));
     expect(await screen.findByText('레이더 없음 – 레이더 없이 남김', undefined, { timeout: T })).toBeInTheDocument();
   });
 
   test('모든 날짜에 짝이 없으면 진행·생성을 막고 기간·날짜 차이를 넓히라고 알려 준다', async () => {
     jest.spyOn(generation, 'estimateGee').mockResolvedValue({ ...base, pairs: [{ s2Date: '2024-08-14', s1Date: null }, { s2Date: '2024-08-19', s1Date: null }], pairedCount: 0, unpairedCount: 2 });
     await toCatalog();
-    fireEvent.click(screen.getByRole('radio', { name: /Sentinel-2 L2A/ }));
-    fillPeriodAndPoint();
+    flow.choose(/Sentinel-2 L2A/, ['B8']);
+    await fillPeriodAndPoint();
     expect(await screen.findByText(/기간을 넓히거나 날짜 차이를 늘려 보세요/, undefined, { timeout: T })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /다음/ })).toBeDisabled();
   });
@@ -174,36 +195,37 @@ describe('수체 분석용 S1+S2 (GEE)', () => {
   test('pairs 없이 NO_S1_MATCH 차단만 와도 막고, pairs가 없으면 짝 표 대신 안내만 보인다', async () => {
     const estimate = jest.spyOn(generation, 'estimateGee').mockResolvedValue({ ...base, blockers: ['NO_S1_MATCH'] });
     await toCatalog();
-    fireEvent.click(screen.getByRole('radio', { name: /Sentinel-2 L2A/ }));
-    fillPeriodAndPoint();
+    flow.choose(/Sentinel-2 L2A/, ['B8']);
+    await fillPeriodAndPoint();
     expect(await screen.findByText(/기간을 넓히거나 날짜 차이를 늘려 보세요/, undefined, { timeout: T })).toBeInTheDocument();
     expect(screen.getAllByText(/기간을 넓히거나 날짜 차이를 늘려 보세요/)).toHaveLength(1);
     expect(screen.getByRole('button', { name: /다음/ })).toBeDisabled();
     // Older server: no pairs, no blocker → a note, and the wizard goes on.
     estimate.mockResolvedValue({ ...base });
+    fireEvent.click(screen.getByRole('button', { name: /이전/ }));
     fireEvent.click(screen.getByRole('radio', { name: '10 km' }));
+    await flow.toDates();
     expect(await screen.findByText(/서버가 짝 목록을 보내지 않아/, undefined, { timeout: T })).toBeInTheDocument();
     expect(screen.queryByRole('table', { name: '광학·레이더 날짜 짝' })).toBeNull();
-    expect(screen.getByRole('button', { name: /다음/ })).toBeEnabled();
+    await waitFor(() => expect(next()).toBeEnabled(), { timeout: T });
   });
 
   test('짝 맞춤을 끄면 band 이름이 원래대로 돌아가고 sarPairing을 보내지 않는다', async () => {
     const create = jest.spyOn(generation, 'createGeeJob');
     await toCatalog();
     fireEvent.click(screen.getByRole('radio', { name: /수체 분석용/ }));
+    fireEvent.click(screen.getByRole('button', { name: '레이더 짝 바꾸기' }));
     fireEvent.click(sarCheckbox()!);
     expect(screen.getByRole('radio', { name: /수체 분석용/ })).toHaveAttribute('aria-checked', 'false');
-    fillPeriodAndPoint();
+    await fillPeriodAndPoint();
     await screen.findByRole('region', { name: '예상 크기' });
     await waitFor(() => expect(screen.getByRole('region', { name: '예상 크기' })).toHaveTextContent('예상 장면 수'), { timeout: T });
     expect(screen.queryByRole('table', { name: '광학·레이더 날짜 짝' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /다음/ }));
-    fireEvent.change(await screen.findByLabelText('데이터 이름'), { target: { value: 'S2만' } });
+    await flow.toReview();
+    fireEvent.change(screen.getByLabelText('데이터 이름'), { target: { value: 'S2만' } });
     expect(screen.queryByLabelText('B2 변수 이름')).toBeNull();
     expect(screen.queryByRole('region', { name: '함께 저장되는 변수' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-    fireEvent.click(await screen.findByRole('button', { name: '생성 시작' }));
+    fireEvent.click(await flow.createButton());
     await waitFor(() => expect(create).toHaveBeenCalled(), { timeout: T });
     const body = create.mock.calls[0][0] as any;
     expect(body).not.toHaveProperty('sarPairing');

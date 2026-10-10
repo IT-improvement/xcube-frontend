@@ -1,9 +1,11 @@
-// S4 GEE step "영역": four ways to give the area of interest, a map that always shows the result, and the size estimate.
+// S4 GEE step "영역" (UR-54): four ways to give the area of interest and a map that always shows the result.
+// The size estimate (EstimatePanel) is shown on the "기간·날짜" step and, folded to three numbers, on the review.
 import { Loader2, Search, Trash2, UploadCloud } from 'lucide-react';
-import { ChangeEvent, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, Dispatch, KeyboardEvent, SetStateAction, useEffect, useRef, useState } from 'react';
 import { AdminArea, AdminLevel, AreaChoice, AreaPick, AreaUpload, EstimateBlocker, JobSummary, SavedArea } from '../../api/generationApi';
 import { userMessage } from '../../api/httpClient';
 import { Alert, Button, TextField } from '../../components/ui';
+import type { TextFieldProps } from '../../components/ui';
 import { Badge, Dialog, EmptyState, RadioGroup, Skeleton, TabPanel, Tabs } from '../../components/ui/kit';
 import { generation } from '../api';
 import { formatBytes } from '../fusion';
@@ -14,61 +16,88 @@ import '../../i18n/wizard';
 import AreaMap, { AreaSketch } from './AreaMap';
 import { areaTabs, AreaState, AreaTab, bboxText, blockerText, estimateBlockers, estimateWarningItems, estimateWarnings, hasPolygonOptions, km2Text, ResolvedArea, SIZE_CHIPS, SIZE_LIMITS, warningText } from './areaModel';
 import { PairTable } from './SarPairing';
-import DateTable from './DateTable';
 import { estimateDates, isLong, minutesText, selectionTotals } from './dateModel';
 import { withPairingBlockers } from './sarModel';
 import { EstimateView } from './useGeeEstimate';
 
-/** Picked dates of the estimate (UR-43) and how to change them. */
-export type DatePicking = { picked: string[]; onChange: (next: string[]) => void };
-type Props = { area: AreaState; onChange: (next: AreaState) => void; resolved: ResolvedArea; estimate: EstimateView; estimateHint: string; showErrors: boolean; pairing?: PairingView; dates?: DatePicking };
+type Props = { area: AreaState; onChange: Dispatch<SetStateAction<AreaState>>; resolved: ResolvedArea; showErrors: boolean };
+type Patch = (patch: Partial<AreaState>) => void;
 
-export default function AreaStep({ area, onChange, resolved, estimate, estimateHint, showErrors, pairing, dates }: Props) {
+/** Where the area's point mark goes: the centre in point mode. */
+export const areaCenter = (area: AreaState, resolved: ResolvedArea): [number, number] | undefined =>
+  area.tab === 'point' && resolved.bbox ? [Number(area.lon), Number(area.lat)] : undefined;
+
+export default function AreaStep({ area, onChange, resolved, showErrors }: Props) {
   const { lang, t } = useLanguage();
-  const set = (patch: Partial<AreaState>) => onChange({ ...area, ...patch });
+  // Functional update: a coordinate committed late (blur, debounce) never undoes another one.
+  const set: Patch = (patch) => onChange((current) => ({ ...current, ...patch }));
   const pick = area.tab === 'point' ? 'point' : area.tab === 'box' ? 'box' : null;
+  const invalid = showErrors && !!resolved.error;
   return (
     <div className="area-step">
-      <h3 className="area-step__title">{t('wizard.area.title')}</h3>
       <Tabs<AreaTab> label={t('wizard.area.tabsLabel')} idPrefix="area-mode" items={areaTabs(lang)} value={area.tab} onChange={(tab) => set({ tab })} />
       <div className="area-layout">
         <TabPanel idPrefix="area-mode" value={area.tab} className="area-controls">
-          {area.tab === 'point' && <PointPanel area={area} set={set} showErrors={showErrors} resolved={resolved} />}
-          {area.tab === 'admin' && <AdminPanel area={area} set={set} />}
-          {area.tab === 'box' && <BoxPanel area={area} set={set} />}
-          {area.tab === 'shape' && <ShapePanel area={area} set={set} />}
+          <div className="area-controls__body" data-invalid={invalid || undefined} aria-describedby={invalid ? 'area-error' : undefined}>
+            {area.tab === 'point' && <PointPanel area={area} set={set} showErrors={showErrors} resolved={resolved} />}
+            {area.tab === 'admin' && <AdminPanel area={area} set={set} />}
+            {area.tab === 'box' && <BoxPanel area={area} set={set} />}
+            {area.tab === 'shape' && <ShapePanel area={area} set={set} />}
+          </div>
           {hasPolygonOptions(area.tab) && (area.tab === 'admin' ? area.admin : area.shape) && <PolygonOptions area={area} set={set} />}
+          {invalid && <p className="xc-field__error" id="area-error">{resolved.error}</p>}
         </TabPanel>
         <div className="area-preview">
           <AreaMap
             bbox={resolved.bbox}
             geojson={area.tab === 'admin' || area.tab === 'shape' ? resolved.geojson : undefined}
+            center={areaCenter(area, resolved)}
             pick={pick}
+            describedBy="area-caption"
             onPoint={(lon, lat) => set({ tab: 'point', lon: String(lon), lat: String(lat) })}
             onBox={(bbox) => set({ tab: 'box', west: String(bbox[0]), south: String(bbox[1]), east: String(bbox[2]), north: String(bbox[3]) })}
           />
-          <p className="area-caption tabular" data-testid="area-preview" aria-live="polite">
+          <p className="area-caption tabular" id="area-caption" data-testid="area-preview" aria-live="polite">
             {resolved.bbox
               ? <><strong>{resolved.label}</strong><br />{bboxText(resolved.bbox, lang)}{resolved.areaKm2 != null && ` · ${km2Text(resolved.areaKm2, lang)}`}</>
               : <span className="xc-hint">{t(pick === 'point' ? 'wizard.area.pickPoint' : pick === 'box' ? 'wizard.area.pickBox' : 'wizard.area.pickAny')}</span>}
           </p>
         </div>
       </div>
-      {showErrors && resolved.error && <Alert tone="warning" role="alert">{resolved.error}</Alert>}
-      <EstimatePanel estimate={estimate} hint={estimateHint} pairing={pairing} picked={dates?.picked} />
-      {estimate.data && dates && estimateDates(estimate.data) && <DateTable data={estimate.data} picked={dates.picked} onChange={dates.onChange} pairing={pairing} />}
     </div>
   );
 }
 
-function PointPanel({ area, set, showErrors, resolved }: { area: AreaState; set: (patch: Partial<AreaState>) => void; showErrors: boolean; resolved: ResolvedArea }) {
+/** Wait after the last keystroke before a typed coordinate counts (blur and Enter count at once). */
+export const COMMIT_DELAY = 700;
+
+/**
+ * A number field whose value counts on blur, Enter or a short pause, not on every keystroke (UR-54 W2):
+ * typing "127.63" asks for one estimate, not six. Values set from outside (a map click) show at once.
+ */
+function CommitField({ value, onCommit, ...props }: Omit<TextFieldProps, 'value' | 'onChange'> & { value: string; onCommit: (value: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  const commit = useRef(onCommit);
+  commit.current = onCommit;
+  useEffect(() => { setDraft(value); }, [value]);
+  useEffect(() => {
+    if (draft === value) return;
+    const timer = window.setTimeout(() => commit.current(draft), COMMIT_DELAY);
+    return () => window.clearTimeout(timer);
+  }, [draft, value]);
+  const now = () => { if (draft !== value) commit.current(draft); };
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => { if (event.key === 'Enter') { event.preventDefault(); now(); } };
+  return <TextField {...props} type="number" inputMode="decimal" autoComplete="off" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={now} onKeyDown={onKeyDown} />;
+}
+
+function PointPanel({ area, set, showErrors, resolved }: { area: AreaState; set: Patch; showErrors: boolean; resolved: ResolvedArea }) {
   const { t } = useLanguage();
   const customWrong = area.sizeChip === 'custom' && !!area.customSize && !!resolved.error && /km/.test(resolved.error);
   return (
     <div className="area-panel">
       <div className="form-grid">
-        <TextField label={t('wizard.area.point.lon')} type="number" step="any" placeholder={t('wizard.area.point.lonPlaceholder')} value={area.lon} onChange={(event) => set({ lon: event.target.value })} />
-        <TextField label={t('wizard.area.point.lat')} type="number" step="any" placeholder={t('wizard.area.point.latPlaceholder')} value={area.lat} onChange={(event) => set({ lat: event.target.value })} />
+        <CommitField label={t('wizard.area.point.lon')} step="any" placeholder={t('wizard.area.point.lonPlaceholder')} value={area.lon} onCommit={(lon) => set({ lon })} aria-invalid={showErrors && !area.lon.trim() ? true : undefined} />
+        <CommitField label={t('wizard.area.point.lat')} step="any" placeholder={t('wizard.area.point.latPlaceholder')} value={area.lat} onCommit={(lat) => set({ lat })} aria-invalid={showErrors && !area.lat.trim() ? true : undefined} />
       </div>
       <p className="xc-hint">{t('wizard.area.point.clickHint')}</p>
       <div className="xc-field">
@@ -83,29 +112,29 @@ function PointPanel({ area, set, showErrors, resolved }: { area: AreaState; set:
       </div>
       {area.sizeChip === 'custom' && (
         <>
-          <TextField label={t('wizard.area.point.customLabel', SIZE_LIMITS)} type="number" step="any" min={SIZE_LIMITS.min} max={SIZE_LIMITS.max} value={area.customSize} onChange={(event) => set({ customSize: event.target.value })} />
-          {(customWrong || (showErrors && !area.customSize)) && <Alert tone="danger" role="alert">{t('wizard.area.errors.size', SIZE_LIMITS)}</Alert>}
+          <CommitField label={t('wizard.area.point.customLabel', SIZE_LIMITS)} step="any" min={SIZE_LIMITS.min} max={SIZE_LIMITS.max} value={area.customSize} onCommit={(customSize) => set({ customSize })} error={customWrong || (showErrors && !area.customSize) ? t('wizard.area.errors.size', SIZE_LIMITS) : undefined} />
         </>
       )}
     </div>
   );
 }
 
-function BoxPanel({ area, set }: { area: AreaState; set: (patch: Partial<AreaState>) => void }) {
+function BoxPanel({ area, set }: { area: AreaState; set: Patch }) {
   const { t } = useLanguage();
   const example = (value: string) => t('wizard.area.box.example', { value });
+  // The coordinates are open from the start: they are the keyboard way to set the box (the map needs a pointer).
   return (
     <div className="area-panel">
       <p className="xc-hint">{t('wizard.area.box.hint')}</p>
-      <details className="area-details" open={!!(area.west || area.south || area.east || area.north) || undefined}>
-        <summary>{t('wizard.area.box.coords')}</summary>
+      <fieldset className="area-coords">
+        <legend className="xc-label">{t('wizard.area.box.coords')}</legend>
         <div className="form-grid">
-          <TextField label={t('wizard.area.box.west')} type="number" step="any" placeholder={example('126.50')} value={area.west} onChange={(event) => set({ west: event.target.value })} />
-          <TextField label={t('wizard.area.box.south')} type="number" step="any" placeholder={example('35.00')} value={area.south} onChange={(event) => set({ south: event.target.value })} />
-          <TextField label={t('wizard.area.box.east')} type="number" step="any" placeholder={example('129.50')} value={area.east} onChange={(event) => set({ east: event.target.value })} />
-          <TextField label={t('wizard.area.box.north')} type="number" step="any" placeholder={example('37.00')} value={area.north} onChange={(event) => set({ north: event.target.value })} />
+          <CommitField label={t('wizard.area.box.west')} step="any" placeholder={example('126.50')} value={area.west} onCommit={(west) => set({ west })} />
+          <CommitField label={t('wizard.area.box.south')} step="any" placeholder={example('35.00')} value={area.south} onCommit={(south) => set({ south })} />
+          <CommitField label={t('wizard.area.box.east')} step="any" placeholder={example('129.50')} value={area.east} onCommit={(east) => set({ east })} />
+          <CommitField label={t('wizard.area.box.north')} step="any" placeholder={example('37.00')} value={area.north} onCommit={(north) => set({ north })} />
         </div>
-      </details>
+      </fieldset>
     </div>
   );
 }
@@ -113,7 +142,7 @@ function BoxPanel({ area, set }: { area: AreaState; set: (patch: Partial<AreaSta
 const LEVELS: Array<{ id: AdminLevel | ''; key: 'all' | 'sido' | 'sigungu' }> = [{ id: '', key: 'all' }, { id: 'sido', key: 'sido' }, { id: 'sigungu', key: 'sigungu' }];
 /** Hangul in a server sentence: an English screen shows its own wording instead (server texts get codes in stage 5). */
 
-function AdminPanel({ area, set }: { area: AreaState; set: (patch: Partial<AreaState>) => void }) {
+function AdminPanel({ area, set }: { area: AreaState; set: Patch }) {
   const [query, setQuery] = useState('');
   const [level, setLevel] = useState<AdminLevel | ''>('');
   const { lang, t } = useLanguage();
@@ -179,7 +208,7 @@ function AdminPanel({ area, set }: { area: AreaState; set: (patch: Partial<AreaS
   );
 }
 
-function PolygonOptions({ area, set }: { area: AreaState; set: (patch: Partial<AreaState>) => void }) {
+function PolygonOptions({ area, set }: { area: AreaState; set: Patch }) {
   const { t } = useLanguage();
   return (
     <fieldset className="area-fieldset">
@@ -199,7 +228,7 @@ function PolygonOptions({ area, set }: { area: AreaState; set: (patch: Partial<A
 
 type Pending = { name: string; file?: File; jobId?: string | number; choice: AreaChoice };
 
-function ShapePanel({ area, set }: { area: AreaState; set: (patch: Partial<AreaState>) => void }) {
+function ShapePanel({ area, set }: { area: AreaState; set: Patch }) {
   const { lang, t } = useLanguage();
   const areas = useLoad<SavedArea[]>(() => generation.listAreas(), []);
   const [deleting, setDeleting] = useState<SavedArea | null>(null);
@@ -386,54 +415,101 @@ function FromJobs({ busy, onImport }: { busy: boolean; onImport: (job: JobSummar
 export type PairingView = { keepUnpaired: boolean };
 const isNoMatch = (blocker: EstimateBlocker) => (typeof blocker === 'string' ? blocker : blocker.code) === 'NO_S1_MATCH';
 
+/** Whole seconds since `since`, ticking once a second while it is set. */
+export function useElapsed(since?: number) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (since == null) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [since]);
+  return since == null ? 0 : Math.max(0, Math.floor((now - since) / 1000));
+}
+/** After this many seconds the panel adds why it may take a while. */
+const SLOW_SECONDS = 10;
+
+/**
+ * The size estimate. `compact` (review step) keeps the three numbers that decide it: dates, size, time.
+ * While a new estimate is calculated the last one stays, dimmed, under "다시 계산 중 · n초" (no layout jump).
+ */
 export function EstimatePanel({ estimate, hint, compact, pairing, picked }: { estimate: EstimateView; hint?: string; compact?: boolean; pairing?: PairingView; picked?: string[] }) {
   const { lang, t } = useLanguage();
   const num = (value: number) => formatNumber(value, {}, lang);
-  const { data } = estimate;
+  const { data, stale } = estimate;
+  const loading = estimate.status === 'loading';
+  const seconds = useElapsed(loading ? estimate.since : undefined);
   const dates = estimateDates(data);
   // With a date list the totals follow the checked dates at once; older servers keep the plain estimate.
   const totals = data && dates ? selectionTotals(data, picked ?? dates.map((item) => item.date)) : null;
-  const seconds = totals ? totals.seconds : data?.estimatedSeconds ?? null;
+  const time = totals ? totals.seconds : data?.estimatedSeconds ?? null;
   // Requests scale with the picked dates like bytes and time do.
   const requests = data ? (totals && totals.total ? Math.ceil((data.requestTiles * totals.count) / totals.total) : data.requestTiles) : 0;
   const blockers = !data ? [] : pairing && dates ? withPairingBlockers(data, true) : estimateBlockers(data).filter((blocker) => !pairing || !isNoMatch(blocker));
+  const timesValue = totals && (
+    <>
+      {totals.count !== totals.total
+        ? <>{t('wizard.estimate.timesPicked', { count: num(totals.count) })}<span className="xc-hint">{t('wizard.estimate.ofTotal', { count: num(totals.total) })}</span></>
+        : t('wizard.estimate.timesValue', { count: num(totals.count) })}
+      {pairing && !pairing.keepUnpaired && totals.unpaired > 0 && <span className="xc-hint">{t('wizard.estimate.unpairedDropped', { count: totals.unpaired })}</span>}
+    </>
+  );
+  const bytes = totals ? totals.bytes : data?.estimatedBytes ?? 0;
   return (
-    <section className={`area-estimate ${compact ? 'is-compact' : ''}`} aria-label={t('wizard.estimate.title')}>
+    <section className={`area-estimate${compact ? ' is-compact' : ''}${loading && !data ? ' is-waiting' : ''}`} aria-label={t('wizard.estimate.title')}>
       <h3 className="area-estimate__title"><Search size={14} aria-hidden /> {t('wizard.estimate.title')}</h3>
       {estimate.status === 'idle' && <p className="xc-hint">{hint || t('wizard.estimate.idle')}</p>}
-      {estimate.status === 'loading' && <p className="xc-hint" role="status"><Loader2 size={14} className="spin" aria-hidden /> {t('wizard.estimate.loading')}</p>}
+      {loading && (
+        <p className="xc-hint area-estimate__busy tabular" role="status">
+          <Loader2 size={14} className="spin" aria-hidden />
+          {t(stale ? 'wizard.estimate.recalculating' : 'wizard.estimate.loadingFor', { seconds })}
+          {seconds >= SLOW_SECONDS && <span> · {t('wizard.estimate.slow')}</span>}
+        </p>
+      )}
       {estimate.status === 'error' && <Alert tone="warning">{t('wizard.estimate.failed', { error: estimate.error ?? '' })}</Alert>}
       {data && (
-        <>
-          <dl className="meta-list area-estimate__list">
-            <dt>{t('wizard.estimate.area')}</dt><dd className="tabular">{km2Text(data.areaKm2, lang)}</dd>
-            <dt>{t('wizard.estimate.grid')}</dt><dd className="tabular">{num(data.grid.width)} × {num(data.grid.height)} px</dd>
-            {totals ? (
-              <>
-                <dt>{t('wizard.estimate.times')}</dt>
-                <dd className="tabular" data-testid="estimate-times">
-                  {totals.count !== totals.total
-                    ? <>{t('wizard.estimate.timesPicked', { count: num(totals.count) })}<span className="xc-hint">{t('wizard.estimate.ofTotal', { count: num(totals.total) })}</span></>
-                    : t('wizard.estimate.timesValue', { count: num(totals.count) })}
-                  {pairing && !pairing.keepUnpaired && totals.unpaired > 0 && <span className="xc-hint">{t('wizard.estimate.unpairedDropped', { count: totals.unpaired })}</span>}
-                </dd>
-                <dt>{t('wizard.estimate.scenes')}</dt><dd className="tabular">{t('wizard.estimate.scenesValue', { count: num(totals.scenes) })}</dd>
-                <dt>{t('wizard.estimate.bytes')}</dt><dd className="tabular" data-testid="estimate-bytes">{formatBytes(totals.bytes)}</dd>
-              </>
-            ) : (
-              <>
-                <dt>{t('wizard.estimate.scenes')}</dt><dd className="tabular">{data.scenes == null ? t('wizard.estimate.unknown') : t('wizard.estimate.scenesValue', { count: num(data.scenes) })}</dd>
-                <dt>{t('wizard.estimate.bytes')}</dt><dd className="tabular">{formatBytes(data.estimatedBytes)}</dd>
-              </>
-            )}
-            {seconds != null && <><dt>{t('wizard.estimate.time')}</dt><dd className="tabular" data-testid="estimate-time">{minutesText(seconds, lang)}</dd></>}
-          </dl>
-          {isLong(seconds) && <p className="xc-hint">{t(dates ? 'wizard.estimate.fewerDates' : 'wizard.estimate.smaller')}</p>}
-          {requests > 1 && <p className="xc-hint">{t('wizard.estimate.split', { count: num(requests) })}</p>}
-          {estimateWarnings(estimateWarningItems(data), totals, blockers.length > 0).map((warning, index) => <Alert key={index} tone="warning">{warningText(warning, lang)}</Alert>)}
+        <div className={`area-estimate__body${stale ? ' is-stale' : ''}`} aria-busy={stale || undefined} data-testid="estimate-body">
+          {compact ? (
+            <dl className="meta-list area-estimate__list area-estimate__figures">
+              <dt>{t('wizard.estimate.times')}</dt>
+              <dd className="tabular" data-testid="estimate-times">{timesValue || (data.scenes == null ? t('wizard.estimate.unknown') : t('wizard.estimate.scenesValue', { count: num(data.scenes) }))}</dd>
+              <dt>{t('wizard.estimate.bytes')}</dt><dd className="tabular" data-testid="estimate-bytes">{formatBytes(bytes)}</dd>
+              <dt>{t('wizard.estimate.time')}</dt><dd className="tabular" data-testid="estimate-time">{minutesText(time, lang)}</dd>
+            </dl>
+          ) : (
+            <>
+              <dl className="meta-list area-estimate__list">
+                <dt>{t('wizard.estimate.area')}</dt><dd className="tabular">{km2Text(data.areaKm2, lang)}</dd>
+                {totals ? (
+                  <>
+                    <dt>{t('wizard.estimate.times')}</dt><dd className="tabular" data-testid="estimate-times">{timesValue}</dd>
+                    <dt>{t('wizard.estimate.scenes')}</dt><dd className="tabular">{t('wizard.estimate.scenesValue', { count: num(totals.scenes) })}</dd>
+                    <dt>{t('wizard.estimate.bytes')}</dt><dd className="tabular" data-testid="estimate-bytes">{formatBytes(totals.bytes)}</dd>
+                  </>
+                ) : (
+                  <>
+                    <dt>{t('wizard.estimate.scenes')}</dt><dd className="tabular">{data.scenes == null ? t('wizard.estimate.unknown') : t('wizard.estimate.scenesValue', { count: num(data.scenes) })}</dd>
+                    <dt>{t('wizard.estimate.bytes')}</dt><dd className="tabular">{formatBytes(data.estimatedBytes)}</dd>
+                  </>
+                )}
+                {time != null && <><dt>{t('wizard.estimate.time')}</dt><dd className="tabular" data-testid="estimate-time">{minutesText(time, lang)}</dd></>}
+              </dl>
+              {/* Grid size and request count matter to us, not to most users: one click away. */}
+              <details className="area-estimate__more">
+                <summary>{t('wizard.estimate.details')}</summary>
+                <dl className="meta-list area-estimate__list">
+                  <dt>{t('wizard.estimate.grid')}</dt><dd className="tabular">{num(data.grid.width)} × {num(data.grid.height)} px</dd>
+                  <dt>{t('wizard.estimate.requests')}</dt><dd className="tabular">{num(requests)}</dd>
+                </dl>
+              </details>
+              {isLong(time) && <p className="xc-hint">{t(dates ? 'wizard.estimate.fewerDates' : 'wizard.estimate.smaller')}</p>}
+              {requests > 1 && <p className="xc-hint">{t('wizard.estimate.split')}</p>}
+            </>
+          )}
+          {!compact && estimateWarnings(estimateWarningItems(data), totals, blockers.length > 0).map((warning, index) => <Alert key={index} tone="warning">{warningText(warning, lang)}</Alert>)}
           {blockers.map((blocker, index) => <Alert key={index} tone="danger" role="alert">{blockerText(blocker, lang)}</Alert>)}
-          {pairing && !dates && <PairTable data={data} keepUnpaired={pairing.keepUnpaired} />}
-        </>
+          {!compact && pairing && !dates && <PairTable data={data} keepUnpaired={pairing.keepUnpaired} />}
+        </div>
       )}
     </section>
   );

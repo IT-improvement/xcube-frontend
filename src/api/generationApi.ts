@@ -104,8 +104,9 @@ const areaResult = (status: number, body: any): AreaUpload | undefined => {
 };
 
 export const generationApi = {
-  estimateGee(input: GeeJobBody) {
-    return request<GeeEstimate>(GENERATION_API_BASE_URL, '/api/v1/generation-jobs/gee/estimate', { method: 'POST', body: JSON.stringify(input) });
+  /** `signal` lets the wizard drop a request whose inputs changed (the body is unchanged). */
+  estimateGee(input: GeeJobBody, signal?: AbortSignal) {
+    return request<GeeEstimate>(GENERATION_API_BASE_URL, '/api/v1/generation-jobs/gee/estimate', { method: 'POST', body: JSON.stringify(input), signal });
   },
   async searchAdminAreas(query: string, level?: AdminLevel): Promise<AdminSearch> {
     const params = new URLSearchParams({ q: query });

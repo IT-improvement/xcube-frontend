@@ -90,7 +90,7 @@ export const generation = {
   collections: (): Promise<GeeCollection[]> => (useMockApi ? pause(150).then(() => DEMO_COLLECTIONS) : generationApi.getCollections()),
   inspect: (type: 'geotiff' | 'shapefile' | 'cas500', file: File): Promise<SpatialInspection> => (useMockApi ? pause().then(() => demoInspection(type, file)) : generationApi.inspectSpatialFile(type, file)),
   createGeeJob: (input: Parameters<typeof generationApi.createGeeJob>[0]): Promise<GenerationJob> => (useMockApi ? pause().then(() => demoJob(input.name, 'GEE_TO_ZARR')) : generationApi.createGeeJob(input)),
-  estimateGee: (body: GeeJobBody): Promise<GeeEstimate> => (useMockApi ? areaDemo.estimate(body) : generationApi.estimateGee(body)),
+  estimateGee: (body: GeeJobBody, signal?: AbortSignal): Promise<GeeEstimate> => (useMockApi ? areaDemo.estimate(body) : generationApi.estimateGee(body, signal)),
   searchAdminAreas: (query: string, level?: AdminLevel): Promise<AdminSearch> => (useMockApi ? areaDemo.searchAdmin(query, level) : generationApi.searchAdminAreas(query, level)),
   getAdminArea: (code: string): Promise<AdminArea> => (useMockApi ? areaDemo.getAdmin(code) : generationApi.getAdminArea(code)),
   listAreas: (): Promise<SavedArea[]> => (useMockApi ? areaDemo.list() : generationApi.listAreas()),

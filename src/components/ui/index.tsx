@@ -31,7 +31,7 @@ export function ButtonAnchor({ variant, size, block, className, children, ...pro
   return <a className={buttonClass({ variant, size, block }, className)} {...props}>{children}</a>;
 }
 
-type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & { label: string; help?: string; error?: string };
+export type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & { label: string; help?: string; error?: string };
 
 export function TextField({ label, help, error, type = 'text', id, className, ...props }: TextFieldProps) {
   const generated = useId();

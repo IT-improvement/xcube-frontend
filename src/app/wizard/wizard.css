@@ -1,4 +1,6 @@
-/* S4 data add wizard and the variable style editor. */
+/* S4 data add wizard and the variable style editor (field-book system, DESIGN.md).
+   One sheet (the wizard card); everything inside is divided by rules, not boxed (UR-54 W8). */
+.wizard { --wizard-bar: 48px; } /* the app's top bar (app.css .app-top) */
 .wizard-steps { display: flex; gap: var(--space-2); margin: 0; padding: 0; list-style: none; overflow-x: auto; scrollbar-width: none; }
 .wizard-steps li { flex: 1 1 0; min-width: 120px; display: flex; align-items: center; gap: var(--space-2); padding: 10px 12px; border-radius: var(--fb-radius); background: var(--fb-surface); border: 1px solid var(--fb-rule); color: var(--fb-ink-3); }
 .wizard-steps__dot { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: var(--fb-radius-mark); background: var(--fb-sunken); font: 600 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
@@ -8,17 +10,32 @@
 .wizard-steps li.is-done { color: var(--fb-ink-2); }
 .wizard-steps li.is-done .wizard-steps__dot { background: transparent; color: var(--fb-ok); box-shadow: inset 0 0 0 1px var(--fb-rule-strong); }
 
-.wizard-card { overflow: hidden; }
+/* No overflow clipping on the card: the footer sticks to the viewport bottom (W1). */
 .wizard-body { display: grid; gap: var(--space-5); padding: var(--space-5); }
 .wizard-title { font: var(--text-h2); }
 .wizard-title:focus { outline: none; }
-.wizard-section { display: grid; gap: var(--space-5); }
-.wizard-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 12px var(--space-5); border-top: 1px solid var(--fb-rule); background: var(--fb-surface); }
-.wizard-foot .xc-hint { font-variant-numeric: tabular-nums; }
-.wizard-foot__wait { display: inline-flex; align-items: center; gap: var(--space-2); margin-left: auto; text-align: right; }
+.wizard-section { display: grid; gap: var(--space-5); min-width: 0; }
+.wizard-group { display: grid; gap: var(--space-2); min-width: 0; }
+.wizard-foot {
+  position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2) var(--space-3);
+  padding: 12px var(--space-5); border-top: 1px solid var(--fb-rule); background: var(--fb-surface);
+  border-radius: 0 0 var(--fb-radius-lg) var(--fb-radius-lg);
+}
+.wizard-foot__count { font-variant-numeric: tabular-nums; }
+.wizard-foot__wait { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-left: auto; text-align: right; word-break: keep-all; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); align-items: start; }
-.bounds-fieldset { margin: 0; padding: 0; border: 0; display: grid; gap: var(--space-3); }
 .spin { animation: xc-spin 0.9s linear infinite; }
+
+/* A ruled section inside the sheet: one rule on top, no frame or fill (replaces the old inner boxes, K1). */
+.wizard-rule { display: grid; gap: var(--space-3); padding-top: 14px; border-top: 1px solid var(--fb-rule); min-width: 0; word-break: keep-all; }
+.wizard-rule__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.wizard-rule__title { font: 600 14px/1.3 var(--font-sans); }
+.wizard-rule__text { margin: 0; font-size: 14px; }
+.wizard-more > summary { width: fit-content; cursor: pointer; font: 600 13px/1.4 var(--font-sans); color: var(--fb-ink); }
+.wizard-more[open] > summary { margin-bottom: var(--space-3); }
+.wizard-period { max-width: 560px; }
+/* Segmented groups in the wizard: content width, segments of equal width (W8). */
+.wizard .segmented { justify-self: start; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: max-content; }
 
 .method-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 /* Selection cards: hover is sunken, the selected card has an ink outline (no shadow, no tint). */
@@ -43,28 +60,47 @@
 .file-drop__icon { display: grid; place-items: center; color: var(--fb-ink-2); }
 .file-drop small { color: var(--fb-ink-2); }
 
-.catalog { display: grid; gap: var(--space-3); }
-.catalog__list { display: grid; gap: 6px; max-height: 300px; overflow-y: auto; }
+/* GEE "자료": the preset as the large first choice, then "직접 고르기" with the whole list (no inner scroll). */
+.catalog { gap: var(--space-5); }
+.catalog__preset { display: grid; }
+.catalog__item--preset { align-items: flex-start; padding: var(--space-4); border-color: var(--fb-rule-strong); border-radius: var(--fb-radius-lg); }
+.catalog__item--preset .xc-cell-main { gap: 4px; }
+.catalog__item--preset .xc-cell-main strong { font: var(--text-h3); }
+.catalog__item--preset .xc-cell-main small { white-space: normal; word-break: keep-all; }
+.catalog__custom { display: grid; gap: var(--space-3); padding-top: 14px; border-top: 1px solid var(--fb-rule); }
+.catalog__custom .xc-hint { margin: 0; }
+.catalog__search { max-width: none; }
+.catalog__list { display: grid; gap: 6px; }
 .catalog__item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 10px 12px; text-align: left; border: 1px solid var(--fb-rule); border-radius: var(--fb-radius); background: var(--fb-surface); color: var(--fb-ink); cursor: pointer; transition: background-color 140ms ease-out, border-color 140ms ease-out; }
 .catalog__item:hover { background: var(--fb-sunken); }
 .catalog__item.is-on { border-color: var(--fb-ink); box-shadow: inset 0 0 0 1px var(--fb-ink); }
 .catalog__item:focus-visible { outline-offset: 1px; }
 
-.inspect-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; border: 1px solid var(--fb-rule); border-radius: var(--fb-radius-lg); overflow: hidden; }
-.inspect-grid .bbox-map { border-bottom: 0; border-right: 1px solid var(--color-border); height: 100%; }
+.inspect-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; padding-top: 14px; border-top: 1px solid var(--fb-rule); }
+.inspect-grid .bbox-map { border-radius: var(--fb-radius-lg); }
+.inspect-grid__empty { padding: var(--space-5); }
 .checklist { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .checklist li { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: var(--fb-radius-mark); font: 600 12.5px/1 var(--font-sans); }
 .checklist li.ok { background: color-mix(in srgb, var(--fb-ok) 10%, var(--fb-surface)); color: var(--fb-ok); }
 .checklist li.missing { background: color-mix(in srgb, var(--fb-bad) 10%, var(--fb-surface)); color: var(--fb-bad); }
 .summary-list { padding: 0; }
 .summary-vars { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.rgb-box { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--fb-rule); border-radius: var(--fb-radius); background: var(--fb-ground); }
+
+/* GEE "이름·확인": the area on a read-only map next to the summary. */
+.review-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: var(--space-5); align-items: start; padding-top: 14px; border-top: 1px solid var(--fb-rule); }
+.review-grid__map { min-width: 0; }
+.area-map--read { height: 280px; }
 
 .wizard-result { display: grid; justify-items: center; gap: var(--space-3); padding: var(--space-10) var(--space-6); text-align: center; word-break: keep-all; }
 .wizard-result__icon { display: grid; place-items: center; color: var(--fb-ok); font: 700 24px/1 var(--font-sans); }
 .wizard-result__icon.is-running { color: var(--fb-ink-2); }
 .wizard-result__icon.is-failed { color: var(--fb-bad); }
 .wizard-result__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-3); }
+.wizard-result__progress { display: grid; justify-items: center; gap: 6px; width: min(320px, 100%); }
+.wizard-progress { width: 100%; height: 4px; appearance: none; border: 0; border-radius: 2px; background: var(--fb-sunken); box-shadow: inset 0 0 0 1px var(--fb-rule); overflow: hidden; }
+.wizard-progress::-webkit-progress-bar { background: var(--fb-sunken); }
+.wizard-progress::-webkit-progress-value { background: var(--fb-ink); transition: width 400ms var(--fb-ease-out); }
+.wizard-progress::-moz-progress-bar { background: var(--fb-ink); }
 
 /* Variable style editor */
 .vse { display: grid; gap: var(--space-4); }
@@ -79,10 +115,13 @@
 .vse-option__text strong { font: 600 14px/1.3 var(--font-sans); overflow-wrap: anywhere; }
 .vse-option__text small { color: var(--fb-ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
 .vse-custom { display: flex; align-items: flex-end; gap: var(--space-2); }
-.vse-rows { display: grid; gap: var(--space-3); }
-.vse-row { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--fb-rule); border-radius: var(--fb-radius); background: var(--fb-surface); }
-.vse-row.has-error { border-color: var(--fb-bad); }
-.vse-row__head { display: flex; align-items: center; gap: var(--space-2); }
+.vse-custom__field { flex: 1; }
+/* One ruled row per variable (no boxes inside the sheet). */
+.vse-rows { display: grid; }
+.vse-row { display: grid; gap: var(--space-3); padding: 14px 0; border-top: 1px solid var(--fb-rule); }
+.vse-row:first-child { border-top: 0; padding-top: 0; }
+.vse-row.has-error { box-shadow: inset 2px 0 0 var(--fb-bad); padding-left: 12px; }
+.vse-row__head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
 .vse-row__head strong { font: var(--text-h3); }
 .vse-row__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); align-items: end; }
 .vse-row .xc-field { gap: 6px; }
@@ -90,47 +129,40 @@
 .vse-range__auto { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-height: 36px; }
 .vse-colorbar { display: grid; gap: 6px; }
 .vse-colorbar__control { display: flex; align-items: center; gap: var(--space-2); }
+/* The server's colour-bar preview; an empty sunken box when it has none. */
 .vse-colorbar__swatch { width: 64px; height: 24px; flex: none; overflow: hidden; border-radius: var(--fb-radius-mark); border: 1px solid var(--fb-rule); background: var(--fb-sunken); }
 .vse-colorbar__swatch img { width: 100%; height: 100%; display: block; object-fit: fill; }
-.vse-colorbar__swatch i { display: block; width: 100%; height: 100%; background: linear-gradient(90deg, #440154, #3b528b, #21918c, #5ec962, #fde725); }
-.vse-colorbar__swatch i[data-name='plasma'] { background: linear-gradient(90deg, #0d0887, #7e03a8, #cc4778, #f89540, #f0f921); }
-.vse-colorbar__swatch i[data-name='magma'] { background: linear-gradient(90deg, #000004, #51127c, #b73779, #fc8961, #fcfdbf); }
-.vse-colorbar__swatch i[data-name='cividis'] { background: linear-gradient(90deg, #00204d, #414d6b, #7c7b78, #bcaf6f, #ffea46); }
-.vse-colorbar__swatch i[data-name='Blues'] { background: linear-gradient(90deg, #f7fbff, #9ecae1, #4292c6, #08306b); }
-.vse-colorbar__swatch i[data-name='Greens'] { background: linear-gradient(90deg, #f7fcf5, #a1d99b, #41ab5d, #00441b); }
-.vse-colorbar__swatch i[data-name='RdYlGn'] { background: linear-gradient(90deg, #a50026, #f46d43, #ffffbf, #66bd63, #006837); }
-.vse-colorbar__swatch i[data-name='Spectral'] { background: linear-gradient(90deg, #9e0142, #f46d43, #ffffbf, #66c2a5, #5e4fa2); }
-.vse-colorbar__swatch i[data-name='terrain'] { background: linear-gradient(90deg, #333399, #00b2b2, #99eb85, #ccbe7d, #fff); }
-.vse-colorbar__swatch i[data-name='Greys'] { background: linear-gradient(90deg, #fff, #000); }
 
 @media (max-width: 767px) {
-  .method-grid, .inspect-grid { grid-template-columns: 1fr; }
-  .inspect-grid .bbox-map { border-right: 0; border-bottom: 1px solid var(--color-border); }
+  .method-grid, .inspect-grid, .review-grid { grid-template-columns: 1fr; }
   .vse-range { grid-template-columns: 1fr 1fr; }
   .vse-range__auto { grid-column: 1 / -1; }
   .wizard-body { padding: var(--space-5) var(--space-4); }
+  .wizard-foot { padding: 10px var(--space-4); }
+  .wizard-foot__wait { order: -1; flex-basis: 100%; margin-left: 0; text-align: left; }
   .wizard-steps__label { display: none; }
   .wizard-steps li { min-width: 0; justify-content: center; padding: 8px; }
   .wizard-steps li.is-current .wizard-steps__label { display: inline; }
 }
 @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
 
-/* GEE area step (UR-39): tabs, controls, map preview, estimate. */
+/* GEE area step (UR-39): tabs, controls, map preview. */
 .area-step { display: grid; gap: var(--space-4); word-break: keep-all; }
-.area-step__title { font: var(--text-h3); }
 .area-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: var(--space-5); align-items: start; }
-.area-controls, .area-panel { display: grid; gap: var(--space-4); min-width: 0; }
-.area-preview { display: grid; gap: var(--space-2); position: sticky; top: var(--space-4); min-width: 0; }
+.area-controls, .area-controls__body, .area-panel { display: grid; gap: var(--space-4); min-width: 0; }
+/* Sticky under the 48px top bar, not under it (W3). */
+.area-preview { display: grid; gap: var(--space-2); position: sticky; top: calc(var(--wizard-bar) + var(--space-4)); min-width: 0; }
 .area-map { height: 360px; border: 1px solid var(--fb-rule); border-radius: var(--fb-radius-lg); overflow: hidden; background: var(--fb-sunken); }
 .area-sketch { display: block; width: 100%; height: auto; border: 1px solid var(--fb-rule); border-radius: var(--fb-radius-lg); background: var(--fb-sunken); }
-/* The area the user set is an overprint mark (The Overprint Rule). */
+/* The area the user set is an overprint mark (The Overprint Rule): the sketch, the map and the box being dragged. */
 .area-sketch .area-box { fill: none; stroke: var(--fb-overprint); stroke-width: 2; stroke-dasharray: 6 4; }
 .area-sketch .area-poly { fill: color-mix(in srgb, var(--fb-overprint) 14%, transparent); stroke: var(--fb-overprint); stroke-width: 2; }
+.area-map .area-dragbox { border: 2px dashed var(--fb-overprint); background: color-mix(in srgb, var(--fb-overprint) 10%, transparent); }
 .area-thumb { width: 96px; height: 64px; flex: none; border-radius: var(--radius-sm); border-width: 1px; }
 .area-caption { margin: 0; font-size: 13px; color: var(--fb-ink-2); }
 .area-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-/* Chips: 30px, 6px corners, rule-strong frame; selected fills with ink. */
-.area-chip { min-width: 44px; height: 30px; padding: 0 11px; border: 1px solid var(--fb-rule-strong); border-radius: var(--fb-radius); background: var(--fb-surface); color: var(--fb-ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; cursor: pointer; transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out; }
+/* Chips: 30px, 6px corners, input-border frame (3:1 on surface); selected fills with ink. */
+.area-chip { min-width: 44px; height: 30px; padding: 0 11px; border: 1px solid var(--fb-input-border); border-radius: var(--fb-radius); background: var(--fb-surface); color: var(--fb-ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; cursor: pointer; transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out; }
 .area-chip:hover:not(.is-on) { background: var(--fb-sunken); }
 .area-chip.is-on { border-color: var(--fb-ink); background: var(--fb-ink); color: var(--fb-on-ink); }
 .area-chip:focus-visible, .area-item:focus-visible { outline: 2px solid var(--fb-focus); outline-offset: 2px; }
@@ -141,60 +173,73 @@
 .area-item:hover { background: var(--fb-sunken); }
 .area-item.is-on { border-color: var(--fb-ink); box-shadow: inset 0 0 0 1px var(--fb-ink); }
 .area-item .xc-cell-main { flex: 1; min-width: 0; }
-.area-section { display: grid; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--color-border); }
+.area-section { display: grid; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--fb-rule); }
 .area-section:first-child { border-top: 0; padding-top: 0; }
 .area-section__title { font: 600 14px/1.3 var(--font-sans); }
-.area-fieldset { display: grid; gap: var(--space-3); margin: 0; padding: var(--space-4); border: 1px solid var(--fb-rule); border-radius: var(--fb-radius); }
+.area-fieldset, .area-coords { display: grid; gap: var(--space-3); margin: 0; padding: 14px 0 0; border: 0; border-top: 1px solid var(--fb-rule); min-width: 0; }
+.area-coords { padding-top: 0; border-top: 0; }
+.area-fieldset > legend, .area-coords > legend { float: left; width: 100%; margin-bottom: var(--space-3); padding: 0; }
 .area-file, .area-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); }
 .area-check { align-items: flex-start; }
 .area-details > summary { cursor: pointer; font: 600 13px/1.4 var(--font-sans); color: var(--fb-ink); text-decoration: underline; text-underline-offset: 2px; margin-bottom: var(--space-3); }
 .area-attribution { margin: 0; }
-.area-estimate { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--fb-rule); border-radius: var(--fb-radius-lg); background: var(--fb-ground); }
+
+/* Size estimate: a ruled section. While recalculating the last result stays, dimmed (W2). */
+.area-estimate { display: grid; gap: var(--space-3); padding-top: 14px; border-top: 1px solid var(--fb-rule); }
+.area-estimate.is-waiting { min-height: 160px; align-content: start; } /* room for the first result */
 .area-estimate__title { display: flex; align-items: center; gap: 6px; font: 600 14px/1.3 var(--font-sans); }
+.area-estimate__busy { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0; }
+.area-estimate__body { display: grid; gap: var(--space-3); transition: opacity 160ms var(--fb-ease-out); }
 .area-estimate__list { margin: 0; }
+.area-estimate__more > summary { width: fit-content; cursor: pointer; font-size: 13px; color: var(--fb-ink-2); text-decoration: underline; text-underline-offset: 2px; }
+.area-estimate__more[open] > summary { margin-bottom: var(--space-2); }
+.area-estimate__figures dd { font-weight: 600; }
+.is-stale { opacity: 0.55; }
+.date-pick { transition: opacity 160ms var(--fb-ease-out); }
 @media (max-width: 1023px) {
   .area-layout { grid-template-columns: 1fr; }
   .area-preview { position: static; order: -1; }
   .area-map { height: 280px; }
 }
 
-/* "수체 분석용 S1+S2" (UR-41): preset card, Sentinel-1 options, pair table, fixed variables. */
-.catalog__preset { display: grid; gap: 6px; }
-.catalog__preset .catalog__item { align-items: flex-start; }
-.catalog__preset .xc-cell-main small { white-space: normal; word-break: keep-all; }
-.catalog__group { margin: var(--space-2) 0 0; font: var(--text-label); color: var(--fb-ink-3); }
-.sar-box { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--fb-rule); border-radius: var(--fb-radius); background: var(--fb-ground); word-break: keep-all; }
+/* "수체 분석용 S1+S2" (UR-41): Sentinel-1 options, pair table, fixed variables — ruled, not boxed. */
+.sar-box { display: grid; gap: var(--space-3); padding-top: 14px; border-top: 1px solid var(--fb-rule); word-break: keep-all; }
 .sar-details { display: grid; gap: var(--space-4); }
 .sar-details[open] > summary { margin-bottom: 0; }
 .sar-pairs { display: grid; gap: var(--space-2); }
 .sar-pairs__summary { margin: 0; font-size: 14px; }
-.sar-pairs__wrap { max-height: 260px; overflow-y: auto; border: 1px solid var(--fb-rule); border-radius: var(--fb-radius); background: var(--fb-surface); }
+.sar-pairs__wrap { border: 1px solid var(--fb-rule); border-radius: var(--fb-radius); background: var(--fb-surface); }
 .sar-pairs__table td { padding: 8px var(--space-4); }
 .sar-pairs__table th { padding: 8px var(--space-4); }
 .sar-pairs__table tr.is-unpaired td { color: var(--fb-ink-3); }
-.sar-fixed { display: grid; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--fb-rule); border-radius: var(--fb-radius); background: var(--fb-ground); }
+.sar-fixed { display: grid; gap: var(--space-2); padding-top: 14px; border-top: 1px solid var(--fb-rule); }
 .sar-fixed__list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .sar-fixed__item { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
 .sar-fixed__item strong { min-width: 72px; font: 600 14px/1.3 var(--font-sans); }
 .sar-fixed__lock { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
 
-/* GEE 날짜 고르기 (UR-43) */
+/* GEE 날짜 고르기 (UR-43): the table scrolls with the page; numbers right-aligned, dates on one line (W4). */
 .date-pick { display: grid; gap: var(--space-2); }
 .date-pick__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
 .date-pick__count { margin: 0; font-size: 14px; }
 .date-pick__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .date-pick__clear { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
-.date-pick__n { width: 4.5em; height: 32px; min-height: 32px; padding: 0 8px; }
-.date-pick__wrap { max-height: 320px; overflow-y: auto; border: 1px solid var(--fb-rule); border-radius: var(--fb-radius); background: var(--fb-surface); }
+/* Every control in this row is 30px (chip height). */
+.date-pick__n { width: 4.5em; height: 30px; min-height: 30px; padding: 0 8px; }
+.date-pick__actions .xc-btn--sm { height: 30px; }
+.date-pick__wrap { border: 1px solid var(--fb-rule); border-radius: var(--fb-radius); background: var(--fb-surface); }
 .date-pick__table th, .date-pick__table td { padding: 8px var(--space-4); }
+.date-pick__table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.date-pick__table .date-pick__date { white-space: nowrap; }
 .date-pick__table th.date-pick__check, .date-pick__table td.date-pick__check { width: 40px; padding-right: 0; }
+.date-pick__table td.date-pick__card { display: none; }
 .date-pick__table tr.is-unpaired td { color: var(--fb-ink-3); }
 .date-pick__table input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--fb-ink); }
 .summary-dates summary { cursor: pointer; color: var(--fb-ink-2); font-size: 13px; }
 .summary-dates ul { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 13px; }
 .date-pick__sel { display: inline-flex; gap: 4px; }
-/* sort: one segmented control (bordered box, pressed = ink), so it never reads as loose text */
-.date-pick__order { display: inline-flex; gap: 2px; margin-left: auto; padding: 2px; border: 1px solid var(--fb-rule-strong); border-radius: var(--fb-radius); background: var(--fb-surface); }
+/* sort: one segmented control (bordered box, pressed = ink), segments of equal width */
+.date-pick__order { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; margin-left: auto; padding: 1px; border: 1px solid var(--fb-rule-strong); border-radius: var(--fb-radius); background: var(--fb-surface); }
 .date-pick__order button { height: 26px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--fb-ink-2); font: 600 13px/1 var(--fb-font); cursor: pointer; white-space: nowrap; }
 .date-pick__order button:hover { background: var(--fb-sunken); color: var(--fb-ink); }
 .date-pick__order button[aria-pressed='true'] { background: var(--fb-ink); color: var(--fb-on-ink); }
@@ -203,4 +248,19 @@
 .date-pick__excluded summary { width: fit-content; cursor: pointer; color: var(--fb-ink-2); text-decoration: underline; text-underline-offset: 2px; }
 .date-pick__excluded ul { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 6px 0 0; padding: 0; list-style: none; }
 @media (pointer: coarse) { .date-pick__order button { height: 40px; padding: 0 14px; } }
+/* Phones: one card row per date — check · date · "구름 3.1%" · "레이더 08-17 상승 3.3일". */
+@media (max-width: 767px) {
+  .date-pick__table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .date-pick__table, .date-pick__table tbody { display: block; }
+  .date-pick__table tr { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: var(--space-2); row-gap: 2px; padding: 10px 12px; border-top: 1px solid var(--fb-rule); }
+  .date-pick__table tbody tr:first-child { border-top: 0; }
+  .date-pick__table td { padding: 0; border: 0; }
+  .date-pick__table td.date-pick__check { grid-row: span 2; width: auto; padding-top: 2px; }
+  .date-pick__table td.date-pick__rank, .date-pick__table td.date-pick__wide { display: none; }
+  .date-pick__table td.date-pick__date { font-weight: 600; }
+  .date-pick__table td.date-pick__card { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 13px; color: var(--fb-ink-2); }
+}
 
+@media (prefers-reduced-motion: reduce) {
+  .area-estimate__body, .date-pick, .wizard-progress::-webkit-progress-value { transition: none; }
+}

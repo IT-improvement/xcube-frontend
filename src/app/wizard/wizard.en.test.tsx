@@ -16,6 +16,7 @@ const { pairLine, sarError, defaultSar } = require('./sarModel');
 const AddDataPage = require('./AddDataPage').default;
 const DateTable = require('./DateTable').default;
 const { PairTable, SarOptions } = require('./SarPairing');
+const { geeFlow, EN } = require('./geeFlow.testutil');
 
 const T = 4000;
 const HANGUL = /[가-힣]/;
@@ -30,18 +31,26 @@ function renderWizard() {
   return render(inEnglish(<MemoryRouter initialEntries={['/app/data/new']}><Routes><Route path="/app/data/new" element={<AddDataPage />} /></Routes></MemoryRouter>));
 }
 const next = () => screen.getByRole('button', { name: /^Next/ });
+// UR-54: Method → Data (S2, B8) → Area; the period and the estimate are on "Period & dates".
+const flow = geeFlow(EN);
 async function toGeeArea() {
   renderWizard();
-  fireEvent.click(await screen.findByRole('radio', { name: /Google Earth Engine/ }));
-  fireEvent.click(next());
-  fireEvent.click(await screen.findByRole('radio', { name: /Sentinel-2 L2A/ }));
-  fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-05-01' } });
-  fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-05-31' } });
+  await flow.toData();
+  flow.choose(/Sentinel-2 L2A/, ['B8']);
+  await flow.toArea();
 }
-const setPoint = (lon: string, lat: string) => {
-  fireEvent.change(screen.getByLabelText('Center longitude'), { target: { value: lon } });
-  fireEvent.change(screen.getByLabelText('Center latitude'), { target: { value: lat } });
-};
+const setPoint = (lon: string, lat: string) => flow.setPoint(lon, lat);
+/** Area → Period & dates with May 2026. */
+async function toDates() {
+  await flow.toDates();
+  flow.setPeriod('2026-05-01', '2026-05-31');
+}
+/** Back to the area, change it, and forward again. */
+async function changeArea(change: () => void) {
+  fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+  change();
+  await flow.toDates();
+}
 
 describe('Method step in English', () => {
   test('steps, the four method cards with their group badges, and the validation message', async () => {
@@ -67,11 +76,12 @@ describe('Method step in English', () => {
 describe('GEE area step in English', () => {
   test('tabs, map captions and the point, rectangle and administrative-area panels', async () => {
     await toGeeArea();
-    expect(screen.getByRole('heading', { name: 'Area of interest' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Area' })).toBeInTheDocument();
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Point + size', 'Administrative area', 'Rectangle', 'My areas (Shape)']);
     expect(screen.getByRole('radio', { name: 'Custom' })).toBeInTheDocument();
     expect(screen.getByTestId('area-preview')).toHaveTextContent('Click the map to pick the center.');
-    expect(screen.getByRole('region', { name: 'Estimated size' })).toHaveTextContent('Click the map to pick the center, or enter longitude and latitude.');
+    fireEvent.click(next());
+    expect(screen.getByText('Click the map to pick the center, or enter longitude and latitude.')).toBeInTheDocument();
     setPoint('127.502', '36.454');
     expect(screen.getByTestId('area-preview')).toHaveTextContent('Center 127.5020, 36.4540 · 30 km per side');
     expect(screen.getByTestId('area-preview')).toHaveTextContent('900 km²');
@@ -98,6 +108,7 @@ describe('GEE area step in English', () => {
     jest.spyOn(generation, 'estimateGee').mockImplementationOnce((body: unknown) => new Promise((done) => { release = () => done(real(body)); }));
     await toGeeArea();
     setPoint('127.5', '36.4');
+    await toDates();
     expect(await screen.findByText('Calculating the estimated size.', undefined, { timeout: T })).toBeInTheDocument();
     expect(next()).toBeDisabled();
     await waitFor(() => expect(release).not.toBeNull(), { timeout: T });
@@ -109,15 +120,16 @@ describe('GEE area step in English', () => {
     expect(panel).toHaveTextContent(/\d+ scenes/);
 
     jest.spyOn(generation, 'estimateGee').mockResolvedValue({ areaKm2: 400, grid: { width: 2000, height: 2000 }, scenes: 1, estimatedBytes: 1e8, requestTiles: 3, warnings: ['SIDE_EXCEEDS_100_KM'], blockers: ['NO_FULL_COVER_DATE'] });
-    fireEvent.click(screen.getByRole('radio', { name: '20 km' }));
+    await changeArea(() => fireEvent.click(screen.getByRole('radio', { name: '20 km' })));
     expect(await screen.findByRole('alert', undefined, { timeout: T })).toHaveTextContent('No image covers 100% of this place in the chosen period. Widen the period or move the area.');
-    expect(screen.getByText('The server fetches it in 3 parts.')).toBeInTheDocument();
+    expect(screen.getByText('The area is large, so it is fetched in parts (automatic).')).toBeInTheDocument();
+    expect(next()).toHaveAccessibleDescription(/Resolve the issue shown in the estimate first\./);
     expect(screen.getByText('A side of the area is over 100 km. Fetching may take a long time.')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Estimated size' })).toHaveTextContent('1 scene');
     expect(next()).toBeDisabled();
 
     jest.spyOn(generation, 'estimateGee').mockRejectedValueOnce(new Error('down'));
-    fireEvent.click(screen.getByRole('radio', { name: '10 km' }));
+    await changeArea(() => fireEvent.click(screen.getByRole('radio', { name: '10 km' })));
     expect(await screen.findByText('Can’t continue: the estimate couldn’t be loaded.', undefined, { timeout: T })).toBeInTheDocument();
     expect(screen.getByText('Couldn’t calculate the estimate. Something went wrong. Press Recalculate below.')).toBeInTheDocument();
     jest.spyOn(generation, 'estimateGee').mockImplementation(real);
@@ -220,45 +232,46 @@ describe('Sentinel-1 pairing in English', () => {
 });
 
 describe('Whole GEE flow in English', () => {
-  test('every step, the summary and the result screen have no Korean', async () => {
-    await toGeeArea();
+  test('every step, the review and the result screen have no Korean', async () => {
+    renderWizard();
+    await flow.toData();
+    expect(screen.getByRole('heading', { level: 2, name: 'Data' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: /Sentinel-2 L2A/ }));
+    expect(screen.getByRole('group', { name: /^Bands to build into Zarr/ })).toHaveTextContent('0 of 7 selected');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'B8' }));
+    expect(document.body).not.toHaveTextContent(HANGUL);
+    await flow.toArea();
     setPoint('127.502', '36.454');
+    await toDates();
+    expect(screen.getByRole('heading', { level: 2, name: 'Period & dates' })).toBeInTheDocument();
     const panel = screen.getByRole('region', { name: 'Estimated size' });
     await waitFor(() => expect(panel).toHaveTextContent('Estimated scenes'), { timeout: T });
     expect(await screen.findByRole('table', { name: 'Choose dates · optical/radar date pairs' }, { timeout: T })).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(HANGUL);
 
-    fireEvent.click(next());
-    expect(await screen.findByRole('heading', { level: 2, name: 'Inspection' })).toBeInTheDocument();
-    expect(screen.getByText('Stored as EPSG:4326')).toBeInTheDocument();
-    expect(document.body).toHaveTextContent('Bands7');
-    expect(screen.getByRole('img', { name: /^Data extent: lon/ })).toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent(HANGUL);
-
-    fireEvent.click(next());
-    expect(await screen.findByRole('heading', { level: 2, name: 'Settings' })).toBeInTheDocument();
-    fireEvent.click(next());
+    await flow.toReview();
+    expect(screen.getByRole('heading', { level: 2, name: 'Name & review' })).toBeInTheDocument();
+    // The name is filled in from the place and period; clearing it asks for one.
+    expect(screen.getByLabelText('Data name')).toHaveValue('127.50,36.45 2026-05');
+    fireEvent.change(screen.getByLabelText('Data name'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Start building' }));
     expect(screen.getAllByText('Enter a data name.').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Data name')).toHaveFocus();
     fireEvent.change(screen.getByLabelText('Data name'), { target: { value: 'Chungju S2' } });
-    expect(screen.getByRole('group', { name: /^Bands to build into Zarr/ })).toHaveTextContent('0 of 7 selected');
-    fireEvent.click(screen.getByRole('checkbox', { name: /B8/ }));
     fireEvent.change(screen.getByLabelText('B8 display min'), { target: { value: '0' } });
     fireEvent.change(screen.getByLabelText('B8 display max'), { target: { value: '4000' } });
     expect(screen.getByRole('combobox', { name: 'B8 color map' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'No project' })).toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent(HANGUL);
-
-    fireEvent.click(next());
-    expect(await screen.findByRole('heading', { level: 2, name: 'Review and create' })).toBeInTheDocument();
     expect(screen.getByText(/Point \+ size · Center 127\.5020, 36\.4540 · 30 km per side/)).toBeInTheDocument();
+    expect(screen.getByTestId('summary-clip')).toHaveTextContent('Keep the rectangle');
     expect(await screen.findByText(/^\d+ of \d+ dates selected$/, undefined, { timeout: T })).toBeInTheDocument();
     expect(screen.getByText(/· viridis · 0 – 4000/)).toBeInTheDocument();
-    const start = await screen.findByRole('button', { name: 'Start building' });
-    await waitFor(() => expect(start).toBeEnabled(), { timeout: T });
+    const start = await flow.createButton();
     expect(document.body).not.toHaveTextContent(HANGUL);
     fireEvent.click(start);
 
     expect(await screen.findByRole('heading', { level: 2, name: 'Build started' }, { timeout: T })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Build started' })).toHaveFocus();
     expect(screen.getByText(/^“Chungju S2” job demo-\d+ ·/)).toHaveTextContent(/^“Chungju S2” job demo-\d+ · Queued · The job keeps running if you close this page\.$/);
     expect(screen.getByRole('link', { name: 'View in Jobs' })).toHaveAttribute('href', '/app/jobs');
     expect(screen.getByRole('button', { name: 'Add other data' })).toBeInTheDocument();
@@ -272,11 +285,9 @@ describe('Result screen in English', () => {
     renderWizard();
     fireEvent.click(await screen.findByRole('radio', { name: /Register Zarr/ }));
     fireEvent.click(next());
+    expect(within(screen.getByRole('list', { name: 'Progress' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Method', '2Source', '3Settings', '4Review and create']);
     fireEvent.change(screen.getByLabelText('Zarr path / URI'), { target: { value: '/data/lake.zarr' } });
-    fireEvent.click(next());
-    const note = await screen.findByText(/When you register, the server checks/);
-    expect(note).toHaveTextContent('When you register, the server checks the CRS (EPSG:4326), variables and times of /data/lake.zarr. Any problem shows up as a status in your data list.');
-    expect(within(note).getByText('/data/lake.zarr').tagName).toBe('STRONG');
+    // Nothing to inspect before registering: straight to the settings.
     fireEvent.click(next());
     fireEvent.change(await screen.findByLabelText('Data name'), { target: { value: 'Lake' } });
     fireEvent.change(screen.getByLabelText('Add variable name'), { target: { value: 'ndwi' } });
@@ -287,6 +298,9 @@ describe('Result screen in English', () => {
     fireEvent.change(screen.getByLabelText('ndwi display min'), { target: { value: '-1' } });
     fireEvent.change(screen.getByLabelText('ndwi display max'), { target: { value: '1' } });
     fireEvent.click(next());
+    const note = await screen.findByText(/When you register, the server checks/);
+    expect(note).toHaveTextContent('When you register, the server checks the CRS (EPSG:4326), variables and times of /data/lake.zarr. Any problem shows up as a status in your data list.');
+    expect(within(note).getByText('/data/lake.zarr').tagName).toBe('STRONG');
     fireEvent.click(await screen.findByRole('button', { name: 'Register' }));
     expect(await screen.findByRole('heading', { level: 2, name: 'Registration requested' }, { timeout: T })).toBeInTheDocument();
     expect(screen.getByText('“Lake” is registered. You can see it in the Viewer once the map server finishes syncing.')).toBeInTheDocument();
@@ -312,6 +326,7 @@ describe('Server message codes in English', () => {
       blockerItems: [{ code: 'SELECTED_DATE_HAS_NO_SCENE', params: { date: '2024-08-14' }, message: 'SELECTED_DATE_HAS_NO_SCENE: 2024-08-14' }],
     });
     setPoint('127.5', '36.4');
+    await toDates();
     expect(await screen.findByRole('alert', undefined, { timeout: T })).toHaveTextContent('No image on a chosen date: 2024-08-14');
     expect(screen.getByText('Left out because they don’t cover the whole area: 2024-08-01, 2024-08-06')).toBeInTheDocument();
     expect(screen.getByText('A side of the area is over 100 km. Fetching may take a long time.')).toBeInTheDocument();
