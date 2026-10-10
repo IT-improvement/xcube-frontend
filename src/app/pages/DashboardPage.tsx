@@ -7,6 +7,7 @@ import { aiViewerHref, appApi, formatDateTime, isOwned, jobs as jobService, peri
 import { useLoad } from '../useLoad';
 import { isActive, JOB_TYPE_LABEL, JobStatusBadge } from '../jobs';
 import { DatasetStatus } from './DataLibraryPage';
+import { useT } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 const RECENT = 5;
@@ -36,7 +37,7 @@ function Section({ id, title, more, children }: { id: string; title: string; mor
 
 /** S2: where things stand (one line), what to do next (three rows), and the latest data and jobs. */
 export default function DashboardPage() {
-  useDocumentTitle('대시보드');
+  useDocumentTitle(useT()('titles.dashboard'));
   const datasets = useLoad(() => appApi.listDatasets());
   const jobs = useLoad(() => jobService.listWithStatus());
   const items = datasets.data ?? [];

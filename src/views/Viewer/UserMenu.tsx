@@ -1,6 +1,8 @@
-// The one account cluster in the Viewer top bar: who is signed in, the colour theme and sign-out.
+// The one account cluster in the Viewer top bar: who is signed in, the colour theme, the screen
+// language and sign-out.
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, LogOut, Moon, Sun } from "lucide-react";
+import { Check, ChevronDown, LogOut, Moon, Sun } from "lucide-react";
+import { LANGS, LANGUAGE_NAMES, useLanguage } from "../../i18n";
 
 export default function UserMenu({
   name,
@@ -14,10 +16,11 @@ export default function UserMenu({
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { lang, setLang } = useLanguage();
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const items = () =>
-    Array.from(rootRef.current?.querySelectorAll<HTMLElement>("[role='menuitem']") ?? []);
+    Array.from(rootRef.current?.querySelectorAll<HTMLElement>("[role^='menuitem']") ?? []);
   useEffect(() => {
     if (!open) return;
     items()[0]?.focus();
@@ -83,6 +86,25 @@ export default function UserMenu({
             {dark ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
             {dark ? "라이트 모드로 전환" : "다크 모드로 전환"}
           </button>
+          {/* Each language is named in its own language (UR-53). Viewer text itself is still Korean. */}
+          <div className="vx-menu__group" role="group" aria-label="언어 · Language">
+            {LANGS.map((code) => (
+              <button
+                key={code}
+                type="button"
+                role="menuitemradio"
+                aria-checked={lang === code}
+                lang={code}
+                onClick={() => {
+                  setLang(code);
+                  close();
+                }}
+              >
+                {lang === code ? <Check size={16} aria-hidden="true" /> : <span className="vx-menu__blank" aria-hidden="true" />}
+                {LANGUAGE_NAMES[code]}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             role="menuitem"

@@ -24,6 +24,7 @@
 
 .auth__main { display: grid; place-items: center; padding: var(--space-10) var(--space-6); background: var(--fb-surface); }
 .auth__panel { width: 100%; max-width: 380px; display: grid; gap: var(--space-4); }
+.auth__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .auth__back {
   display: inline-flex; align-items: center; gap: var(--space-1); justify-self: start;
   color: var(--fb-ink-2) !important; text-decoration: none; font-size: 14px;

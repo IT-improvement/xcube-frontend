@@ -143,3 +143,21 @@
 
 /* Suspense fallback inside the app shell: holds the page area while the page code downloads. */
 .xc-route-wait { min-height: 40vh; display: grid; place-items: center; }
+
+/* Language switch: a quiet segmented group (rule-strong frame, 4px segments, the current one in ink). */
+.xc-lang {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px;
+  border: 1px solid var(--fb-rule-strong); border-radius: var(--fb-radius); background: var(--fb-surface);
+}
+.xc-lang__icon { flex: none; margin: 0 4px 0 5px; color: var(--fb-ink-3); }
+.xc-lang button {
+  flex: none; height: 24px; padding: 0 8px; border: 0; border-radius: var(--fb-radius-mark); background: transparent;
+  color: var(--fb-ink-2); font: 600 12.5px/1 var(--fb-font); cursor: pointer; white-space: nowrap;
+  transition: background-color 140ms ease-out, color 140ms ease-out;
+}
+.xc-lang button:hover:not([aria-pressed='true']) { background: var(--fb-sunken); color: var(--fb-ink); }
+.xc-lang button[aria-pressed='true'] { background: var(--fb-ink); color: var(--fb-on-ink); cursor: default; }
+.xc-lang button:focus-visible { outline-offset: -2px; }
+.xc-lang--block { display: flex; }
+.xc-lang--block button { flex: 1 1 0; }
+@media (pointer: coarse), (max-width: 767px) { .xc-lang button { height: 36px; padding: 0 12px; } }

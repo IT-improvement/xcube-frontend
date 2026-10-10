@@ -10,6 +10,7 @@ import type { AiWaterJob } from '../../api/aiApi';
 import { useLoad } from '../useLoad';
 import { dateOnly, pairLine } from '../wizard/sarModel';
 import { DatasetStatus, DeleteDatasetDialog, LinkProjectDialog } from './DataLibraryPage';
+import { useT } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 type Tab = 'overview' | 'variables' | 'history' | 'ai' | 'projects';
@@ -51,7 +52,8 @@ export default function DatasetDetailPage() {
   const { datasetId = '' } = useParams();
   const navigate = useNavigate();
   const dataset = useLoad(() => appApi.getDataset(datasetId), [datasetId]);
-  useDocumentTitle(dataset.data?.name ? `${dataset.data.name} · 데이터` : '데이터');
+  const t = useT();
+  useDocumentTitle(dataset.data?.name ? t('titles.dataNamed', { name: dataset.data.name }) : t('titles.data'));
   // The open tab is kept in the URL (?tab=variables) so a reload or a shared link lands on it.
   const [params, setParams] = useSearchParams();
   const tab = (TABS.includes(params.get('tab') as Tab) ? params.get('tab') : 'overview') as Tab;

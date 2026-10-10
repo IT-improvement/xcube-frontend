@@ -2,11 +2,13 @@ import { ArrowLeft } from 'lucide-react';
 import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { authApi } from '../api/authApi';
-import { userMessage } from '../api/httpClient';
+import { ApiError, userMessage } from '../api/httpClient';
 import { useAuth } from '../auth/AuthProvider';
-import { Alert, Button, Logo, TextField } from '../components/ui';
+import { Alert, Button, LanguageSwitch, Logo, TextField } from '../components/ui';
 import './auth.css';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { Lang, TFunction, useLanguage } from '../i18n';
+import { caseDate } from './caseDate';
 
 const DEFAULT_REDIRECT = '/app';
 const USERNAME_RULE = /^[A-Za-z0-9_.-]{3,50}$/;
@@ -21,7 +23,8 @@ export function safeRedirect(value: string | null) {
   return value && value.startsWith('/') && !/^\/[/\\]/.test(value) ? value : DEFAULT_REDIRECT;
 }
 
-type LoginState = { username?: string; notice?: string } | null;
+/** `notice: 'signedUp'` shows the sign-up confirmation (a key, so it follows the language). */
+type LoginState = { username?: string; notice?: 'signedUp' } | null;
 type Errors<K extends string> = Partial<Record<K, string>>;
 
 /**
@@ -51,14 +54,28 @@ function useFormErrors<K extends string>(validate: () => Errors<K>) {
   };
 }
 
+/**
+ * Known auth server codes get our own sentence; a lost connection says so. Anything else keeps the
+ * shared Korean message, or a plain English one (server sentences are not translated yet).
+ */
+function authError(cause: unknown, t: TFunction, lang: Lang) {
+  if (cause instanceof ApiError) {
+    if (cause.code === 'INVALID_CREDENTIALS') return t('auth.errors.invalidCredentials');
+    if (cause.code === 'EMAIL_ALREADY_EXISTS') return t('auth.errors.usernameTaken');
+    if (cause.status === 0) return t('auth.errors.network');
+  }
+  return lang === 'ko' ? userMessage(cause) : t('auth.errors.unexpected');
+}
+
 function AuthLayout({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
+  const { lang, t } = useLanguage();
   return (
     <div className="xc auth">
-      <aside className="auth__brand" aria-label="XCube 소개">
+      <aside className="auth__brand" aria-label={t('auth.brandLabel')}>
         <Logo />
         <div className="auth__brand-copy">
-          <p className="auth__brand-title">위성 영상은 작게 보관하고, 필요한 곳과 날짜만 지도에서 봅니다</p>
-          <p className="auth__brand-text">파일을 올리면 지도에서 바로 열리는 데이터로 바꾸고, AI가 찾은 물을 원본 옆에 놓아 줍니다.</p>
+          <p className="auth__brand-title">{t('landing.hero.title')}</p>
+          <p className="auth__brand-text">{t('auth.brandText')}</p>
         </div>
         <figure className="auth__brand-shot">
           <img
@@ -66,14 +83,17 @@ function AuthLayout({ title, subtitle, children }: { title: string; subtitle: st
             width={780}
             height={1148}
             decoding="async"
-            alt="실제 Viewer 화면: 대청호를 구분선으로 나눠 왼쪽은 위성 원본, 오른쪽은 AI가 물로 찾은 곳을 파란 물색으로 표시"
+            alt={t('auth.brandAlt')}
           />
-          <figcaption>대청호, 2024년 8월 14일 · 원본과 AI 결과</figcaption>
+          <figcaption>{t('auth.brandCaption', { date: caseDate(lang) })}</figcaption>
         </figure>
       </aside>
       <main className="auth__main" id="main">
         <div className="auth__panel">
-          <Link to="/" className="auth__back"><ArrowLeft size={16} aria-hidden />홈으로</Link>
+          <div className="auth__top">
+            <Link to="/" className="auth__back"><ArrowLeft size={16} aria-hidden />{t('auth.back')}</Link>
+            <LanguageSwitch />
+          </div>
           <div className="auth__mobile-logo"><Logo /></div>
           <h1 className="auth__title" id="auth-title">{title}</h1>
           <p className="auth__subtitle">{subtitle}</p>
@@ -85,7 +105,8 @@ function AuthLayout({ title, subtitle, children }: { title: string; subtitle: st
 }
 
 export function LoginPage() {
-  useDocumentTitle('로그인');
+  const { lang, t } = useLanguage();
+  useDocumentTitle(t('titles.login'));
   const { user, signIn } = useAuth();
   const [params] = useSearchParams();
   const location = useLocation();
@@ -98,8 +119,8 @@ export function LoginPage() {
   const [error, setError] = useState('');
   // Login only checks that both fields are filled: older accounts may not follow today's sign-up rules.
   const form = useFormErrors<'username' | 'password'>(() => ({
-    username: username.trim() ? undefined : '아이디를 입력하세요.',
-    password: password ? undefined : '비밀번호를 입력하세요.',
+    username: username.trim() ? undefined : t('auth.errors.usernameRequired'),
+    password: password ? undefined : t('auth.errors.passwordRequired'),
   }));
 
   if (user) return <Navigate to={redirect} replace />;
@@ -114,7 +135,7 @@ export function LoginPage() {
       signIn(await authApi.me());
       navigate(redirect, { replace: true });
     } catch (cause) {
-      setError(userMessage(cause));
+      setError(authError(cause, t, lang));
     } finally {
       setBusy(false);
     }
@@ -122,13 +143,13 @@ export function LoginPage() {
 
   const signupLink = params.get('redirect') ? `/signup?redirect=${encodeURIComponent(redirect)}` : '/signup';
   return (
-    <AuthLayout title="로그인" subtitle="XCube 계정으로 로그인하세요.">
-      {params.get('reason') === 'idle' && <Alert tone="warning">장시간 사용하지 않아 로그아웃되었습니다. 다시 로그인해 주세요.</Alert>}
-      {state?.notice && <Alert tone="success">{state.notice}</Alert>}
+    <AuthLayout title={t('auth.login.title')} subtitle={t('auth.login.subtitle')}>
+      {params.get('reason') === 'idle' && <Alert tone="warning">{t('auth.login.idle')}</Alert>}
+      {state?.notice === 'signedUp' && <Alert tone="success">{t('auth.signup.done')}</Alert>}
       {error && <Alert tone="danger">{error}</Alert>}
       <form ref={form.formRef} className="auth__form" onSubmit={submit} aria-labelledby="auth-title" noValidate>
         <TextField
-          label="아이디"
+          label={t('auth.username')}
           name="username"
           required
           autoComplete="username"
@@ -138,7 +159,7 @@ export function LoginPage() {
           error={form.shown('username')}
         />
         <TextField
-          label="비밀번호"
+          label={t('auth.password')}
           name="password"
           type="password"
           required
@@ -147,15 +168,16 @@ export function LoginPage() {
           onChange={(event) => setPassword(event.target.value)}
           error={form.shown('password')}
         />
-        <Button type="submit" size="lg" block disabled={busy}>{busy ? '로그인하는 중…' : '로그인'}</Button>
+        <Button type="submit" size="lg" block disabled={busy}>{busy ? t('auth.login.busy') : t('auth.login.submit')}</Button>
       </form>
-      <p className="auth__switch">계정이 없나요? <Link to={signupLink}>회원가입</Link></p>
+      <p className="auth__switch">{t('auth.login.noAccount')} <Link to={signupLink}>{t('auth.login.toSignup')}</Link></p>
     </AuthLayout>
   );
 }
 
 export function SignupPage() {
-  useDocumentTitle('회원가입');
+  const { lang, t } = useLanguage();
+  useDocumentTitle(t('titles.signup'));
   const { user } = useAuth();
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -163,10 +185,10 @@ export function SignupPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const form = useFormErrors<keyof typeof values>(() => ({
-    name: values.name.trim() ? undefined : '이름을 입력하세요.',
-    username: !values.username ? '아이디를 입력하세요.' : USERNAME_RULE.test(values.username) ? undefined : '영문·숫자·밑줄(_)·점(.)·하이픈(-)으로 3~50자를 입력하세요.',
-    password: !values.password ? '비밀번호를 입력하세요.' : values.password.length >= 8 ? undefined : '비밀번호는 8자 이상이어야 합니다.',
-    confirm: !values.confirm ? '비밀번호를 한 번 더 입력하세요.' : values.confirm === values.password ? undefined : '비밀번호가 일치하지 않습니다.',
+    name: values.name.trim() ? undefined : t('auth.errors.nameRequired'),
+    username: !values.username ? t('auth.errors.usernameRequired') : USERNAME_RULE.test(values.username) ? undefined : t('auth.errors.usernameRule'),
+    password: !values.password ? t('auth.errors.passwordRequired') : values.password.length >= 8 ? undefined : t('auth.errors.passwordShort'),
+    confirm: !values.confirm ? t('auth.errors.confirmRequired') : values.confirm === values.password ? undefined : t('auth.errors.mismatch'),
   }));
 
   if (user) return <Navigate to={safeRedirect(params.get('redirect'))} replace />;
@@ -182,25 +204,25 @@ export function SignupPage() {
     try {
       await authApi.signup({ email: values.username, password: values.password, name: values.name.trim() });
       const loginPath = params.get('redirect') ? `/login?redirect=${encodeURIComponent(safeRedirect(params.get('redirect')))}` : '/login';
-      navigate(loginPath, { state: { username: values.username, notice: '회원가입이 완료되었습니다. 로그인해 주세요.' } });
+      navigate(loginPath, { state: { username: values.username, notice: 'signedUp' } as LoginState });
     } catch (cause) {
-      setError(userMessage(cause));
+      setError(authError(cause, t, lang));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <AuthLayout title="회원가입" subtitle="몇 가지 정보만 입력하면 바로 시작할 수 있습니다.">
+    <AuthLayout title={t('auth.signup.title')} subtitle={t('auth.signup.subtitle')}>
       {error && <Alert tone="danger">{error}</Alert>}
       <form ref={form.formRef} className="auth__form" onSubmit={submit} aria-labelledby="auth-title" noValidate>
-        <TextField label="이름" name="name" required maxLength={100} autoComplete="name" help="이름은 화면 표시에만 씁니다." value={values.name} onChange={update('name')} onBlur={form.blur('name', values.name)} error={form.shown('name')} />
+        <TextField label={t('auth.signup.name')} name="name" required maxLength={100} autoComplete="name" help={t('auth.signup.nameHelp')} value={values.name} onChange={update('name')} onBlur={form.blur('name', values.name)} error={form.shown('name')} />
         <TextField
-          label="아이디"
+          label={t('auth.username')}
           name="username"
           required
           maxLength={50}
-          help="영문·숫자·밑줄(_)·점(.)·하이픈(-) 3~50자"
+          help={t('auth.signup.usernameHelp')}
           autoComplete="username"
           {...ID_INPUT}
           value={values.username}
@@ -209,11 +231,11 @@ export function SignupPage() {
           error={form.shown('username')}
         />
         <TextField
-          label="비밀번호"
+          label={t('auth.password')}
           name="password"
           type="password"
           required
-          help="8자 이상"
+          help={t('auth.signup.passwordHelp')}
           autoComplete="new-password"
           value={values.password}
           onChange={update('password')}
@@ -221,7 +243,7 @@ export function SignupPage() {
           error={form.shown('password')}
         />
         <TextField
-          label="비밀번호 확인"
+          label={t('auth.signup.confirm')}
           name="confirm"
           type="password"
           required
@@ -231,9 +253,9 @@ export function SignupPage() {
           onBlur={form.blur('confirm', values.confirm)}
           error={form.shown('confirm')}
         />
-        <Button type="submit" size="lg" block disabled={busy}>{busy ? '가입하는 중…' : '회원가입'}</Button>
+        <Button type="submit" size="lg" block disabled={busy}>{busy ? t('auth.signup.busy') : t('auth.signup.submit')}</Button>
       </form>
-      <p className="auth__switch">이미 계정이 있나요? <Link to={params.get('redirect') ? `/login?redirect=${encodeURIComponent(safeRedirect(params.get('redirect')))}` : '/login'}>로그인</Link></p>
+      <p className="auth__switch">{t('auth.signup.haveAccount')} <Link to={params.get('redirect') ? `/login?redirect=${encodeURIComponent(safeRedirect(params.get('redirect')))}` : '/login'}>{t('auth.signup.toLogin')}</Link></p>
     </AuthLayout>
   );
 }

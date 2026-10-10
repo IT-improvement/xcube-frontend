@@ -2,18 +2,19 @@ import { ChevronDown, ExternalLink, LogOut, Menu, Plus, X } from 'lucide-react';
 import { KeyboardEvent, RefObject, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
-import { ButtonLink, Logo, RouteFallback } from '../components/ui';
+import { ButtonLink, LanguageSwitch, Logo, RouteFallback } from '../components/ui';
+import { TKey, useT } from '../i18n';
 import { appApi } from './api';
 import { useActiveJobCount } from './jobs';
 import './app.css';
 
 /** Pages inside the shell. The Viewer keeps its own full-screen layout and opens in a new tab. */
-const NAV = [
-  { to: '/app', label: '대시보드', end: true },
-  { to: '/app/data', label: '데이터', end: false },
-  { to: '/app/projects', label: '프로젝트', end: false },
-  { to: '/app/jobs', label: '작업', end: false },
-  { to: '/app/analysis/fusion', label: '수식 융합', end: false },
+const NAV: Array<{ to: string; label: TKey; end: boolean }> = [
+  { to: '/app', label: 'shell.nav.dashboard', end: true },
+  { to: '/app/data', label: 'shell.nav.data', end: false },
+  { to: '/app/projects', label: 'shell.nav.projects', end: false },
+  { to: '/app/jobs', label: 'shell.nav.jobs', end: false },
+  { to: '/app/analysis/fusion', label: 'shell.nav.fusion', end: false },
 ];
 const ACTIVE_JOBS_HREF = `/app/jobs?status=${encodeURIComponent('QUEUED,RUNNING')}`;
 const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled)';
@@ -43,13 +44,14 @@ function useDismiss(open: boolean, close: () => void, refs: Array<RefObject<HTML
 }
 
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
+  const t = useT();
   return (
     <>
       {NAV.map(({ to, label, end }) => (
-        <NavLink key={to} to={to} end={end} className="app-top__link" onClick={onNavigate}>{label}</NavLink>
+        <NavLink key={to} to={to} end={end} className="app-top__link" onClick={onNavigate}>{t(label)}</NavLink>
       ))}
       <a className="app-top__link" href="/app/viewer" target="_blank" rel="noopener noreferrer" onClick={onNavigate}>
-        Viewer<ExternalLink size={13} aria-hidden className="app-top__ext" /><span className="sr-only">(새 탭)</span>
+        Viewer<ExternalLink size={13} aria-hidden className="app-top__ext" /><span className="sr-only">{t('shell.newTab')}</span>
       </a>
     </>
   );
@@ -58,7 +60,8 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
 /** Signed-in layout for /app pages (S2–S6, S10, S12): a 48px top bar like the Viewer's, then the page. */
 export default function AppShell() {
   const { user, signOut } = useAuth();
-  const name = user?.name ?? '사용자';
+  const t = useT();
+  const name = user?.name ?? t('shell.userFallback');
   const activeJobs = useActiveJobCount();
   const location = useLocation();
 
@@ -90,20 +93,20 @@ export default function AppShell() {
   };
 
   const jobsState = activeJobs ? (
-    <Link className="app-top__jobs" to={ACTIVE_JOBS_HREF} aria-label={`처리 중인 작업 ${activeJobs}개`}>
-      <span className="app-top__jobs-dot" aria-hidden />처리 중 <span className="num">{activeJobs}</span>
+    <Link className="app-top__jobs" to={ACTIVE_JOBS_HREF} aria-label={t('shell.runningJobs', { count: activeJobs })}>
+      <span className="app-top__jobs-dot" aria-hidden />{t('shell.running')} <span className="num">{activeJobs}</span>
     </Link>
   ) : null;
 
   return (
     <div className={`xc app${menuOpen ? ' app--menu-open' : ''}`}>
-      <a className="skip-link" href="#app-main">본문으로 건너뛰기</a>
+      <a className="skip-link" href="#app-main">{t('common.skipToContent')}</a>
       <header className="app-top">
-        <span className="app-top__brand"><Logo to="/app" label="XCube 대시보드" /></span>
-        <nav className="app-top__nav" aria-label="주 메뉴"><NavItems /></nav>
+        <span className="app-top__brand"><Logo to="/app" label={t('shell.brand')} /></span>
+        <nav className="app-top__nav" aria-label={t('shell.mainNav')}><NavItems /></nav>
         <div className="app-top__end">
           {jobsState}
-          <ButtonLink to="/app/data/new" size="sm" className="app-top__add"><Plus size={14} aria-hidden />데이터 추가</ButtonLink>
+          <ButtonLink to="/app/data/new" size="sm" className="app-top__add"><Plus size={14} aria-hidden />{t('shell.addData')}</ButtonLink>
           <div className="app-account">
             <button
               ref={accountButton}
@@ -115,13 +118,14 @@ export default function AppShell() {
             >
               <span className="app-account__initial" aria-hidden>{name.slice(0, 1)}</span>
               <span className="app-account__name">{name}</span>
-              <span className="sr-only">계정 메뉴</span>
+              <span className="sr-only">{t('shell.accountMenu')}</span>
               <ChevronDown size={14} aria-hidden />
             </button>
             {accountOpen && (
               <div ref={accountPanel} id="app-account-panel" className="app-account__panel">
-                <p className="app-account__who"><strong>{name}</strong>{appApi.demo && <small>데모 모드</small>}</p>
-                <button type="button" className="app-account__item" onClick={signOut}><LogOut size={15} aria-hidden />로그아웃</button>
+                <p className="app-account__who"><strong>{name}</strong>{appApi.demo && <small>{t('shell.demo')}</small>}</p>
+                <div className="app-account__lang"><LanguageSwitch block /></div>
+                <button type="button" className="app-account__item" onClick={signOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
               </div>
             )}
           </div>
@@ -129,7 +133,7 @@ export default function AppShell() {
             ref={menuButton}
             type="button"
             className="xc-icon-btn app-top__menu"
-            aria-label={menuOpen ? '메뉴 닫기' : '메뉴 열기'}
+            aria-label={t(menuOpen ? 'common.closeMenu' : 'common.openMenu')}
             aria-expanded={menuOpen}
             aria-controls="app-menu"
             onClick={() => setMenuOpen((value) => !value)}
@@ -142,14 +146,15 @@ export default function AppShell() {
       {menuOpen && (
         <>
           <div className="app-sheet__scrim" aria-hidden />
-          <div ref={sheet} id="app-menu" className="app-sheet" role="dialog" aria-modal="true" aria-label="메뉴" onKeyDown={trapSheet}>
-            <nav className="app-sheet__nav" aria-label="메뉴 항목"><NavItems onNavigate={closeMenu} /></nav>
+          <div ref={sheet} id="app-menu" className="app-sheet" role="dialog" aria-modal="true" aria-label={t('shell.menu')} onKeyDown={trapSheet}>
+            <nav className="app-sheet__nav" aria-label={t('shell.menuItems')}><NavItems onNavigate={closeMenu} /></nav>
             <div className="app-sheet__actions">
-              <ButtonLink to="/app/data/new" block onClick={closeMenu}><Plus size={16} aria-hidden />데이터 추가</ButtonLink>
+              <ButtonLink to="/app/data/new" block onClick={closeMenu}><Plus size={16} aria-hidden />{t('shell.addData')}</ButtonLink>
             </div>
+            <LanguageSwitch block />
             <div className="app-sheet__account">
-              <span className="app-account__who"><strong>{name}</strong>{appApi.demo && <small>데모 모드</small>}</span>
-              <button type="button" className="xc-btn xc-btn--line xc-btn--sm" onClick={signOut}><LogOut size={15} aria-hidden />로그아웃</button>
+              <span className="app-account__who"><strong>{name}</strong>{appApi.demo && <small>{t('shell.demo')}</small>}</span>
+              <button type="button" className="xc-btn xc-btn--line xc-btn--sm" onClick={signOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
             </div>
           </div>
         </>

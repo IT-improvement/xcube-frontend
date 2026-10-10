@@ -151,6 +151,9 @@ body:has(.landing) { overflow-x: clip; }
   .lp-case__shot img { max-width: 333px; }
   /* Three header actions (로그인 · Viewer 열기 · 시작하기) need the room at 768px. */
   .lp-bar__inner { gap: var(--space-4); }
+  /* The language switch leaves the bar here; tablets use the one in the footer, phones the menu's. */
+  .lp-bar__lang { display: none; }
+  :root[lang='en'] .lp-bar__nav a { padding: 0 var(--space-2); }
 }
 
 /* ── Phone: the bar keeps logo + menu button; the menu drops down as a sheet ── */

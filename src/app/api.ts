@@ -9,6 +9,7 @@ import { AdminArea, AdminLevel, AdminSearch, AreaPick, AreaUpload, ColorBarOptio
 import { areaDemo } from './areaDemo';
 import { aiApi, AiCheck, AiJobRequest, AiModel, AiWaterJob } from '../api/aiApi';
 import { createAiDemo } from './aiDemo';
+import { formatDate as i18nFormatDate, formatDateTime as i18nFormatDateTime } from '../i18n';
 
 export type { Project, ZarrDataset, ProjectMember };
 export type MemberRole = 'EDITOR' | 'VIEWER';
@@ -179,19 +180,12 @@ export const roleLabel = (role?: string) => (role === 'OWNER' ? '소유자' : ro
 export const canEditProject = (project?: Project) => project?.accessRole === 'OWNER' || project?.accessRole === 'EDITOR';
 export const isOwned = (dataset: ZarrDataset) => dataset.accessType !== 'SHARED';
 
-export function formatDate(value?: string) {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('ko-KR');
-}
-
-const DATE_TIME = new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+// The app pages are still Korean (UR-53 stage 2 translates them), so their dates stay Korean too.
+// Stage 2 drops the 'ko' argument and the helpers follow the screen language.
+/** "2024. 8. 14." */
+export const formatDate = (value?: string) => i18nFormatDate(value, {}, 'ko');
 /** "10. 8. 14:05" — month, day and 24-hour time for job rows (set on one line with `.date`). */
-export function formatDateTime(value?: string | null) {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : DATE_TIME.format(date);
-}
+export const formatDateTime = (value?: string | null) => i18nFormatDateTime(value, 'ko');
 
 /** "2025.07.03 ~ 2025.10.22" from the dataset's time labels. */
 export function periodLabel(dataset: ZarrDataset) {
