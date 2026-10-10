@@ -66,17 +66,38 @@ test('로그인하지 않은 방문자에게 시작하기와 도입 안내를 �
   logins.forEach((link) => expect(link).toHaveAttribute('href', '/login?redirect=%2F'));
   screen.getAllByRole('link', { name: '시작하기' }).forEach((link) => expect(link).toHaveAttribute('href', '/signup'));
   expect(screen.queryByRole('link', { name: /도입 문의 메일/ })).not.toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: /Viewer 열기/ })).not.toBeInTheDocument();
 });
 
-test('로그인한 사용자에게는 콘솔로 이동 하나만 권한다', async () => {
+test('로그인하지 않은 방문자의 Viewer 열기는 로그인을 거쳐 Viewer로 간다', () => {
+  render(<App />);
+  // Header, phone menu, hero and the 도입 안내 block each carry one; the case capture links too.
+  const viewers = screen.getAllByRole('link', { name: 'Viewer 열기' });
+  expect(viewers).toHaveLength(4);
+  viewers.forEach((link) => expect(link).toHaveAttribute('href', '/login?redirect=%2Fapp%2Fviewer'));
+  const hero = screen.getByRole('region', { name: /위성 영상은 작게 보관하고/ });
+  expect(within(hero).getAllByRole('link').map((link) => link.textContent)).toEqual(['시작하기', 'Viewer 열기', '도입 안내']);
+  expect(within(hero).getByRole('link', { name: '시작하기' })).toHaveClass('xc-btn--ink');
+  expect(within(hero).getByRole('link', { name: 'Viewer 열기' })).not.toHaveClass('xc-btn--ink');
+  const capture = screen.getByRole('link', { name: '대청호 결과를 Viewer에서 보기' });
+  expect(capture).toHaveAttribute('href', '/login?redirect=%2Fapp%2Fviewer');
+  expect(within(capture).getByRole('img', { name: /원본 대비 결과 패널/ })).toBeInTheDocument();
+});
+
+test('로그인한 사용자에게는 콘솔로 이동을 주로, Viewer 열기를 곁에 둔다', async () => {
   mockLastActivity.mockReturnValue(Date.now());
   mockRefresh.mockResolvedValue({ accessToken: 'token' });
   mockMe.mockResolvedValue({ id: 1, name: '홍길동' });
   render(<App />);
   const hero = screen.getByRole('region', { name: /위성 영상은 작게 보관하고/ });
   expect(await within(hero).findByRole('link', { name: '콘솔로 이동' })).toHaveAttribute('href', '/app');
-  expect(within(hero).getAllByRole('link')).toHaveLength(1);
+  expect(within(hero).getAllByRole('link').map((link) => link.textContent)).toEqual(['콘솔로 이동', 'Viewer 열기']);
+  const viewers = screen.getAllByRole('link', { name: 'Viewer 열기' });
+  expect(viewers).toHaveLength(4);
+  viewers.forEach((link) => {
+    expect(link).toHaveAttribute('href', '/app/viewer');
+    expect(link).not.toHaveClass('xc-btn--ink');
+  });
+  expect(screen.getByRole('link', { name: '대청호 결과를 Viewer에서 보기' })).toHaveAttribute('href', '/app/viewer');
   expect(screen.queryByRole('link', { name: '로그인' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: '시작하기' })).not.toBeInTheDocument();
 });
@@ -139,6 +160,8 @@ test('로그인 후 이동 경로는 같은 사이트 경로만 허용한다', (
   expect(safeRedirect('/app/viewer')).toBe('/app/viewer');
   expect(safeRedirect('/')).toBe('/');
   expect(safeRedirect('//evil.example')).toBe('/app');
+  expect(safeRedirect('/\\evil.example')).toBe('/app');
+  expect(safeRedirect('mailto:someone@example.com')).toBe('/app');
   expect(safeRedirect('https://evil.example')).toBe('/app');
   expect(safeRedirect(null)).toBe('/app');
 });

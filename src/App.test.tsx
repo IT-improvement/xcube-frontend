@@ -124,6 +124,34 @@ test('로그인하지 않고 Viewer 주소로 오면 redirect를 붙여 로그�
   expect(await screen.findByText('Viewer user: 홍길동')).toBeInTheDocument();
 });
 
+test('소개 홈의 Viewer 열기를 누르면 로그인 후 Viewer가 열린다', async () => {
+  window.history.replaceState({}, '', '/');
+  mockLogin.mockResolvedValue({ accessToken: 'token' });
+  mockMe.mockResolvedValue({ id: 1, name: '홍길동' });
+  render(<App />);
+  const hero = screen.getByRole('region', { name: /위성 영상은 작게 보관하고/ });
+  fireEvent.click(within(hero).getByRole('link', { name: 'Viewer 열기' }));
+  expect(await screen.findByRole('button', { name: '로그인' })).toBeInTheDocument();
+  expect(window.location.pathname + window.location.search).toBe('/login?redirect=%2Fapp%2Fviewer');
+  fireEvent.change(screen.getByLabelText('아이디'), { target: { value: 'user' } });
+  fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password123' } });
+  fireEvent.click(screen.getByRole('button', { name: '로그인' }));
+  expect(await screen.findByText('Viewer user: 홍길동')).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/app/viewer');
+});
+
+test('로그인 화면은 다른 사이트로 가는 redirect를 무시하고 대시보드로 보낸다', async () => {
+  window.history.replaceState({}, '', '/login?redirect=%2F%2Fevil.example');
+  mockLogin.mockResolvedValue({ accessToken: 'token' });
+  mockMe.mockResolvedValue({ id: 1, name: '홍길동' });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText('아이디'), { target: { value: 'user' } });
+  fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password123' } });
+  fireEvent.click(screen.getByRole('button', { name: '로그인' }));
+  expect(await screen.findByRole('heading', { name: '대시보드 화면' })).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/app');
+});
+
 test('/app은 로그인하지 않았으면 로그인 화면으로 보내고 돌아올 주소를 남긴다', async () => {
   window.history.replaceState({}, '', '/app');
   render(<App />);
