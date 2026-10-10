@@ -221,6 +221,8 @@ describe('이름 미리 채우기', () => {
     expect(placeOf({ ...base, tab: 'point', lon: '127.6303', lat: '36.4541' })).toBe('127.63,36.45');
     expect(placeOf({ ...base, tab: 'box', west: '127.4', south: '36.3', east: '127.8', north: '36.6' })).toBe('127.60,36.45');
     expect(placeOf({ ...base, tab: 'point' })).toBe('');
+    expect(periodOf('2025-01-01', '2025-12-31')).toBe('2025');
+    expect(periodOf('2025-01-01', '2025-11-30')).toBe('2025-01–11');
     expect(suggestName({ ...base, tab: 'shape', shape: { id: 1, name: '대청호', bbox: [127, 36, 128, 37], areaKm2: 70 } }, '2024-08-01', '2024-08-31')).toBe('대청호 2024-08');
   });
 
