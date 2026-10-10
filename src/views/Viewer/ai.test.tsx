@@ -67,6 +67,23 @@ test('실행하면 datacubeId·modelId·임계값을 보내고 진행 상황을 
   expect(await screen.findByRole('button', { name: '결과' }, { timeout: 6000 })).toBeInTheDocument();
 }, 10000);
 
+test('실행을 여러 번 눌러도 요청은 한 번만 가고, 응답 전까지 "입력 확인 중…"으로 막힌다', async () => {
+  let answer: (value: unknown) => void = () => {};
+  const create = jest.spyOn(appApi.ai, 'createJob').mockImplementation(() => new Promise((resolve) => { answer = resolve; }) as never);
+  const drawer = await openAiDrawer('sentinel');
+  await waitFor(() => expect(within(drawer).getByRole('button', { name: '실행' })).toBeEnabled());
+  const run = within(drawer).getByRole('button', { name: '실행' });
+  fireEvent.click(run);
+  fireEvent.click(run);
+  fireEvent.click(run);
+  const waiting = await within(drawer).findByRole('button', { name: '입력 확인 중…' });
+  expect(waiting).toBeDisabled();
+  expect(create).toHaveBeenCalledTimes(1);
+  answer({ id: 'job-once', name: 'water', status: 'QUEUED', progress: 0, createdAt: new Date().toISOString() });
+  await waitFor(() => expect(within(drawer).queryByRole('button', { name: '입력 확인 중…' })).not.toBeInTheDocument());
+  expect(create).toHaveBeenCalledTimes(1);
+});
+
 test('결과 패널: 임계값 슬라이더는 thresholdCurve로 면적을 바로 추정하고 지도는 바꾸지 않는다', async () => {
   render(<Viewer initialDatasetId="landsat" />);
   fireEvent.click(await screen.findByRole('button', { name: '결과' }));

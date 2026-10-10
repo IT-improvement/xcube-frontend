@@ -382,6 +382,7 @@ const enViewer: ViewerTranslation = {
         unknown: 'Unknown',
         retrySame: 'Retry with the same settings',
         running: 'Running…',
+        starting: 'Checking inputs…',
         run: 'Run',
         whyChecking: 'You can run once the inputs are checked.',
         whyMissing: 'Every required input is needed to run.',

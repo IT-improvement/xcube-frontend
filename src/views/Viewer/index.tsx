@@ -228,6 +228,8 @@ export default function Viewer({
   const mapBoxRef = useRef<HTMLElement>(null);
   /** Bottom-left legend stack; the layer sheet stops above it so the legend is never hidden (S7). */
   const legendsRef = useRef<HTMLDivElement>(null);
+  const aiStartingRef = useRef(false);
+  const [aiStarting, setAiStarting] = useState(false);
   const [legendSpace, setLegendSpace] = useState(0);
   const probeRef = useRef<HTMLButtonElement>(null);
   const focusProbeRef = useRef(false);
@@ -1045,6 +1047,11 @@ export default function Viewer({
     return () => window.clearTimeout(timer);
   }, [map, graphExpanded, pixel]);
   const startAi = async (request: AiJobRequest) => {
+    // One request at a time: the service runs an input check before answering, so repeated clicks used to
+    // start a second check beside the running inference (exit 137 on a busy machine).
+    if (aiStartingRef.current) return;
+    aiStartingRef.current = true;
+    setAiStarting(true);
     setAiRunError(null);
     try {
       const job = await ai.createJob({
@@ -1057,6 +1064,9 @@ export default function Viewer({
       setAiTick((value) => value + 1);
     } catch (cause) {
       setAiRunError(cause ?? new Error());
+    } finally {
+      aiStartingRef.current = false;
+      setAiStarting(false);
     }
   };
   const cancelAi = async () => {
@@ -1824,6 +1834,7 @@ export default function Viewer({
                     times={times}
                     run={aiRunHere}
                     runError={aiRunError}
+                    starting={aiStarting}
                     onRun={startAi}
                     onCancel={cancelAi}
                     onRetry={retryAi}
