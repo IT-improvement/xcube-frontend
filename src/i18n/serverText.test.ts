@@ -38,6 +38,12 @@ const SERVER_CODES = {
   estimateWarnings: ['DATE_LIST_TRUNCATED', 'ESTIMATED_SIZE_EXCEEDS_5_GIB', 'ESTIMATE_USES_MAX_SCENES', 'ESTIMATE_USES_SELECTED_DATES', 'GEE_SCENE_COUNT_UNAVAILABLE', 'MAX_SCENES_LIMIT', 'NOISE_UNAVAILABLE', 'SIDE_EXCEEDS_100_KM', 'STORAGE_USAGE_UNAVAILABLE'],
   estimateBlockers: ['DATE_LIST_UNAVAILABLE', 'QUOTA_EXCEEDED'],
 };
+/**
+ * UR-55 satellite product codes (Backend guide "위성 원본 제품 업로드"), not in the I18N5 table yet: they need text
+ * now, and the table check accepts them whether the table lists them or not. Move them into `generation` once the
+ * table has them.
+ */
+const PENDING_CODES = ['PRODUCT_TYPE_MISMATCH', 'PRODUCT_LEVEL_UNSUPPORTED', 'PRODUCT_METADATA_MISSING', 'PRODUCT_BAND_MISSING', 'PRODUCT_SENSOR_MIXED', 'PRODUCT_OFFSET_MIXED', 'PRODUCT_READ_FAILED', 'SENTINEL2_CHECKED', 'LANDSAT_CHECKED'] as const;
 const ALL_CODES = Object.values(SERVER_CODES).flat();
 const HANGUL = /[가-힣]/;
 
@@ -47,7 +53,7 @@ describe('every I18N5 code has Korean and English text', () => {
       : SERVER_CODES.estimateBlockers.includes(code) ? `wizard.estimate.blockers.${code}`
         : codeKey(code);
 
-  test.each(ALL_CODES)('%s', (code) => {
+  test.each([...ALL_CODES, ...PENDING_CODES])('%s', (code) => {
     const key = keyOf(code);
     expect(key).toBeDefined();
     expect(hasText(key!)).toBe(true);
@@ -70,8 +76,14 @@ describe('every I18N5 code has Korean and English text', () => {
     const rows = text.slice(start, end === -1 ? undefined : end).split('\n').filter((line) => /^\| [^-]/.test(line));
     const codes = new Set(rows.map((line) => /`([A-Z0-9_]+)`/.exec(line)?.[1]).filter((code): code is string => !!code));
     expect(codes.size).toBeGreaterThan(100);
-    expect(Array.from(codes).sort()).toEqual(Array.from(new Set(ALL_CODES)).sort());
+    const listed = PENDING_CODES.filter((code) => codes.has(code));
+    expect(Array.from(codes).sort()).toEqual(Array.from(new Set([...ALL_CODES, ...listed])).sort());
   });
+});
+
+test('product codes fill their values in both languages (UR-55)', () => {
+  expect(serverText({ code: 'PRODUCT_BAND_MISSING', params: { bands: ['B02', 'SCL'] } }, 'en')).toBe('The product is missing band files: B02, SCL');
+  expect(serverText({ code: 'PRODUCT_METADATA_MISSING', params: { file: 'MTD_MSIL2A.xml' } }, 'ko')).toBe('제품 메타데이터 파일이 없습니다: MTD_MSIL2A.xml');
 });
 
 describe('serverText', () => {

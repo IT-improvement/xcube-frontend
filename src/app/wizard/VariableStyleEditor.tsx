@@ -17,8 +17,8 @@ export type VariableChoice = {
   colorBar: string;
   min: string;
   max: string;
-  /** Where the display values came from when not from the file statistics: the water preset (UR-41). Not sent. */
-  origin?: 'preset';
+  /** Where the display values came from when not from the file statistics: the water preset (UR-41) or a satellite product's defaults (UR-55). Not sent. */
+  origin?: 'preset' | 'product';
 };
 
 
@@ -106,6 +106,7 @@ export default function VariableStyleEditor({
   errors = {},
   show = 'all',
   channels = {},
+  describe,
 }: {
   fields: InspectionField[];
   value: VariableChoice[];
@@ -121,6 +122,8 @@ export default function VariableStyleEditor({
   show?: 'all' | 'pick' | 'style';
   /** RGB channel of a source, shown as a tag on its row ("RGB R"). */
   channels?: Record<string, 'R' | 'G' | 'B'>;
+  /** A line under a band in the checklist instead of its type and range (satellite products: "blue · 10 m"). */
+  describe?: (field: InspectionField) => string;
 }) {
   const { lang, t } = useLanguage();
   const fmt = (number: number) => formatValue(number, lang);
@@ -157,7 +160,7 @@ export default function VariableStyleEditor({
                   <input type="checkbox" checked={selected.has(field.name)} onChange={() => toggle(field)} />
                   <span className="vse-option__text">
                     <strong>{field.name}</strong>
-                    {(field.type || range || field.categories) && (
+                    {describe ? <small>{describe(field)}</small> : (field.type || range || field.categories) && (
                       <small>
                         {[field.type && typeLabel(field.type), range ? t('wizard.style.range', { min: fmt(range.min), max: fmt(range.max) }) : field.categories ? t('wizard.style.categoryCount', { count: field.categories.length }) : ''].filter(Boolean).join(' · ')}
                       </small>
@@ -233,7 +236,7 @@ export default function VariableStyleEditor({
                           </button>
                         </>
                       ) : (
-                        <span className="xc-hint">{choice.origin === 'preset' ? t('wizard.style.presetRange', { min: fmt(Number(PRESET_STYLE.min)), max: formatNumber(Number(PRESET_STYLE.max), {}, lang) }) : t('wizard.style.noAuto')}</span>
+                        <span className="xc-hint">{choice.origin === 'preset' ? t('wizard.style.presetRange', { min: fmt(Number(PRESET_STYLE.min)), max: formatNumber(Number(PRESET_STYLE.max), {}, lang) }) : choice.origin === 'product' ? t('wizard.style.productRange') : t('wizard.style.noAuto')}</span>
                       )}
                     </div>
                   </div>

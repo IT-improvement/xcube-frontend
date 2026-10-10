@@ -53,7 +53,7 @@ async function changeArea(change: () => void) {
 }
 
 describe('Method step in English', () => {
-  test('steps, the four method cards with their group badges, and the validation message', async () => {
+  test('steps, the five method cards with their group badges, and the validation message', async () => {
     renderWizard();
     expect(screen.getByRole('heading', { level: 1, name: 'Add data' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Data' })).toHaveAttribute('href', '/app/data');
@@ -61,11 +61,12 @@ describe('Method step in English', () => {
     expect(within(steps).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['1Method', '2Source', '3Inspection', '4Settings', '5Review and create']);
     const cards = within(screen.getByRole('radiogroup', { name: 'How to add data' })).getAllByRole('radio');
     expect(cards[0]).toHaveTextContent(/^GeoTIFF \/ CAS500 Build/);
-    expect(cards[1]).toHaveTextContent(/^Shapefile Build/);
-    expect(cards[2]).toHaveTextContent(/^Google Earth Engine Build/);
-    expect(cards[3]).toHaveTextContent(/^Register Zarr Register/);
-    expect(cards[2]).toHaveTextContent('Pick satellite data and fetch it by period and area.');
-    expect(cards[3]).toHaveTextContent('Server path or s3:// URI');
+    expect(cards[1]).toHaveTextContent(/^Satellite product Build/);
+    expect(cards[2]).toHaveTextContent(/^Shapefile Build/);
+    expect(cards[3]).toHaveTextContent(/^Google Earth Engine Build/);
+    expect(cards[4]).toHaveTextContent(/^Register Zarr Register/);
+    expect(cards[3]).toHaveTextContent('Pick satellite data and fetch it by period and area.');
+    expect(cards[4]).toHaveTextContent('Server path or s3:// URI');
     fireEvent.click(next());
     expect(screen.getByText('Choose a method.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Back/ })).toBeDisabled();

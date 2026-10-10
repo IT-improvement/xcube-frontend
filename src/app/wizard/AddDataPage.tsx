@@ -1,13 +1,13 @@
 // S4 data add wizard. The steps depend on the method (UR-54):
 // - GEE: 방식 → 자료 → 영역 → 기간·날짜 → 이름·확인 (one decision group per step; no inspection step, it adds nothing)
-// - GeoTIFF/CAS500 and Shapefile: 방식 → 원본 입력 → 자동 검사 결과 → 설정 → 확인 및 생성 (the inspection is real)
+// - GeoTIFF/CAS500, satellite products (UR-55) and Shapefile: 방식 → 원본 입력 → 자동 검사 결과 → 설정 → 확인 및 생성 (the inspection is real)
 // - Zarr registration: 방식 → 원본 입력 → 설정 → 확인 (nothing to inspect before registering)
 // Requests are the same as before for the same choices (wizard.request.test.tsx).
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, CloudDownload, Database, Droplets, FileArchive, Globe2, Image, Loader2, Search, UploadCloud } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, CloudDownload, Database, Droplets, FileArchive, Globe2, Image, Loader2, Satellite, Search, UploadCloud } from 'lucide-react';
 import { ChangeEvent, DragEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, userMessage } from '../../api/httpClient';
-import { ColorBarOption, GeeCollection, GenerationJob, InspectionField, JobSummary, SpatialInspection } from '../../api/generationApi';
+import { ColorBarOption, GeeCollection, GenerationJob, InspectionField, isAbortError, JobSummary, SpatialInspection } from '../../api/generationApi';
 import { Alert, Button, ButtonLink, TextField } from '../../components/ui';
 import { Badge, Card, PageHeader, RadioGroup, Skeleton } from '../../components/ui/kit';
 import { appApi, canEditProject, generation, viewerHref } from '../api';
@@ -25,6 +25,9 @@ import VariableStyleEditor, { autoRange, defaultChoice, toVariableSpecs, validat
 import { FixedVariables, SarOptions } from './SarPairing';
 import { defaultSar, FIXED_NAMES, PRESET_GEE, PRESET_STYLE, isS2, orbitOption, pairingActive, presetSar, S2_COLLECTION, sarError, sarRequest, SarState, WATER_BANDS, WATER_NAME, withPairingBlockers } from './sarModel';
 import { withStrong } from './strong';
+import UploadMeter, { UploadTrack } from './UploadMeter';
+import { busyProducts, doneProducts, ProductInspection, ProductSource, useProductUploads } from './ProductUpload';
+import { defaultChoices, estimateBytes, estimateText, hasRgbNames, PRODUCT_JOB_TYPE, productBands, productFields, ProductKind, productPeriod, productsOf, RESOLUTIONS, suggestProductName, uniqueDates } from './productModel';
 import './wizard.css';
 import { failureText, formatNumber, registrationFailureText, serverText, useLanguage, useT } from '../../i18n';
 import type { Lang, TFunction, TKey } from '../../i18n';
@@ -32,7 +35,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 // The wizard's text (UR-53 stage 3) loads with the wizard chunk only; it brings the management part along.
 import '../../i18n/wizard';
 
-type Method = 'geotiff' | 'shape' | 'gee' | 'zarr';
+type Method = 'geotiff' | 'product' | 'shape' | 'gee' | 'zarr';
 type RasterKind = 'geotiff' | 'cas500';
 type GeeParams = { startDate: string; endDate: string; maxCloudPercent: string; scaleMeters: string };
 type Rgb = { red: string; green: string; blue: string };
@@ -47,11 +50,12 @@ export const stepsFor = (method: Method | null): StepId[] => (method === 'gee' ?
 /** Method cards; product names stay as they are, the rest comes from `wizard.method.*`. */
 const METHODS: Array<{ id: Method; title?: string; icon: ReactNode; register?: boolean }> = [
   { id: 'geotiff', title: 'GeoTIFF / CAS500', icon: <Image size={22} /> },
+  { id: 'product', icon: <Satellite size={22} /> },
   { id: 'shape', title: 'Shapefile', icon: <FileArchive size={22} /> },
   { id: 'gee', title: 'Google Earth Engine', icon: <Globe2 size={22} /> },
   { id: 'zarr', icon: <Database size={22} />, register: true },
 ];
-const methodTitle = (item: (typeof METHODS)[number], t: TFunction) => item.title ?? t('wizard.method.zarrTitle');
+const methodTitle = (item: (typeof METHODS)[number], t: TFunction) => item.title ?? t(item.id === 'product' ? 'wizard.method.productTitle' : 'wizard.method.zarrTitle');
 const REQUIRED_SHAPE = ['.shp', '.shx', '.dbf', '.prj'];
 const TERMINAL = ['SUCCEEDED', 'FAILED', 'CANCELLED'];
 // Sensor IDs known to the normalisation registry (Backend technical guide). Others can be typed in.
@@ -125,6 +129,15 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const [rasterKind, setRasterKind] = useState<RasterKind>('geotiff');
   const [inspection, setInspection] = useState<SpatialInspection | null>(null);
   const [inspecting, setInspecting] = useState(false);
+  // Upload progress and cancel of the single-file methods (audit W9); satellite products keep a list.
+  const [upload, setUpload] = useState<UploadTrack | null>(null);
+  const [uploadCancelled, setUploadCancelled] = useState(false);
+  const uploadAbort = useRef<AbortController | null>(null);
+  const [productKind, setProductKind] = useState<ProductKind>('sentinel2');
+  const [productResolution, setProductResolution] = useState(RESOLUTIONS.sentinel2[0]);
+  const productUploads = useProductUploads(productKind);
+  // The default bands are set once per product kind and band list; unpicking them afterwards is kept.
+  const productDefaultsFor = useRef('');
   const [collectionId, setCollectionId] = useState('');
   const [catalogQuery, setCatalogQuery] = useState('');
   const [gee, setGee] = useState<GeeParams>({ startDate: '', endDate: '', maxCloudPercent: '20', scaleMeters: '30' });
@@ -169,6 +182,10 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const current = steps[step];
   const last = step === steps.length - 1;
   const isGee = method === 'gee';
+  const isProduct = method === 'product';
+  const doneItems = useMemo(() => (isProduct ? doneProducts(productUploads.items) : []), [isProduct, productUploads.items]);
+  const products = useMemo(() => productsOf(doneItems.map((item) => item.inspection!)), [doneItems]);
+  const productsBusy = isProduct && busyProducts(productUploads.items);
 
   // Leaving the tab mid-way loses the inputs; ask first.
   useEffect(() => {
@@ -196,8 +213,9 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const collection = collections.data?.find((item) => item.id === collectionId);
   const fields: InspectionField[] = useMemo(() => {
     if (isGee) return (collection?.bands ?? []).map((band) => ({ name: typeof band === 'string' ? band : band.id ?? band.name }));
+    if (isProduct) return productFields(productBands(products));
     return fieldsOf(inspection);
-  }, [isGee, collection, inspection]);
+  }, [isGee, collection, inspection, isProduct, products]);
   const resolved = useMemo(() => resolveArea(area, lang), [area, lang]);
   const datesOk = !!gee.startDate && !!gee.endDate && gee.startDate <= gee.endDate;
   const pairing = isGee && pairingActive(collectionId, sar);
@@ -232,30 +250,56 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const sensorValue = sensor === 'custom' ? customSensor.trim() : sensor;
   const fileInputs = method === 'geotiff' || method === 'shape';
   const dateRequired = fileInputs && !(method === 'geotiff' && rasterKind === 'cas500') && !!inspection && !hasTimeInName(inspection.fileName, method!);
-  const suggestedName = isGee ? suggestName(area, gee.startDate, gee.endDate) : '';
+  const suggestedName = isGee ? suggestName(area, gee.startDate, gee.endDate) : isProduct ? suggestProductName(products) : '';
+  const productBandsKey = isProduct && colorBars.data ? `${productKind}:${productBands(products).map((band) => band.source).join(',')}` : '';
   const channels: Record<string, 'R' | 'G' | 'B'> = rgbOn && rgbPossible ? Object.fromEntries(RGB_CHANNELS.filter(([key]) => rgb[key]).map(([key, letter]) => [rgb[key], letter])) : {};
 
   // The GEE name is filled in from the place and period until the user types their own (UR-54).
   useEffect(() => { if (current === 'review' && !nameEdited && suggestedName) setName(suggestedName); }, [current, nameEdited, suggestedName]);
+  // Satellite products: "{tile|pathRow} {period}" from the checked products, until the user types their own.
+  useEffect(() => { if (isProduct && current === 'settings' && !nameEdited && suggestedName) setName(suggestedName); }, [isProduct, current, nameEdited, suggestedName]);
+  // The contract's default bands, once the first product of a kind is checked and the colour maps are in.
+  useEffect(() => {
+    if (!productBandsKey || productBandsKey.endsWith(':') || productDefaultsFor.current === productBandsKey) return;
+    productDefaultsFor.current = productBandsKey;
+    setChoices(defaultChoices(productKind, products, colorBars.data ?? []));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productBandsKey]);
 
+  /** Stop a running single-file upload (a new file, another kind or method, or the cancel button). */
+  const abortUpload = () => { uploadAbort.current?.abort(); uploadAbort.current = null; setInspecting(false); setUpload(null); };
+  const cancelUpload = () => { abortUpload(); setUploadCancelled(true); };
+  useEffect(() => () => uploadAbort.current?.abort(), []);
   const chooseMethod = (next: Method) => {
     if (next !== method) {
-      setInspection(null); setInspectFailure(null); setChoices([]); setCollectionId(''); setRgbOn(false); setName(''); setNameEdited(false); setSar(defaultSar()); setPreset(false);
+      abortUpload(); productUploads.clear(); productDefaultsFor.current = '';
+      setInspection(null); setInspectFailure(null); setUploadCancelled(false); setChoices([]); setCollectionId(''); setRgbOn(false); setName(''); setNameEdited(false); setSar(defaultSar()); setPreset(false);
     }
     setMethod(next);
   };
+  const chooseRasterKind = (next: RasterKind) => { abortUpload(); setRasterKind(next); setInspection(null); setChoices([]); };
+  const chooseProductKind = (next: ProductKind) => {
+    productUploads.clear(); productDefaultsFor.current = '';
+    setProductKind(next); setProductResolution(RESOLUTIONS[next][0]); setChoices([]);
+    if (!nameEdited) setName('');
+  };
   const inspectFile = async (file: File) => {
-    if (!method || isGee || method === 'zarr') return;
+    if (!method || isGee || method === 'zarr' || isProduct) return;
     const type = method === 'shape' ? 'shapefile' : rasterKind;
-    setInspecting(true); setInspectFailure(null); setInspection(null); setChoices([]);
+    abortUpload();
+    const controller = new AbortController();
+    uploadAbort.current = controller;
+    setInspecting(true); setInspectFailure(null); setUploadCancelled(false); setInspection(null); setChoices([]);
+    setUpload({ loaded: 0, total: file.size, startedAt: Date.now() });
     try {
-      const result = await generation.inspect(type, file);
+      const result = await generation.inspect(type, file, { signal: controller.signal, onProgress: ({ loaded, total }) => setUpload((value) => (value ? { ...value, loaded, total } : value)) });
       setInspection(result);
       if (!name) setName(result.fileName.replace(/\.(zip|tiff?)$/i, ''));
     } catch (cause) {
-      setInspectFailure({ cause });
+      // A cancelled upload (button, another file, kind or method) already reset the state.
+      if (!isAbortError(cause)) setInspectFailure({ cause });
     } finally {
-      setInspecting(false);
+      if (uploadAbort.current === controller) { uploadAbort.current = null; setInspecting(false); setUpload(null); }
     }
   };
 
@@ -296,6 +340,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
     if (Object.keys(variableErrors).length) return say('style', 'wizard.settings.checkStyle');
     if (pairing && choices.some((choice) => (FIXED_NAMES as readonly string[]).includes(choice.name.trim()))) return say('style', 'wizard.settings.fixedNames', { names: FIXED_NAMES.join('·') });
     if (method === 'shape' && !(Number(resolution) > 0)) return say('resolution', 'wizard.settings.resolutionCheck');
+    if (isProduct && !RESOLUTIONS[productKind].includes(productResolution)) return say('resolution', 'wizard.settings.resolutionCheck');
     if (genericRaster && !sensorValue) return say('sensor', 'wizard.settings.sensorRequired');
     if (dateRequired && !obsDate) return say('obsDate', 'wizard.settings.obsDateMissing');
     if (nodata !== '' && !Number.isFinite(Number(nodata))) return say('nodata', 'wizard.settings.nodataNumber');
@@ -309,6 +354,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
       case 'method': return method ? null : { field: 'method', message: t('wizard.method.required') };
       case 'source':
         if (method === 'zarr') return storageUri.trim() ? null : { field: 'zarr', message: t('wizard.zarr.required') };
+        if (isProduct) return !productsBusy && doneItems.length ? null : { field: 'file', message: t(productsBusy ? 'wizard.product.busy' : 'wizard.product.required') };
         return inspection ? null : { field: 'file', message: t(inspecting ? 'wizard.file.busy' : 'wizard.file.required') };
       case 'data':
         if (!collectionId) return { field: 'catalog', message: t('wizard.catalog.required') };
@@ -327,6 +373,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   /** Why 다음 / 생성 시작 cannot be pressed now (shown next to it); '' when it can. */
   const blockReason = (): string => {
     if (current === 'source' && inspecting) return t('wizard.file.busy');
+    if (current === 'source' && productsBusy) return t('wizard.product.busy');
     if (isGee && (current === 'dates' || current === 'review') && datesOk) {
       if (estimateWait) return estimateWait;
       // The blocker itself is spelled out in the estimate panel; the footer points to it.
@@ -363,6 +410,14 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
           ...(pairing ? { variables: specs } : {}),
           ...sarFields,
           ...selectedDatesField(dateSelection),
+        }));
+      } else if (isProduct) {
+        // The server builds the RGB view itself when red, green and blue are there (Zarr rules), so no rgbStyle.
+        setJob(await generation.createFileJob({
+          type: PRODUCT_JOB_TYPE[productKind], name: name.trim(),
+          inputs: doneItems.flatMap((item) => item.inspection?.inputs ?? []), variables: specs,
+          params: { resolution: productResolution },
+          ...(projectId ? { projectId } : {}),
         }));
       } else if (method === 'zarr') {
         const dataset = await appApi.registerDataset({
@@ -403,6 +458,14 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const invalid = (field: string) => (problem?.field === field ? true : undefined);
   const groupError = (field: string) => (errorFor(field) ? <p className="xc-field__error" id={`wizard-error-${field}`}>{errorFor(field)}</p> : null);
   const reason = blockReason();
+  const productRgb = isProduct && hasRgbNames(choices);
+  const period = isProduct ? productPeriod(products) : null;
+  const sizeText = isProduct ? estimateText(estimateBytes(products, choices, productResolution)) : '';
+  const bandBySource = new Map(productBands(products).map((band) => [band.source, band]));
+  const describeBand = (field: InspectionField) => {
+    const band = bandBySource.get(field.name);
+    return band ? `${band.name} · ${t('wizard.product.resolutionValue', { value: band.resolution })}${band.kind === 'categorical' ? ` · ${t('wizard.product.categorical')}` : ''}` : '';
+  };
   const stepLabel = (id: StepId) => t(`wizard.steps.${id}` as TKey);
 
   // Name and project: the file/Zarr "설정" step and the GEE review share them.
@@ -411,7 +474,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
       <TextField
         label={t('wizard.settings.name')} value={name} maxLength={150} placeholder={t('wizard.settings.namePlaceholder')}
         onChange={(event) => { setName(event.target.value); setNameEdited(true); }}
-        help={isGee && !nameEdited && name && name === suggestedName ? t('wizard.settings.nameSuggested') : undefined}
+        help={(isGee || isProduct) && !nameEdited && name && name === suggestedName ? t(isProduct ? 'wizard.product.nameSuggested' : 'wizard.settings.nameSuggested') : undefined}
         error={errorFor('name') || (showErrors && !name.trim() ? t('wizard.settings.nameRequired') : undefined)}
       />
       <label className="xc-field">
@@ -434,11 +497,12 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
         colorBars={colorBars.data ?? []}
         noun={noun}
         allowCustom={method === 'zarr'}
-        renamable={!isGee || pairing}
+        renamable={(!isGee && !isProduct) || pairing}
         continuousOnly={isGee}
         errors={showErrors ? variableErrors : {}}
         show={show}
         channels={channels}
+        describe={isProduct ? describeBand : undefined}
       />
     </div>
   );
@@ -521,8 +585,8 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
                 <div className="xc-field">
                   <span className="xc-label">{t('wizard.file.kind')}</span>
                   <div className="segmented" role="group" aria-label={t('wizard.file.kind')}>
-                    <button type="button" aria-pressed={rasterKind === 'geotiff'} onClick={() => { setRasterKind('geotiff'); setInspection(null); setChoices([]); }}>{t('wizard.file.geotiff')}</button>
-                    <button type="button" aria-pressed={rasterKind === 'cas500'} onClick={() => { setRasterKind('cas500'); setInspection(null); setChoices([]); }}>{t('wizard.file.cas500')}</button>
+                    <button type="button" aria-pressed={rasterKind === 'geotiff'} onClick={() => chooseRasterKind('geotiff')}>{t('wizard.file.geotiff')}</button>
+                    <button type="button" aria-pressed={rasterKind === 'cas500'} onClick={() => chooseRasterKind('cas500')}>{t('wizard.file.cas500')}</button>
                   </div>
                 </div>
               )}
@@ -534,12 +598,19 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
                   busy={inspecting}
                   fileName={inspection?.fileName}
                   onFile={inspectFile}
+                  upload={upload}
+                  onCancel={cancelUpload}
                 />
                 {groupError('file')}
               </div>
+              {uploadCancelled && !inspecting && !inspection && <p className="xc-hint" role="status">{t('wizard.upload.cancelled')}</p>}
               {inspectError && <Alert tone="danger">{t('wizard.file.inspectFailed', { error: inspectError })}</Alert>}
               {inspection && <Alert tone="success">{serverText({ code: inspection.messageCode, params: inspection.messageParams, message: inspection.message }, lang)}</Alert>}
             </div>
+          )}
+
+          {current === 'source' && isProduct && (
+            <ProductSource kind={productKind} onKind={chooseProductKind} uploads={productUploads} error={errorFor('file') || undefined} />
           )}
 
           {current === 'source' && method === 'zarr' && (
@@ -658,9 +729,22 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
                 )}
                 {fileInputs && <TextField label={t('wizard.settings.nodata')} type="number" step="any" value={nodata} onChange={(event) => setNodata(event.target.value)} help={t('wizard.settings.nodataHelp')} error={errorFor('nodata') || undefined} />}
               </div>
+              {isProduct && (
+                <div className="xc-field" data-invalid={invalid('resolution')}>
+                  <span className="xc-label" id="product-resolution">{t('wizard.product.resolution')}</span>
+                  <div className="segmented" role="group" aria-labelledby="product-resolution" aria-describedby="product-resolution-help">
+                    {RESOLUTIONS[productKind].map((value) => (
+                      <button key={value} type="button" aria-pressed={productResolution === value} onClick={() => setProductResolution(value)}>{t('wizard.product.resolutionValue', { value })}</button>
+                    ))}
+                  </div>
+                  <span className="xc-hint" id="product-resolution-help">{t(productKind === 'sentinel2' ? 'wizard.product.resolutionHelpS2' : 'wizard.product.resolutionHelpLandsat')}</span>
+                  {groupError('resolution')}
+                </div>
+              )}
               {colorBars.error && method !== 'zarr' && <Alert tone="danger">{t('wizard.settings.colorBarsFailed', { error: colorBars.error })}</Alert>}
               {variableEditor('all')}
               {rgbSection}
+              {productRgb && <p className="wizard-rule__text product-rgb" role="status">{t('wizard.product.rgbAuto')}</p>}
             </div>
           )}
 
@@ -725,17 +809,36 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
             </div>
           )}
 
-          {current === 'inspection' && <InspectionSummary method={method!} rasterKind={rasterKind} inspection={inspection} fields={fields} />}
+          {current === 'inspection' && (isProduct
+            ? (products.length ? <ProductInspection kind={productKind} products={products} /> : <Alert tone="warning">{t('wizard.inspect.missing')}</Alert>)
+            : <InspectionSummary method={method!} rasterKind={rasterKind} inspection={inspection} fields={fields} />)}
 
           {current === 'confirm' && (
             <div className="wizard-section">
               <dl className="meta-list summary-list">
-                <dt>{t('wizard.summary.method')}</dt><dd>{methodTitle(METHODS.find((item) => item.id === method)!, t)}{method === 'geotiff' ? ` · ${rasterKind === 'cas500' ? 'CAS500' : t('wizard.file.geotiff')}` : ''}</dd>
-                <dt>{t('wizard.summary.source')}</dt><dd>{method === 'zarr' ? storageUri : inspection?.fileName}</dd>
+                <dt>{t('wizard.summary.method')}</dt><dd>{methodTitle(METHODS.find((item) => item.id === method)!, t)}{method === 'geotiff' ? ` · ${rasterKind === 'cas500' ? 'CAS500' : t('wizard.file.geotiff')}` : isProduct ? ` · ${t(productKind === 'sentinel2' ? 'wizard.product.s2' : 'wizard.product.landsat')}` : ''}</dd>
+                {isProduct ? (
+                  <>
+                    <dt>{t('wizard.product.count')}</dt>
+                    <dd>
+                      <span className="tabular">{t('wizard.product.countValue', { count: products.length, dates: uniqueDates(products).length })}</span>
+                      <details className="summary-dates">
+                        <summary>{t('wizard.product.list')}</summary>
+                        <ul aria-label={t('wizard.product.list')}>{doneItems.map((item) => <li key={item.id}>{item.file.name}</li>)}</ul>
+                      </details>
+                    </dd>
+                    {period && <><dt>{t('wizard.inspect.period')}</dt><dd className="tabular">{period.start === period.end ? period.start : t('wizard.summary.period', { start: period.start, end: period.end })}</dd></>}
+                    <dt>{t('wizard.summary.resolution')}</dt><dd className="tabular">{t('wizard.product.resolutionValue', { value: productResolution })}</dd>
+                  </>
+                ) : (
+                  <><dt>{t('wizard.summary.source')}</dt><dd>{method === 'zarr' ? storageUri : inspection?.fileName}</dd></>
+                )}
                 <dt>{t('wizard.summary.name')}</dt><dd>{name}</dd>
                 <dt>{t('wizard.summary.project')}</dt><dd>{editableProjects.find((item) => item.id === projectId)?.name ?? t('app.noProject')}</dd>
                 <dt>{t('wizard.summary.variables')}</dt><dd>{variablesSummary}</dd>
                 {rgbOn && rgbPossible && <><dt>RGB</dt><dd>{rgbText}</dd></>}
+                {productRgb && <><dt>RGB</dt><dd>{t('wizard.product.rgbAuto')}</dd></>}
+                {sizeText && <><dt>{t('wizard.product.size')}</dt><dd className="tabular">{t('wizard.product.sizeValue', { size: sizeText })}</dd></>}
                 {method === 'shape' && <><dt>{t('wizard.summary.resolution')}</dt><dd>{resolution}°</dd></>}
                 {genericRaster && <><dt>{t('wizard.summary.sensor')}</dt><dd>{(() => { const known = SENSORS.find((item) => item.id === sensorValue); return known ? sensorLabel(known, t) : sensorValue; })()}</dd></>}
                 {obsDate && <><dt>{t('wizard.summary.obsDate')}</dt><dd>{obsDate}</dd></>}
@@ -768,17 +871,19 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   );
 }
 
-function FileDrop({ accept, title, hint, busy, fileName, onFile }: { accept: string; title: string; hint: string; busy: boolean; fileName?: string; onFile: (file: File) => void }) {
+function FileDrop({ accept, title, hint, busy, fileName, onFile, upload, onCancel }: { accept: string; title: string; hint: string; busy: boolean; fileName?: string; onFile: (file: File) => void; upload?: UploadTrack | null; onCancel?: () => void }) {
   const t = useT();
   const [over, setOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const take = (file?: File) => { if (file) onFile(file); };
+  const [sending, setSending] = useState('');
+  const take = (file?: File) => { if (file) { setSending(file.name); onFile(file); } };
   const onDrop = (event: DragEvent) => { event.preventDefault(); setOver(false); take(event.dataTransfer.files?.[0]); };
   return (
     <div className={`file-drop ${over ? 'is-over' : ''}`} onDragOver={(event) => { event.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
       <span className="file-drop__icon" aria-hidden>{busy ? <Loader2 size={24} className="spin" /> : <UploadCloud size={24} />}</span>
       <strong>{busy ? t('wizard.file.inspecting') : fileName ? fileName : title}</strong>
       <small>{hint}</small>
+      {busy && upload && <UploadMeter name={sending} track={upload} checking={upload.total > 0 && upload.loaded >= upload.total} onCancel={onCancel} />}
       <input ref={inputRef} type="file" accept={accept} hidden onChange={(event: ChangeEvent<HTMLInputElement>) => { take(event.target.files?.[0]); event.target.value = ''; }} aria-label={t('wizard.file.choose')} />
       <Button variant="secondary" size="sm" disabled={busy} onClick={() => inputRef.current?.click()}>{t(fileName ? 'wizard.file.chooseOther' : 'wizard.file.choose')}</Button>
     </div>
