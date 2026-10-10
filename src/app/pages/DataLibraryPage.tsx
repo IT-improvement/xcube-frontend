@@ -6,6 +6,7 @@ import { Badge, Card, Dialog, EmptyState, PageHeader, Skeleton, TabPanel, Tabs, 
 import { userMessage } from '../../api/httpClient';
 import { aiViewerHref, appApi, canEditProject, isOwned, periodLabel, Project, viewerHref, ZarrDataset } from '../api';
 import { useLoad } from '../useLoad';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 type Scope = 'all' | 'owned' | 'shared';
 type Sort = 'recent' | 'name' | 'period';
@@ -29,6 +30,7 @@ const pick = <T extends string>(value: string | null, allowed: T[], fallback: T)
 
 /** S3: all Zarr datasets the user owns or received. */
 export default function DataLibraryPage() {
+  useDocumentTitle('데이터');
   const datasets = useLoad(() => appApi.listDatasets());
   // Scope, search and sort live in the URL so a reload or a shared link keeps them (?scope=shared&q=…&sort=name).
   const [params, setParams] = useSearchParams();

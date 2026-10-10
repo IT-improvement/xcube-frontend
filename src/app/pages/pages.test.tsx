@@ -205,6 +205,20 @@ describe('S3·S5 데이터', () => {
     renderAt('/app/data/77');
     expect(await screen.findByRole('link', { name: /Viewer에서 열기/ })).toHaveAttribute('href', '/app/viewer?dataset=77');
     expect(screen.getByRole('img', { name: /데이터 범위/ })).toBeInTheDocument();
+    // The tab title names the dataset once it has loaded.
+    expect(document.title).toBe('연결된 Zarr · 데이터 · XCube');
+  });
+
+  test.each([
+    ['/app', '대시보드 · XCube'],
+    ['/app/data', '데이터 · XCube'],
+    ['/app/data/new', '데이터 추가 · XCube'],
+    ['/app/projects', '프로젝트 · XCube'],
+    ['/app/jobs', '작업 · XCube'],
+    ['/app/analysis/fusion', '수식 융합 · XCube'],
+  ])('%s 화면의 탭 제목은 "%s"이다', async (path, title) => {
+    renderAt(path);
+    await waitFor(() => expect(document.title).toBe(title));
   });
 
   test('대시보드는 데이터가 없으면 첫 데이터 추가를 안내한다', async () => {

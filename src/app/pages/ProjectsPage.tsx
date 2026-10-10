@@ -8,6 +8,7 @@ import { useAuth } from '../../auth/AuthProvider';
 import { appApi, canEditProject, formatDate, isOwned, memberLabel, MemberRole, Project, ProjectMember, roleLabel, viewerHref, ZarrDataset } from '../api';
 import { useLoad } from '../useLoad';
 import { DatasetStatus } from './DataLibraryPage';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 type Scope = 'all' | 'owned' | 'shared';
 
@@ -17,6 +18,7 @@ function RoleBadge({ role }: { role?: string }) {
 
 /** S6 list: project cards with search and owned/shared filter. */
 export function ProjectsPage() {
+  useDocumentTitle('프로젝트');
   const projects = useLoad(() => appApi.listProjects());
   const [scope, setScope] = useState<Scope>('all');
   const [query, setQuery] = useState('');
@@ -110,6 +112,7 @@ export function ProjectDetailPage() {
   const { projectId = '' } = useParams();
   const navigate = useNavigate();
   const project = useLoad(() => appApi.getProject(projectId), [projectId]);
+  useDocumentTitle(project.data?.name ? `${project.data.name} · 프로젝트` : '프로젝트');
   const [tab, setTab] = useState<DetailTab>('data');
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);

@@ -140,3 +140,6 @@
   .xc-btn { transition: none; }
   .xc-btn:active:not(:disabled) { transform: none; }
 }
+
+/* Suspense fallback inside the app shell: holds the page area while the page code downloads. */
+.xc-route-wait { min-height: 40vh; display: grid; place-items: center; }

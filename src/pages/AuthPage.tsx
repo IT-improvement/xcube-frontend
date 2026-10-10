@@ -6,6 +6,7 @@ import { userMessage } from '../api/httpClient';
 import { useAuth } from '../auth/AuthProvider';
 import { Alert, Button, Logo, TextField } from '../components/ui';
 import './auth.css';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 const DEFAULT_REDIRECT = '/app';
 const USERNAME_RULE = /^[A-Za-z0-9_.-]{3,50}$/;
@@ -84,6 +85,7 @@ function AuthLayout({ title, subtitle, children }: { title: string; subtitle: st
 }
 
 export function LoginPage() {
+  useDocumentTitle('로그인');
   const { user, signIn } = useAuth();
   const [params] = useSearchParams();
   const location = useLocation();
@@ -153,6 +155,7 @@ export function LoginPage() {
 }
 
 export function SignupPage() {
+  useDocumentTitle('회원가입');
   const { user } = useAuth();
   const [params] = useSearchParams();
   const navigate = useNavigate();
