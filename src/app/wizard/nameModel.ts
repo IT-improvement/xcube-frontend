@@ -17,12 +17,13 @@ export function placeOf(area: AreaState): string {
   return `${coord(numbers[0])},${coord(numbers[1])}`;
 }
 
-/** The period by month: "2024-08" in one month, "2024-06–08" in one year, else "2023-11–2024-02". */
+/** The period by month: "2024-08" in one month, "2025" for a whole calendar year, "2024-06–08" in one year, else "2023-11–2024-02". */
 export function periodOf(start: string, end: string): string {
   const from = start.slice(0, 7);
   const to = end.slice(0, 7);
   if (!/^\d{4}-\d{2}$/.test(from) || !/^\d{4}-\d{2}$/.test(to)) return '';
   if (from === to) return from;
+  if (from.slice(0, 4) === to.slice(0, 4) && from.endsWith('-01') && to.endsWith('-12')) return from.slice(0, 4);
   return from.slice(0, 4) === to.slice(0, 4) ? `${from}–${to.slice(5)}` : `${from}–${to}`;
 }
 
