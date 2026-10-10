@@ -54,6 +54,7 @@
   background: transparent; color: var(--fb-ink); font: 500 13.5px/1 var(--fb-font); cursor: pointer; text-align: left;
 }
 .app-account__item:hover { background: var(--fb-sunken); }
+.app-account__lang { padding: 4px 4px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--fb-rule); }
 @keyframes app-pop { from { opacity: 0; transform: scale(0.97); } }
 
 /* Phone menu: a sheet under the bar. */

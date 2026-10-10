@@ -11,6 +11,7 @@ import { apiId, asFusionRequest, blockerText, defaultName, EXTENT_LABEL, formatB
 import { useLoad } from '../useLoad';
 import '../wizard/wizard.css';
 import './fusion.css';
+import { useT } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 const STEPS = ['입력', '수식', '규칙', '미리보기·실행'];
@@ -92,7 +93,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 /** S12 수식 융합: inputs → formula → rules → dry-run preview and run (FR-FUS-01~11). */
 export default function FusionPage() {
-  useDocumentTitle('수식 융합');
+  useDocumentTitle(useT()('titles.fusion'));
   const location = useLocation();
   const [params] = useSearchParams();
   const fromJob = params.get('from');

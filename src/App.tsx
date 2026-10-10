@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './auth/AuthProvider';
 import { RequireAuth } from './auth/RequireAuth';
 import { RouteFallback } from './components/ui';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
+import { LanguageProvider, useT } from './i18n';
 import LandingPage from './pages/LandingPage';
 import { LoginPage, SignupPage } from './pages/AuthPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -17,7 +18,7 @@ const AppSection = lazy(() => import('./app/AppSection'));
 function ViewerPage() {
   const { user, signOut } = useAuth();
   const [params] = useSearchParams();
-  useDocumentTitle('Viewer');
+  useDocumentTitle(useT()('titles.viewer'));
   return user ? <Viewer user={user} onLogout={signOut} onboarding initialDatasetId={params.get('dataset') ?? undefined} /> : null;
 }
 
@@ -42,11 +43,13 @@ export function AppRoutes() {
 // component: Application 컴포넌트 //
 function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
-    </BrowserRouter>
+    <LanguageProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
+      </BrowserRouter>
+    </LanguageProvider>
   );
 }
 

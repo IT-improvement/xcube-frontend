@@ -1,7 +1,10 @@
 import { AlertCircle, CheckCircle2, Eye, EyeOff, Info, TriangleAlert } from 'lucide-react';
 import { AnchorHTMLAttributes, ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, useEffect, useId, useState } from 'react';
 import { Link, LinkProps } from 'react-router-dom';
+import { useT } from '../../i18n';
 import './ui.css';
+
+export { LanguageSwitch } from './LanguageSwitch';
 
 /** ink = primary, line = secondary, quiet = ghost (DESIGN.md names; the old names stay as aliases). */
 type Variant = 'ink' | 'line' | 'quiet' | 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -37,6 +40,7 @@ export function TextField({ label, help, error, type = 'text', id, className, ..
   const showHelp = !!help && !error;
   const describedBy = [showHelp && `${inputId}-help`, error && `${inputId}-error`].filter(Boolean).join(' ') || undefined;
   const [revealed, setRevealed] = useState(false);
+  const t = useT();
   const isPassword = type === 'password';
   return (
     <div className={['xc-field', error && 'xc-field--invalid', className].filter(Boolean).join(' ')}>
@@ -54,7 +58,7 @@ export function TextField({ label, help, error, type = 'text', id, className, ..
           <button
             type="button"
             className="xc-field__action"
-            aria-label={revealed ? `${label} 숨기기` : `${label} 표시`}
+            aria-label={t(revealed ? 'common.hide' : 'common.show', { label })}
             aria-pressed={revealed}
             onClick={() => setRevealed((value) => !value)}
           >
@@ -86,7 +90,9 @@ export function Alert({ tone = 'info', children, role }: { tone?: keyof typeof a
 }
 
 /** Brand mark. `to` navigates in the app; `href` + `label` render a plain link (e.g. the Viewer in a new tab). */
-export function Logo({ to = '/', href, label = 'XCube 홈', newTab }: { to?: string; href?: string; label?: string; newTab?: boolean }) {
+export function Logo({ to = '/', href, label, newTab }: { to?: string; href?: string; label?: string; newTab?: boolean }) {
+  const t = useT();
+  label ??= t('common.homeLogo');
   const content = (
     <>
       <svg className="xc-logo__mark" viewBox="0 0 24 24" aria-hidden>
@@ -123,6 +129,7 @@ export function StatusScreen({ title, text, busy, role = 'status', action, headi
  */
 export function RouteFallback({ inline, delay = 300 }: { inline?: boolean; delay?: number }) {
   const [shown, setShown] = useState(delay <= 0);
+  const t = useT();
   useEffect(() => {
     if (delay <= 0) return;
     const timer = window.setTimeout(() => setShown(true), delay);
@@ -131,10 +138,10 @@ export function RouteFallback({ inline, delay = 300 }: { inline?: boolean; delay
   if (inline) {
     return (
       <div className="xc-route-wait" role="status" aria-live="polite">
-        {shown && <><div className="xc-spinner" aria-hidden /><span className="sr-only">화면을 불러오는 중</span></>}
+        {shown && <><div className="xc-spinner" aria-hidden /><span className="sr-only">{t('route.loadingInline')}</span></>}
       </div>
     );
   }
   if (!shown) return <div className="xc xc-status" aria-busy="true" />;
-  return <StatusScreen busy title="화면을 불러오고 있습니다…" />;
+  return <StatusScreen busy title={t('route.loading')} />;
 }

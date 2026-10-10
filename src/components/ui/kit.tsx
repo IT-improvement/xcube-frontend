@@ -3,6 +3,7 @@
 import { X } from 'lucide-react';
 import { KeyboardEvent, ReactNode, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { userMessage } from '../../api/httpClient';
+import { useT } from '../../i18n';
 import { Alert, Button } from '.';
 import './kit.css';
 
@@ -106,6 +107,7 @@ export function RadioGroup({ label, labelledBy, className, children }: { label?:
 /** Modal dialog: Esc closes, focus moves inside and returns on close. Enters with a short fade and scale. */
 export function Dialog({ title, description, children, footer, onClose, size = 'md', role = 'dialog' }: { title: string; description?: ReactNode; children?: ReactNode; footer?: ReactNode; onClose: () => void; size?: 'sm' | 'md' | 'lg'; role?: 'dialog' | 'alertdialog' }) {
   const id = useId();
+  const t = useT();
   const boxRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -137,7 +139,7 @@ export function Dialog({ title, description, children, footer, onClose, size = '
       >
         <div className="xc-dialog__head">
           <h2 id={`${id}-title`} className="xc-dialog__title">{title}</h2>
-          <button type="button" className="xc-icon-btn" data-dialog-close aria-label="닫기" onClick={onClose}><X size={18} aria-hidden /></button>
+          <button type="button" className="xc-icon-btn" data-dialog-close aria-label={t('common.close')} onClick={onClose}><X size={18} aria-hidden /></button>
         </div>
         {description && <p id={`${id}-desc`} className="xc-dialog__desc">{description}</p>}
         {children && <div className="xc-dialog__body">{children}</div>}
@@ -151,10 +153,11 @@ export function Dialog({ title, description, children, footer, onClose, size = '
  * The one way to confirm an action (alertdialog). `onConfirm` runs the action; the caller closes the
  * dialog when it succeeds, and a failure stays in the dialog as a message. Focus starts on the safe button.
  */
-export function ConfirmDialog({ title, description, confirmLabel, busyLabel, cancelLabel = '취소', tone = 'danger', onConfirm, onClose }: {
+export function ConfirmDialog({ title, description, confirmLabel, busyLabel, cancelLabel, tone = 'danger', onConfirm, onClose }: {
   title: string; description?: ReactNode; confirmLabel: string; busyLabel?: string; cancelLabel?: string; tone?: 'danger' | 'ink';
   onConfirm: () => Promise<unknown> | void; onClose: () => void;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const mounted = useRef(true);
@@ -173,7 +176,7 @@ export function ConfirmDialog({ title, description, confirmLabel, busyLabel, can
       title={title}
       description={description}
       onClose={onClose}
-      footer={<><Button variant="line" onClick={onClose}>{cancelLabel}</Button><Button variant={tone} disabled={busy} onClick={run}>{busy ? busyLabel ?? `${confirmLabel} 중…` : confirmLabel}</Button></>}
+      footer={<><Button variant="line" onClick={onClose}>{cancelLabel ?? t('common.cancel')}</Button><Button variant={tone} disabled={busy} onClick={run}>{busy ? busyLabel ?? t('common.busy', { label: confirmLabel }) : confirmLabel}</Button></>}
     >
       {error ? <Alert tone="danger">{error}</Alert> : undefined}
     </Dialog>
@@ -191,9 +194,10 @@ export function EmptyState({ title, text, action }: { icon?: ReactNode; title: s
   );
 }
 
-export function Skeleton({ lines = 3, label = '불러오는 중' }: { lines?: number; label?: string }) {
+export function Skeleton({ lines = 3, label }: { lines?: number; label?: string }) {
+  const t = useT();
   return (
-    <div className="xc-skeleton" role="status" aria-label={label}>
+    <div className="xc-skeleton" role="status" aria-label={label ?? t('common.loading')}>
       {Array.from({ length: lines }, (_, index) => <span key={index} style={{ width: `${92 - index * 14}%` }} />)}
     </div>
   );
