@@ -299,11 +299,13 @@ test('FR-VIEW-12: 재생은 tile이 다 그려질 때까지 기다리고, 이전
   // Frame 1 still loading: playback waits beyond the interval and says so.
   fireEvent.click(screen.getByRole('button', { name: '재생' }));
   await act(async () => { first.source.emit('tileloadstart'); jest.advanceTimersByTime(2000); });
+  await act(async () => { jest.advanceTimersByTime(150); });
   expect(slider).toHaveValue('0');
-  expect(screen.getByText('불러오는 중')).toHaveAttribute('role', 'status');
+  // Shown beside the date, but not announced while playing (it would repeat every step).
+  expect(screen.getByText('불러오는 중…').closest('[role="status"]')).toHaveAttribute('aria-live', 'off');
   await act(async () => { first.source.emit('tileloadend'); jest.advanceTimersByTime(80); });
   expect(slider).toHaveValue('1');
-  expect(screen.queryByText('불러오는 중')).not.toBeInTheDocument();
+  expect(screen.queryByText('불러오는 중…')).not.toBeInTheDocument();
   // No blank frame: the old layer stays until the new one has loaded (errors count as loaded).
   const [second] = tiles.at(T2);
   await act(async () => { second.source.emit('tileloadstart'); jest.advanceTimersByTime(300); });
@@ -354,4 +356,46 @@ test('FR-VIEW-12: 재생 중에만 다음 시점을 미리 불러오고, 일시�
   await act(async () => { await Promise.resolve(); });
   expect(mockAlive.has(prefetch)).toBe(false);
   expect(Array.from(mockAlive)).toEqual([tiles.at(T1)[0]]);
+});
+
+test('UX8: 손으로 시점을 바꾸면 새 tile이 다 올 때까지(150ms 뒤부터) 날짜 옆에 "불러오는 중…"을 알린다', async () => {
+  jest.useFakeTimers();
+  const tiles = useFakeTileLayers();
+  render(<Viewer />);
+  await selectBaselineDataset();
+  await tiles.load(tiles.at(T1)[0]);
+  expect(screen.queryByText('불러오는 중…')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '다음 시점' }));
+  await act(async () => { await Promise.resolve(); });
+  const [second] = tiles.at(T2);
+  await act(async () => { second.source.emit('tileloadstart'); jest.advanceTimersByTime(100); });
+  expect(screen.queryByText('불러오는 중…')).not.toBeInTheDocument();
+  await act(async () => { jest.advanceTimersByTime(60); });
+  expect(screen.getByText('불러오는 중…').closest('[role="status"]')).toHaveAttribute('aria-live', 'polite');
+  await act(async () => { second.source.emit('tileloadend'); jest.advanceTimersByTime(80); });
+  expect(screen.queryByText('불러오는 중…')).not.toBeInTheDocument();
+});
+
+test('UX8: 원본 colour bar 범례는 비교(스와이프) 중에도 남고, 밴드를 바꾸면 그 밴드의 범위를 보인다', async () => {
+  mockBackoffice.getDatasetDetail.mockResolvedValue({
+    id: '77', projectId: '4', name: '서버 상세 이름', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: '77', defaultVariable: 'red', variables: ['red', 'green', 'blue', 'nir'],
+    variableMetadata: { red: { colorBarName: 'Reds', colorBarMin: 94, colorBarMax: 621.68, units: '1' }, nir: { colorBarName: 'viridis', colorBarMin: 32, colorBarMax: 1469, units: '1' } },
+    rgbBands: ['red', 'green', 'blue'],
+    times: [{ iso: T1, label: '2026. 1. 1.' }, { iso: T2, label: '2026. 2. 1.' }], bbox: [126, 33, 127, 34],
+  });
+  // The swipe layer clips itself with pre/postrender listeners.
+  mockAddLayer.mockResolvedValue({ ...mockLayer, on: jest.fn(), un: jest.fn() });
+  render(<Viewer />);
+  await selectBaselineDataset();
+  expect(await screen.findByRole('group', { name: '원본 범례: red, 94 – 621.7' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /스와이프/ }));
+  expect(screen.getByRole('group', { name: '원본 범례: red, 94 – 621.7' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  fireEvent.click(screen.getByRole('button', { name: 'nir' }));
+  expect(screen.getByRole('group', { name: '원본 범례: nir, 32 – 1,469' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'RGB' }));
+  expect(screen.getByRole('group', { name: '원본 범례: RGB 합성, 빨강 red · 초록 green · 파랑 blue' })).toBeInTheDocument();
+  // Hiding the source layer hides its legend.
+  fireEvent.click(screen.getByRole('checkbox', { name: /원본 영상/ }));
+  expect(screen.queryByRole('group', { name: /원본 범례/ })).not.toBeInTheDocument();
 });

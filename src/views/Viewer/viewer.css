@@ -10,6 +10,8 @@
   --vx-sunken: var(--fb-sunken);
   --vx-rule: var(--fb-rule);
   --vx-rule-strong: var(--fb-rule-strong);
+  /* Text fields and selects need 3:1 against their surface (WCAG 1.4.11); rule-strong is only about 2:1. */
+  --vx-input-border: var(--fb-input-border);
   --vx-ink: var(--fb-ink);
   --vx-ink-2: var(--fb-ink-2);
   --vx-ink-3: var(--fb-ink-3);
@@ -223,7 +225,7 @@
 .vx-pmenu__form label { display: grid; gap: 4px; font: 600 12.5px/1.4 var(--vx-font); }
 .vx-pmenu__form small { color: var(--vx-ink-3); font-weight: 400; }
 .vx-pmenu__form :where(input, textarea) {
-  width: 100%; padding: 8px 10px; border: 1px solid var(--vx-rule-strong); border-radius: var(--vx-radius);
+  width: 100%; padding: 8px 10px; border: 1px solid var(--vx-input-border); border-radius: var(--vx-radius);
   background: var(--vx-surface); color: var(--vx-ink); font: 400 14px/1.4 var(--vx-font); resize: vertical;
 }
 .vx-pmenu__form :where(input, textarea)::placeholder { color: var(--vx-ink-3); }
@@ -285,14 +287,25 @@
 .vx-spin { animation: vx-spin 0.9s linear infinite; }
 @keyframes vx-spin { to { transform: rotate(360deg); } }
 
-.vx-mapinfo {
-  position: absolute; z-index: 5; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; align-items: center;
-  border: 1px solid var(--vx-rule); border-radius: var(--vx-radius); background: color-mix(in srgb, var(--vx-surface) 92%, transparent);
-  color: var(--vx-ink-2); font: 500 12px/1 var(--vx-font); font-variant-numeric: tabular-nums; white-space: nowrap;
+/* Map legends (S7): bottom-left stack — AI result above the source colour bar, never on top of each other */
+.vx-legends {
+  position: absolute; z-index: 6; left: 12px; bottom: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  max-width: 300px; pointer-events: none;
 }
-.vx-mapinfo span { padding: 6px 9px; }
-.vx-mapinfo span + span { border-left: 1px solid var(--vx-rule); }
-.vx-mapinfo__var { color: var(--vx-ink); font-weight: 600; }
+.vx-legends:empty { display: none; }
+.vx-legends > * { pointer-events: auto; }
+.vx-legend.vx-cbar { width: 196px; gap: 4px; padding: 7px 10px 6px; }
+.vx-cbar__head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.vx-cbar__head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vx-ink); font: 600 12.5px/1.3 var(--vx-font); }
+.vx-cbar__head span { flex: none; color: var(--vx-ink-3); font: 500 11.5px/1.3 var(--vx-font); }
+.vx-cbar__ramp { display: block; height: 10px; overflow: hidden; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--vx-rule); }
+.vx-cbar__ramp.is-reversed { transform: scaleX(-1); }
+.vx-cbar__ramp img, .vx-cbar__ramp i { display: block; width: 100%; height: 100%; object-fit: fill; }
+.vx-cbar__ticks { display: flex; justify-content: space-between; gap: 8px; color: var(--vx-ink-2); font: 500 11.5px/1.2 var(--vx-font); }
+.vx-cbar__rgb { color: var(--vx-ink-2); font: 500 12px/1.4 var(--vx-font); }
+.vx-cbar__classes { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; color: var(--vx-ink-2); font: 500 12px/1.3 var(--vx-font); }
+.vx-cbar__classes li { display: flex; align-items: center; gap: 6px; }
+.vx-cbar__classes i { width: 10px; height: 10px; flex: none; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--vx-rule); }
 
 /* The user's marks: pixel marker and keyboard reticle in overprint magenta */
 .vx .pixel-marker {
@@ -427,7 +440,7 @@
 .vx-field { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; min-width: 0; font: 600 13px/1.4 var(--vx-font); }
 .vx-field legend { padding: 0; margin-bottom: 6px; }
 .vx-field select {
-  height: 36px; padding: 0 10px; border: 1px solid var(--vx-rule-strong); border-radius: var(--vx-radius);
+  height: 36px; padding: 0 10px; border: 1px solid var(--vx-input-border); border-radius: var(--vx-radius);
   background: var(--vx-surface); color: var(--vx-ink); font: 400 14px/1 var(--vx-font);
 }
 .vx-field input[type='range'] { width: 100%; margin: 0; accent-color: var(--vx-ink); }
@@ -456,7 +469,7 @@
 .vx-section--top { border-top: 1px solid var(--vx-rule); }
 .vx-link { margin-left: 6px; padding: 0; border: 0; background: none; color: var(--vx-ink); font: 600 12.5px/1.4 var(--vx-font); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .vx-input {
-  height: 36px; padding: 0 10px; border: 1px solid var(--vx-rule-strong); border-radius: var(--vx-radius);
+  height: 36px; padding: 0 10px; border: 1px solid var(--vx-input-border); border-radius: var(--vx-radius);
   background: var(--vx-surface); color: var(--vx-ink); font: 400 14px/1 var(--vx-font); min-width: 0;
 }
 .vx-input::placeholder { color: var(--vx-ink-3); }
@@ -481,7 +494,7 @@
 .vx-range2 { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 6px; color: var(--vx-ink-3); }
 .vx-range2 label { display: grid; min-width: 0; }
 .vx-range2 select {
-  height: 36px; min-width: 0; padding: 0 8px; border: 1px solid var(--vx-rule-strong); border-radius: var(--vx-radius);
+  height: 36px; min-width: 0; padding: 0 8px; border: 1px solid var(--vx-input-border); border-radius: var(--vx-radius);
   background: var(--vx-surface); color: var(--vx-ink); font: 400 13.5px/1 var(--vx-font); font-variant-numeric: tabular-nums;
 }
 .vx-field > .vx-section__hint { font-weight: 400; }
@@ -531,12 +544,12 @@
 }
 .vx-result-clip { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
 .vx-legend {
-  position: absolute; z-index: 6; left: 12px; bottom: 12px; display: grid; gap: 3px; max-width: 300px; padding: 8px 10px;
+  display: grid; gap: 3px; max-width: 300px; padding: 8px 10px;
   border: 1px solid var(--vx-rule); border-radius: var(--vx-radius); background: var(--vx-surface); box-shadow: var(--vx-lift);
   color: var(--vx-ink-2); font: 400 12px/1.4 var(--vx-font);
 }
 .vx-legend__row { display: inline-flex; align-items: center; gap: 7px; color: var(--vx-ink); font: 600 12.5px/1.3 var(--vx-font); }
-.vx-map.is-comparing .vx-legend { bottom: 66px; }
+.vx-map.is-comparing .vx-legends { bottom: 66px; }
 .vx-maplabel > .vx-swatch, .vx-maplabel > .vx-hatch { margin-left: 4px; }
 .vx-cmp-target {
   position: absolute; z-index: 9; left: 50%; top: 12px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
@@ -636,14 +649,17 @@
 .vx-current strong { grid-area: date; display: inline-flex; align-items: center; gap: 6px; font: 600 15px/1.2 var(--vx-font); white-space: nowrap; }
 .vx-current__count { grid-area: count; color: var(--vx-ink-3); font: 400 12px/1 var(--vx-font); white-space: nowrap; }
 /* FR-VIEW-12: playback is waiting for the frame's tiles; quiet text beside the date, never over the map. */
+.vx-current__live { display: inline-flex; }
+/* Empty: out of the flex row (no stray gap) but still in the accessibility tree, so its first message is heard. */
+.vx-current__live:empty { position: absolute; }
 .vx-current__wait { display: inline-flex; align-items: center; gap: 5px; color: var(--vx-ink-3); font: 400 12px/1 var(--vx-font); }
-.vx-current__wait::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.vx-current__wait > svg { flex: none; }
 .vx-dock.is-compare .vx-current { grid-template-columns: auto; grid-template-areas: 'date' 'b'; }
 .vx-dock.is-compare .vx-current__count { display: none; }
 .vx-btime { grid-area: b; position: relative; display: inline-flex; align-items: center; gap: 6px; }
 .vx-btime > svg { position: absolute; right: 7px; color: var(--vx-ink-3); pointer-events: none; }
 .vx-btime select {
-  appearance: none; height: 28px; max-width: 160px; padding: 0 26px 0 8px; border: 1px solid var(--vx-rule-strong); border-radius: var(--vx-radius);
+  appearance: none; height: 28px; max-width: 160px; padding: 0 26px 0 8px; border: 1px solid var(--vx-input-border); border-radius: var(--vx-radius);
   background: var(--vx-surface); color: var(--vx-ink); font: 600 13px/1 var(--vx-font); cursor: pointer;
 }
 
@@ -789,9 +805,12 @@
   .vx-toast--notice, .vx-toast--done { top: 100px; }
   .vx-drawer { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; height: min(70%, 480px); }
   .vx-drawer-rail { right: 8px; top: auto; bottom: 8px; }
-  .vx-mapinfo { display: none; }
-  .vx-legend { left: 8px; bottom: 8px; max-width: calc(100% - 16px); }
-  .vx-map.is-comparing .vx-legend { bottom: 58px; }
+  .vx-legends { left: 8px; bottom: 8px; max-width: calc(100% - 16px); gap: 4px; }
+  .vx-map.is-comparing .vx-legends { bottom: 58px; }
+  .vx-legend { padding: 6px 8px; }
+  .vx-legend.vx-cbar { width: 148px; padding: 5px 8px 4px; gap: 3px; }
+  .vx-cbar__ramp { height: 8px; }
+  .vx-cbar__rgb { font-size: 11.5px; }
   .vx-cmp-target { top: 52px; }
   .drawer-open .vx-maplabel--b, .drawer-open .vx-compare-map .vx-maplabel--b, .rail-open .vx-maplabel--b { right: 8px; }
   .vx-cmp-target__label { display: none; }
@@ -823,6 +842,8 @@
   .vx-staff { grid-area: staff; height: 60px; }
   .vx-current { grid-template-columns: auto; grid-template-areas: 'date' 'count' 'b'; gap: 3px; }
   .vx-current strong { font-size: 14px; }
+  /* Narrow dock: the spinner alone beside the date; the words stay for screen readers. */
+  .vx-current__wait-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .vx-dock.is-compare .vx-current strong { font-size: 13px; gap: 4px; }
   /* Compare adds the B picker: give the player its own row instead of squeezing the mode switch. */
   .vx-dock.is-compare .vx-timeline { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'lead' 'tail' 'staff'; }
@@ -835,7 +856,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .vx *, .vx *::before, .vx *::after { transition-duration: 0ms !important; }
-  .vx-spin, .vx-pulse, .vx-status__short { display: none; }
+  /* Stop the motion, keep the sign: the icon and the short status text stay. */
+  .vx-spin, .vx-pulse { animation: none; }
   .vx-run__bar i { transition: none; }
 .vx-status.is-starting svg { animation: none; }
 }
