@@ -11,7 +11,9 @@
 .wizard-steps li.is-done .wizard-steps__dot { background: transparent; color: var(--fb-ok); box-shadow: inset 0 0 0 1px var(--fb-rule-strong); }
 
 /* No overflow clipping on the card: the footer sticks to the viewport bottom (W1). */
-.wizard-body { display: grid; gap: var(--space-5); padding: var(--space-5); }
+.wizard-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); padding: var(--space-5); }
+/* a grid item never grows the step wider than the screen (390px: the date list used to push it to 416px) */
+.wizard-body > * { min-width: 0; }
 .wizard-title { font: var(--text-h2); }
 .wizard-title:focus { outline: none; }
 .wizard-section { display: grid; gap: var(--space-5); min-width: 0; }
