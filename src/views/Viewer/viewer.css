@@ -764,6 +764,11 @@
 .vx-tour__nav { display: flex; gap: 6px; }
 
 /* Responsive */
+/* English labels are longer ("Side by side", "Nov 27, 2021"): widen the dock's lead and tail columns so
+   the mode switch and the time count are never clipped (UR-53). :root:lang() outranks the plain .vx rules below. */
+:root:lang(en) .vx { --vx-tail: 380px; }
+@media (max-width: 1279px) { :root:lang(en) .vx { --vx-lead: 284px; --vx-tail: 356px; } }
+@media (max-width: 1023px) { :root:lang(en) .vx { --vx-lead: 284px; --vx-tail: 200px; } }
 @media (max-width: 1279px) {
   .vx { --vx-lead: 284px; --vx-tail: 316px; }
   .vx-timeline__lead { gap: 8px; }
