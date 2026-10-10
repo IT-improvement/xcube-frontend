@@ -393,6 +393,7 @@ const koViewer = {
         unknown: '알 수 없음',
         retrySame: '같은 설정으로 다시 시도',
         running: '처리 중…',
+        starting: '입력 확인 중…',
         run: '실행',
         whyChecking: '입력을 확인한 뒤 실행할 수 있습니다.',
         whyMissing: '필요한 입력이 모두 있어야 실행할 수 있습니다.',
