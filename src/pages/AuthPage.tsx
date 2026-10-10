@@ -65,7 +65,7 @@ function AuthLayout({ title, subtitle, children }: { title: string; subtitle: st
             width={780}
             height={1148}
             decoding="async"
-            alt="실제 Viewer 화면: 대청호를 구분선으로 나눠 왼쪽은 위성 원본, 오른쪽은 AI가 물로 찾은 곳을 청록으로 표시"
+            alt="실제 Viewer 화면: 대청호를 구분선으로 나눠 왼쪽은 위성 원본, 오른쪽은 AI가 물로 찾은 곳을 파란 물색으로 표시"
           />
           <figcaption>대청호, 2024년 8월 14일 · 원본과 AI 결과</figcaption>
         </figure>

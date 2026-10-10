@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import '@testing-library/jest-dom';
 import Viewer from '.';
 import * as appApi from '../../app/api';
-import { aiMaskStyle, AiResultList, areaCsv, RESULT_TEAL } from './AiPanel';
+import { aiMaskStyle, AiResultList, areaCsv, AI_WATER } from './AiPanel';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { demoResult } from '../../app/aiDemo';
@@ -174,12 +174,12 @@ test('AI 서비스의 실제 결과 모양(timeSeries, thresholdCurve.values, �
   expect(result.researchBestThreshold.threshold).toBe(0.91);
 });
 
-test('AI 수체 지도 색은 범례와 같은 결과 청록(--fb-result)이고, 1만 칠하는 xcube 범주형 색표를 보낸다', () => {
+test('AI 수체 지도 색은 범례와 같은 물색(--fb-ai-water)이고, 1만 칠하는 xcube 범주형 색표를 보낸다', () => {
   const css = readFileSync(join(__dirname, '../../styles/fieldbook.css'), 'utf8');
-  const tokens = Array.from(css.matchAll(/--fb-result:\s*(#[0-9a-f]{6})/gi)).map((match) => match[1].toLowerCase());
-  expect(tokens).toEqual([RESULT_TEAL.light, RESULT_TEAL.dark]);
-  expect(JSON.parse(aiMaskStyle('light').cmap)).toEqual({ name: 'xcube_ai_water', type: 'categorical', colors: [[1, RESULT_TEAL.light]] });
-  expect(JSON.parse(aiMaskStyle('dark').cmap).colors).toEqual([[1, RESULT_TEAL.dark]]);
+  const tokens = Array.from(css.matchAll(/--fb-ai-water:\s*(#[0-9a-f]{6})/gi)).map((match) => match[1].toLowerCase());
+  expect(tokens).toEqual([AI_WATER.light, AI_WATER.dark]);
+  expect(JSON.parse(aiMaskStyle('light').cmap)).toEqual({ name: 'xcube_ai_water', type: 'categorical', colors: [[1, AI_WATER.light]] });
+  expect(JSON.parse(aiMaskStyle('dark').cmap).colors).toEqual([[1, AI_WATER.dark]]);
   expect(aiMaskStyle('light')).not.toHaveProperty('vmin');
 });
 

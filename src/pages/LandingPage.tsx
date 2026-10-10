@@ -200,7 +200,7 @@ export default function LandingPage() {
                 src={`${ASSET}/daecheong-viewer.webp`}
                 width={2400}
                 height={1016}
-                alt="XCube Viewer 실제 화면. 대청호를 가운데 구분선으로 나눠 왼쪽은 위성 원본, 오른쪽은 AI가 물로 찾은 곳을 청록으로 보여 주고, 오른쪽 패널에 면적과 참조 자료 대비 지표가 있습니다."
+                alt="XCube Viewer 실제 화면. 대청호를 가운데 구분선으로 나눠 왼쪽은 위성 원본, 오른쪽은 AI가 물로 찾은 곳을 파란 물색으로 보여 주고, 오른쪽 패널에 면적과 참조 자료 대비 지표가 있습니다."
                 fetchPriority="high"
               />
             </picture>

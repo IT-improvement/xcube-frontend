@@ -40,13 +40,13 @@ const percent = (ratio: number | null | undefined) =>
 const metric = (value: number | undefined) => (value == null ? "—" : value.toFixed(3));
 const thresholdText = (value: number | undefined) => (value == null ? "—" : value.toFixed(2));
 
-/** `--fb-result` of fieldbook.css per theme: the legend, layer swatch and area bar use the same token. */
-export const RESULT_TEAL = { light: "#0f7a6e", dark: "#4fc4b4" } as const;
+/** `--fb-ai-water` of fieldbook.css per theme: the legend, layer swatch and area bar use the same token. */
+export const AI_WATER = { light: "#1f9ae0", dark: "#5cbcf2" } as const;
 /**
- * water_mask (1 물, 0 물 아님, 255 값 없음) painted in exactly the result teal. xcube 1.13 accepts a user colour map as JSON
+ * water_mask (1 물, 0 물 아님, 255 값 없음) painted in exactly the AI water colour. xcube 1.13 accepts a user colour map as JSON
  * in `cmap`; a categorical map with the single class 1 leaves 0, 255 and NaN outside its bins, so they stay transparent.
  */
-export const aiMaskStyle = (theme: string) => ({ cmap: JSON.stringify({ name: "xcube_ai_water", type: "categorical", colors: [[1, theme === "dark" ? RESULT_TEAL.dark : RESULT_TEAL.light]] }) });
+export const aiMaskStyle = (theme: string) => ({ cmap: JSON.stringify({ name: "xcube_ai_water", type: "categorical", colors: [[1, theme === "dark" ? AI_WATER.dark : AI_WATER.light]] }) });
 /** The candidate equal to {@code iso}, or the nearest within a day; null when the time is not covered. */
 export function matchTime(candidates: string[], iso?: string): string | null {
   if (!iso) return null;
@@ -462,7 +462,7 @@ export function AiResultPanel({
           <LayerControl label="AI 수체 결과" accent="result" checked={resultVisible} onChecked={onResultVisible} opacity={resultOpacity} onOpacity={onResultOpacity} />
           <LayerControl label="원본 Zarr" accent="source" checked={sourceVisible} onChecked={onSourceVisible} opacity={sourceOpacity} onOpacity={onSourceOpacity} />
         </div>
-        <p className="vx-section__hint">원본 위에 물로 판정한 곳을 청록 빗금으로 겹칩니다. 아래 “스와이프”에서 비교 대상을 “AI 결과”로 바꾸면 원본과 나란히 밀어 볼 수 있습니다.</p>
+        <p className="vx-section__hint">원본 위에 물로 판정한 곳을 물색(파랑)으로 칠해 겹칩니다. 아래 “스와이프”에서 비교 대상을 “AI 결과”로 바꾸면 원본과 나란히 밀어 볼 수 있습니다.</p>
       </section>
 
       {demo && <p className="vx-note">데모 데이터입니다. 실제 분석 결과가 아닙니다.</p>}
