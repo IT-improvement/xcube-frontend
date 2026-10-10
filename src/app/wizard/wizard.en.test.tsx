@@ -152,7 +152,8 @@ describe('Date table in English', () => {
     fireEvent.change(screen.getByLabelText('Dates to build'), { target: { value: '1' } });
     expect(onChange).toHaveBeenLastCalledWith(['2025-07-10']);
     expect(screen.getByText('Picks the date with the least cloud and shadow inside the area. You can also change the checks yourself.')).toBeInTheDocument();
-    expect(screen.getByText(/Only dates that cover 100% of the place are shown\./)).toHaveTextContent('1 date left out for partial cover: 2025-06-01(82%)');
+    expect(screen.getByText('1 date left out for partial cover')).toBeInTheDocument();
+    expect(screen.getByText('2025-06-01 (82%)')).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(HANGUL);
   });
 

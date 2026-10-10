@@ -58,20 +58,27 @@ export default function DateTable({ data, picked, onChange, pairing }: Props) {
           />
           <span aria-hidden>{t('wizard.dates.wantedOf', { count: dates.length })}</span>
         </span>
-        <Button size="sm" variant="ghost" onClick={() => onChange(all)} disabled={count === dates.length}>{t('wizard.dates.all')}</Button>
-        <Button size="sm" variant="ghost" onClick={() => onChange([])} disabled={count === 0}>{t('wizard.dates.none')}</Button>
+        <span className="date-pick__sel" role="group" aria-label={t('wizard.dates.selection')}>
+          <Button size="sm" variant="line" onClick={() => onChange(all)} disabled={count === dates.length}>{t('wizard.dates.all')}</Button>
+          <Button size="sm" variant="line" onClick={() => onChange([])} disabled={count === 0}>{t('wizard.dates.none')}</Button>
+        </span>
         <span className="date-pick__order" role="group" aria-label={t('wizard.dates.order')}>
-          <Button size="sm" variant={order === 'clear' ? 'secondary' : 'ghost'} aria-pressed={order === 'clear'} onClick={() => setOrder('clear')}>{t('wizard.dates.byCloud')}</Button>
-          <Button size="sm" variant={order === 'date' ? 'secondary' : 'ghost'} aria-pressed={order === 'date'} onClick={() => setOrder('date')}>{t('wizard.dates.byDate')}</Button>
+          <button type="button" aria-pressed={order === 'clear'} onClick={() => setOrder('clear')}>{t('wizard.dates.byCloud')}</button>
+          <button type="button" aria-pressed={order === 'date'} onClick={() => setOrder('date')}>{t('wizard.dates.byDate')}</button>
         </span>
       </div>
       <p className="xc-hint" id="date-pick-count-hint">
         {nOk ? t(hasNoise ? 'wizard.dates.rankHintNoise' : 'wizard.dates.rankHint', { count: n }) : t(hasNoise ? 'wizard.dates.rankHintNoiseAny' : 'wizard.dates.rankHintAny')}
       </p>
-      <p className="xc-hint tabular">
-        {t('wizard.dates.fullCoverOnly')}
-        {excluded.length > 0 && t('wizard.dates.excluded', { count: excluded.length, list: excluded.map((item) => `${item.date}(${coverageText(item.coverage)}%)`).join(', ') })}
-      </p>
+      <div className="xc-hint tabular date-pick__cover">
+        <span>{t('wizard.dates.fullCoverOnly')}</span>
+        {excluded.length > 0 && (
+          <details className="date-pick__excluded">
+            <summary>{t('wizard.dates.excluded', { count: excluded.length })}</summary>
+            <ul>{excluded.map((item) => <li key={item.date}>{item.date} ({coverageText(item.coverage)}%)</li>)}</ul>
+          </details>
+        )}
+      </div>
       {pairing && (
         <p className="xc-hint tabular">
           {t('wizard.sar.pairCount', { paired: dates.length - unpaired.length, count: dates.length })}
