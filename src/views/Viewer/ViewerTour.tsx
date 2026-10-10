@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useT } from "../../i18n";
+import type { TFunction, TKey } from "../../i18n";
+import "../../i18n/viewer";
 
 export type TourStep = {
   /** Value of the data-tour attribute to highlight; missing targets show a centred card. */
@@ -10,51 +13,19 @@ export type TourStep = {
   fallback?: string;
 };
 
-export const VIEWER_TOUR_STEPS: TourStep[] = [
-  {
-    target: "dataset",
-    title: "데이터셋 선택",
-    body: "지도에 띄울 위성 데이터(Zarr)를 이름으로 찾아 고릅니다. 내 데이터와 공유받은 데이터가 함께 나옵니다.",
-  },
-  {
-    target: "project",
-    title: "프로젝트",
-    body: "프로젝트를 고르면 데이터 목록이 그 프로젝트의 데이터로 좁혀집니다. 왼쪽 폴더 버튼으로 새 프로젝트를 만들거나 지금 보는 데이터를 프로젝트에 추가합니다.",
-  },
-  {
-    target: "layers",
-    title: "레이어",
-    body: "표시할 밴드(RGB, red, nir 등)를 고르고, 원본·AI 결과 레이어를 켜고 끄며 불투명도를 조절합니다. 닫아도 지도 왼쪽 위 '레이어' 버튼으로 다시 엽니다.",
-  },
-  {
-    target: "tools",
-    title: "지도 도구",
-    body: "십자선 도구를 켜고 지도를 클릭하면 그 지점의 전체 시계열 그래프가 타임라인 위에 열립니다. 키보드로는 방향키로 십자선을 옮기고 Enter로 조회합니다.",
-  },
-  {
-    target: "timeline",
-    title: "타임라인",
-    body: "눈금 하나가 촬영 시점 하나입니다. 재생하거나 ←/→로 시점을 넘기고 Space로 재생·정지합니다. 그래프의 점도 같은 눈금 위에 놓입니다. 속도와 반복은 오른쪽 '재생 옵션'에 있습니다.",
-    fallback: "데이터셋을 고르면 화면 아래에 나타납니다.",
-  },
-  {
-    target: "compare",
-    title: "시점 비교",
-    body: "스와이프는 구분선을 끌어 A(지금 보는 시점)와 B 시점을 겹쳐 보고, 나란히는 두 지도를 함께 움직이며 비교합니다. A와 B는 타임라인 눈금 위에 표시됩니다. 화면 상태는 주소에 저장되어 링크로 공유해도 그대로 열립니다.",
-    fallback: "데이터셋을 고르면 타임라인 오른쪽에 나타납니다.",
-  },
-  {
-    target: "ai",
-    title: "AI 수체 추출",
-    body: "선택한 데이터셋으로 수체 추출을 실행하고, 결과가 있으면 '결과'에서 원본과 겹쳐 비교합니다.",
-    fallback: "데이터셋을 고르면 위쪽 막대에 버튼이 나타납니다.",
-  },
-  {
-    target: "add",
-    title: "데이터 추가",
-    body: "GeoTIFF·Shapefile·GEE로 새 Zarr를 만들거나 이미 있는 Zarr를 등록합니다. 새 탭에서 열리고, 끝나고 Viewer로 돌아오면 목록이 자동으로 갱신됩니다.",
-  },
-];
+/** The Viewer's tour, by its targets; the words are viewer.tour.steps.{target}.* in the screen language. */
+export const VIEWER_TOUR_STEPS = ["dataset", "project", "layers", "tools", "timeline", "compare", "ai", "add"] as const;
+/** Steps with a fallback line (their target appears only once a dataset is chosen). */
+const WITH_FALLBACK: ReadonlyArray<string> = ["timeline", "compare", "ai"];
+
+export function viewerTourSteps(t: TFunction): TourStep[] {
+  return VIEWER_TOUR_STEPS.map((target) => ({
+    target,
+    title: t(`viewer.tour.steps.${target}.title`),
+    body: t(`viewer.tour.steps.${target}.body`),
+    ...(WITH_FALLBACK.includes(target) ? { fallback: t(`viewer.tour.steps.${target}.fallback` as TKey) } : {}),
+  }));
+}
 
 const DISMISS_KEY = "xcube-viewer-tour-dismissed";
 
@@ -80,12 +51,15 @@ const GAP = 12;
 const CARD_WIDTH = 340;
 
 export default function ViewerTour({
-  steps = VIEWER_TOUR_STEPS,
+  steps: givenSteps,
   onClose,
 }: {
+  /** Custom steps (tests); the Viewer's own tour by default. */
   steps?: TourStep[];
   onClose: () => void;
 }) {
+  const t = useT();
+  const steps = givenSteps ?? viewerTourSteps(t);
   const [index, setIndex] = useState(0);
   const [dontShow, setDontShow] = useState(tourDismissed);
   const [rect, setRect] = useState<Rect | null>(null);
@@ -238,8 +212,8 @@ export default function ViewerTour({
             type="button"
             className="vx-icon-btn"
             onClick={finish}
-            aria-label="둘러보기 닫기"
-            title="닫기"
+            aria-label={t("viewer.tour.close")}
+            title={t("common.close")}
           >
             <X size={16} aria-hidden="true" />
           </button>
@@ -268,7 +242,7 @@ export default function ViewerTour({
               checked={dontShow}
               onChange={(event) => setDontShow(event.target.checked)}
             />
-            다시 보지 않기
+            {t("viewer.tour.dontShow")}
           </label>
           <div className="vx-tour__nav">
             {index > 0 && (
@@ -277,7 +251,7 @@ export default function ViewerTour({
                 className="vx-btn vx-btn--line"
                 onClick={prev}
               >
-                이전
+                {t("viewer.tour.prev")}
               </button>
             )}
             <button
@@ -286,7 +260,7 @@ export default function ViewerTour({
               className="vx-btn vx-btn--ink"
               onClick={next}
             >
-              {last ? "시작하기" : "다음"}
+              {t(last ? "viewer.tour.start" : "viewer.tour.next")}
             </button>
           </div>
         </div>

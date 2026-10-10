@@ -273,11 +273,13 @@ describe('Shared helpers follow the language they are given', () => {
     expect(defaultName('대청호', new Date(2026, 9, 10), 'ko')).toBe('대청호_융합_20261010');
   });
 
-  test('helpers shared with the Korean-only wizard and Viewer stay Korean unless asked', () => {
-    // An English screen is open (the provider made English current) …
+  test('request error text follows the screen language (stage 4: no Korean-only screen is left)', () => {
+    // An English screen is open (the provider made English current): userMessage without a language follows it …
     render(<LanguageProvider initial="en"><span>en</span></LanguageProvider>);
-    // … but the request error text and the extent sketch default to Korean for the wizard and Viewer.
-    expect(userMessage(new ApiError(0, 'NETWORK_ERROR', 'x'))).toBe('서버에 연결할 수 없습니다. 실행 상태를 확인해 주세요.');
+    expect(userMessage(new ApiError(0, 'NETWORK_ERROR', 'x'))).toBe('Can’t reach the server. Check that it’s running.');
+    // … a language given wins …
+    expect(userMessage(new ApiError(0, 'NETWORK_ERROR', 'x'), 'ko')).toBe('서버에 연결할 수 없습니다. 실행 상태를 확인해 주세요.');
+    // … and a component outside any provider (isolated tests) still draws Korean.
     render(<BBoxMap bbox={[127, 36, 128, 37]} />);
     expect(screen.getByRole('img')).toHaveAccessibleName('데이터 범위: 경도 127.0000~128.0000, 위도 36.0000~37.0000');
   });

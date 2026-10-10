@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, LogOut, Moon, Sun } from "lucide-react";
 import { LANGS, LANGUAGE_NAMES, useLanguage } from "../../i18n";
+import "../../i18n/viewer";
 
 export default function UserMenu({
   name,
@@ -16,7 +17,7 @@ export default function UserMenu({
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const { lang, setLang } = useLanguage();
+  const { lang, setLang, t } = useLanguage();
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const items = () =>
@@ -58,7 +59,7 @@ export default function UserMenu({
         className="vx-user__button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`${name} 계정 메뉴`}
+        aria-label={t("viewer.user.menu", { name })}
         onClick={() => (open ? close() : setOpen(true))}
       >
         <span className="vx-user__avatar" aria-hidden="true">
@@ -70,10 +71,10 @@ export default function UserMenu({
         <ChevronDown size={14} aria-hidden="true" />
       </button>
       {open && (
-        <div className="vx-menu" role="menu" aria-label="계정">
+        <div className="vx-menu" role="menu" aria-label={t("viewer.user.account")}>
           <p className="vx-menu__who" role="presentation">
             <strong>{name}</strong>
-            <small>로그인한 계정</small>
+            <small>{t("viewer.user.signedIn")}</small>
           </p>
           <button
             type="button"
@@ -84,9 +85,9 @@ export default function UserMenu({
             }}
           >
             {dark ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
-            {dark ? "라이트 모드로 전환" : "다크 모드로 전환"}
+            {t(dark ? "viewer.user.toLight" : "viewer.user.toDark")}
           </button>
-          {/* Each language is named in its own language (UR-53). Viewer text itself is still Korean. */}
+          {/* Each language is named in its own language (UR-53); the group name is in both, so anyone finds it. */}
           <div className="vx-menu__group" role="group" aria-label="언어 · Language">
             {LANGS.map((code) => (
               <button
@@ -112,10 +113,10 @@ export default function UserMenu({
               setOpen(false);
               onLogout();
             }}
-            aria-label={`${name} 로그아웃`}
+            aria-label={t("viewer.user.logoutNamed", { name })}
           >
             <LogOut size={16} aria-hidden="true" />
-            로그아웃
+            {t("common.logout")}
           </button>
         </div>
       )}

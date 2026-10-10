@@ -49,7 +49,10 @@ import {
   SwipeDivider,
   useCompareLayer,
 } from "./CompareView";
-import { ai } from "../../app/api";
+import { ai, formatDate } from "../../app/api";
+import { translate, useLanguage } from "../../i18n";
+import type { Lang, TKey } from "../../i18n";
+import "../../i18n/viewer";
 import type { AiJobRequest, AiResult, AiWaterJob } from "../../api/aiApi";
 import {
   AiLegend,
@@ -68,13 +71,20 @@ import UserMenu from "./UserMenu";
 import { FrameBuffer, playbackInterval } from "./frameBuffer";
 
 type Drawer = "ai" | "result" | null;
+/** A passing notice over the map: a tile failure, a request failure, or a fixed sentence. */
+type ViewerNotice = { tile?: boolean; cause?: unknown; key?: TKey };
+function noticeText(notice: ViewerNotice, lang: Lang) {
+  if (notice.key) return translate(lang, notice.key);
+  const error = userMessage(notice.cause, lang);
+  return notice.tile ? translate(lang, "viewer.toast.tileFailed", { error }) : error;
+}
 type MapTool = "pan" | "pixel";
 const noop = () => undefined;
 /** Numeric catalog ids go to the services as numbers; demo ids stay strings. */
 const cubeId = (id: string) => (/^\d+$/.test(id) ? Number(id) : id);
 
 /** AI service jobs first; Backoffice links (older results) only when no job already points at them. */
-function resultEntries(aiJobs: AiWaterJob[], linked: AiJob[]): ResultEntry[] {
+function resultEntries(aiJobs: AiWaterJob[], linked: AiJob[], lang: Lang): ResultEntry[] {
   const entries: ResultEntry[] = aiJobs.map((job) => ({
     key: job.id,
     name: job.name,
@@ -90,7 +100,7 @@ function resultEntries(aiJobs: AiWaterJob[], linked: AiJob[]): ResultEntry[] {
   }));
   for (const link of linked)
     if (link.outputDatacubeId && !entries.some((entry) => entry.datacubeId === link.outputDatacubeId))
-      entries.push({ key: `link:${link.outputDatacubeId}`, name: `수체 추출 결과 #${link.id}`, status: link.status, datacubeId: link.outputDatacubeId });
+      entries.push({ key: `link:${link.outputDatacubeId}`, name: translate(lang, "viewer.ai.list.linkedName", { id: link.id }), status: link.status, datacubeId: link.outputDatacubeId });
   return entries;
 }
 
@@ -132,7 +142,7 @@ function ownsKeys(target: EventTarget | null, key: string) {
 
 /** How often and how long the Viewer asks whether a new AI result is on the map yet (pod restart, FR-AI). */
 const RESULT_PUBLISH_POLL_MS = 3000;
-/** A frame that takes longer than this to draw shows "불러오는 중…" beside the date. */
+/** A frame that takes longer than this to draw shows "불러오는 중…" (Loading…) beside the date. */
 const FRAME_WAIT_DELAY_MS = 150;
 const RESULT_PUBLISH_WAIT_MS = 4 * 60 * 1000;
 
@@ -150,6 +160,7 @@ export default function Viewer({
   initialDatasetId?: string;
 }) {
   const { theme, toggle: toggleTheme } = useTheme();
+  const { lang, t } = useLanguage();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
   const [datasets, setDatasets] = useState<ZarrDataset[]>([]);
@@ -188,13 +199,17 @@ export default function Viewer({
   const [resultStatsLoading, setResultStatsLoading] = useState(false);
   const [resultCube, setResultCube] = useState<ZarrDataset | null>(null);
   const [aiRun, setAiRun] = useState<AiWaterJob | null>(null);
-  const [aiRunError, setAiRunError] = useState("");
+  const [aiRunFailure, setAiRunError] = useState<unknown>(null);
+  const aiRunError = aiRunFailure ? userMessage(aiRunFailure, lang) : "";
   const [compareTarget, setCompareTarget] = useState<CompareTarget>("time");
   const [areaExpanded, setAreaExpanded] = useState(true);
   const [map, setMap] = useState<Map | null>(null);
   const [loading, setLoading] = useState(true);
-  const [apiError, setApiError] = useState("");
-  const [viewerNotice, setViewerNotice] = useState("");
+  // Request failures keep their cause and are worded when drawn, so a language switch rewords them.
+  const [apiFailure, setApiFailure] = useState<unknown>(null);
+  const apiError = apiFailure ? userMessage(apiFailure, lang) : "";
+  const [noticeState, setViewerNotice] = useState<ViewerNotice | null>(null);
+  const viewerNotice = noticeState ? noticeText(noticeState, lang) : "";
   const [seriesPoints, setSeriesPoints] = useState<SeriesPoint[]>([]);
   const [pixelLonLat, setPixelLonLat] = useState<{
     lon: number;
@@ -202,7 +217,8 @@ export default function Viewer({
   } | null>(null);
   const [activeVariable, setActiveVariable] = useState("");
   const [xcubeConnected, setXcubeConnected] = useState<boolean | null>(null);
-  const [jobsError, setJobsError] = useState("");
+  const [jobsFailure, setJobsError] = useState<unknown>(null);
+  const jobsError = jobsFailure ? userMessage(jobsFailure, lang) : "";
   const [mapTool, setMapTool] = useState<MapTool>("pan");
   const [pixelTip, setPixelTip] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
@@ -259,8 +275,9 @@ export default function Viewer({
             job.status === "SUCCEEDED" &&
             (job.outputType === "AI_RESULT" || job.outputType === "INFER_ZARR"),
         ),
+        lang,
       ),
-    [aiJobs, jobs, selected?.id],
+    [aiJobs, jobs, selected?.id, lang],
   );
   const readyEntries = useMemo(
     () => entries.filter((entry) => entry.status === "SUCCEEDED" && (!!entry.datacubeId || !!entry.job?.result)),
@@ -268,7 +285,11 @@ export default function Viewer({
   );
   const selectedResult = readyEntries.find((entry) => entry.key === resultKey) ?? null;
   const hasInference = !!selected && readyEntries.length > 0;
-  const times = useMemo(() => selected?.times ?? [], [selected]);
+  // Time labels come from the catalogue in Korean form (2024. 8. 14.); other languages re-label from the ISO time.
+  const times = useMemo(
+    () => (lang === "ko" ? selected?.times ?? [] : (selected?.times ?? []).map((time) => (Number.isFinite(Date.parse(time.iso)) ? { ...time, label: formatDate(time.iso, lang) } : time))),
+    [selected, lang],
+  );
   const aiRunHere = aiRun && String(aiRun.input?.datacubeId ?? "") === selected?.id ? aiRun : null;
   // 원본 ↔ AI 결과 at the same time replaces time B while a result is chosen.
   // Comparing with an AI result needs only one time; comparing times needs two.
@@ -291,14 +312,14 @@ export default function Viewer({
   }, [selected]);
   const fail = useCallback(
     (cause: unknown) => {
-      setApiError(userMessage(cause));
+      setApiFailure(cause ?? new Error());
     },
     [],
   );
-  const tileFailRef = useRef((cause: unknown) => setViewerNotice(`지도 이미지를 받지 못했습니다. ${userMessage(cause)}`));
+  const tileFailRef = useRef((cause: unknown) => setViewerNotice({ tile: true, cause }));
   const loadProjects = useCallback(() => {
     setLoading(true);
-    setApiError("");
+    setApiFailure(null);
     activeViewerAdapter
       .getProjects()
       .then((items) => {
@@ -434,16 +455,16 @@ export default function Viewer({
   useEffect(() => {
     if (!datasetId) {
       setJobs([]);
-      setJobsError("");
+      setJobsError(null);
       return;
     }
-    setJobsError("");
+    setJobsError(null);
     activeViewerAdapter
       .getJobs(datasetId)
       .then(setJobs)
       .catch((cause) => {
         setJobs([]);
-        setJobsError(userMessage(cause));
+        setJobsError(cause ?? new Error());
       });
   }, [datasetId, aiTick]);
   // AI service jobs of this dataset. The service may not be up yet: then only Backoffice links show.
@@ -530,16 +551,18 @@ export default function Viewer({
           if (isRunning(job)) return;
           if (job.status === "SUCCEEDED") {
             wantedResultRef.current = job.id;
-            setFlash("수체 추출이 끝났습니다. 결과를 원본 위에 겹쳐 보여 줍니다.");
+            setFlash(t("viewer.toast.aiDone"));
           }
           setAiTick((value) => value + 1);
         })
-        .catch((cause) => !cancelled && setAiRunError(userMessage(cause)));
+        .catch((cause) => !cancelled && setAiRunError(cause ?? new Error()));
     }, useMockApi ? 700 : 3000);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
+    // t only words the toast; a language switch must not restart the poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiRun]);
   useEffect(() => {
     // Preselect the dataset passed in the URL once, after the list arrives.
@@ -628,7 +651,7 @@ export default function Viewer({
   }, [times.length, tourOpen]);
   useEffect(() => {
     if (!datasetId || useMockApi) {
-      setViewerNotice("");
+      setViewerNotice(null);
       return;
     }
     if (detailLoadedRef.current === datasetId) return;
@@ -650,9 +673,9 @@ export default function Viewer({
           ),
         );
         setActiveVariable((current) => current || resolved.defaultVariable);
-        setViewerNotice("");
+        setViewerNotice(null);
       })
-      .catch((cause) => setViewerNotice(userMessage(cause)));
+      .catch((cause) => setViewerNotice({ cause }));
   }, [datasetId, selected]);
   // Source tile url of a time index (null when there is no xcube layer to show).
   const sourceTileUrlAt = useCallback(
@@ -667,7 +690,7 @@ export default function Viewer({
   const sourceTileUrl = useMemo(() => sourceTileUrlAt(timeIndex), [sourceTileUrlAt, timeIndex]);
   // A tile failure notice belongs to the band/dataset it came from; a different layer starts clean.
   const tileLayerKey = `${selectedXcubeDatasetId}|${activeVariable}`;
-  useEffect(() => setViewerNotice((notice) => (notice.startsWith("지도 이미지를 받지 못했습니다") ? "" : notice)), [tileLayerKey]);
+  useEffect(() => setViewerNotice((notice) => (notice?.tile ? null : notice)), [tileLayerKey]);
   const nextIndex = times.length < 2 ? -1 : timeIndex < times.length - 1 ? timeIndex + 1 : loop ? 0 : -1;
   const nextTileUrl = useMemo(
     () => (playing && nextIndex >= 0 ? sourceTileUrlAt(nextIndex) : null),
@@ -844,15 +867,11 @@ export default function Viewer({
         return;
       setPixelTip(false);
       setPlaying(false);
-      setViewerNotice("");
+      setViewerNotice(null);
       const lonLat = toLonLat(coordinate) as [number, number];
       setPixelLonLat({ lon: lonLat[0], lat: lonLat[1] });
       if (!useMockApi && (!activeVariable || activeVariable === "rgb")) {
-        setViewerNotice(
-          activeVariable === "rgb"
-            ? "RGB 합성 대신 개별 band를 선택하면 픽셀 시계열을 조회할 수 있습니다."
-            : "조회 가능한 변수가 없습니다. 데이터 동기화 상태를 확인해 주세요.",
-        );
+        setViewerNotice({ key: activeVariable === "rgb" ? "viewer.toast.rgbNoSeries" : "viewer.toast.noVariable" });
         return;
       }
       setGraphExpanded(true);
@@ -888,7 +907,7 @@ export default function Viewer({
         setSeriesPoints(points);
         setPixel(coordinate);
       } catch (cause) {
-        setViewerNotice(userMessage(cause));
+        setViewerNotice({ cause });
       }
     },
     [mapTool, selected, sourceVisible, resultVisible, times, activeVariable],
@@ -1026,7 +1045,7 @@ export default function Viewer({
     return () => window.clearTimeout(timer);
   }, [map, graphExpanded, pixel]);
   const startAi = async (request: AiJobRequest) => {
-    setAiRunError("");
+    setAiRunError(null);
     try {
       const job = await ai.createJob({
         ...request,
@@ -1037,7 +1056,7 @@ export default function Viewer({
       setAiRun({ ...job, input: { ...request, ...(job.input ?? {}), datacubeId: String(request.datacubeId) } });
       setAiTick((value) => value + 1);
     } catch (cause) {
-      setAiRunError(userMessage(cause));
+      setAiRunError(cause ?? new Error());
     }
   };
   const cancelAi = async () => {
@@ -1047,18 +1066,18 @@ export default function Viewer({
       setAiRun({ ...aiRun, status: "CANCELLED" });
       setAiTick((value) => value + 1);
     } catch (cause) {
-      setAiRunError(userMessage(cause));
+      setAiRunError(cause ?? new Error());
     }
   };
   const retryAi = async () => {
     if (!aiRun) return;
-    setAiRunError("");
+    setAiRunError(null);
     try {
       const again = await ai.retryJob(aiRun.id);
       setAiRun({ ...again, input: again.input ?? aiRun.input });
       setAiTick((value) => value + 1);
     } catch (cause) {
-      setAiRunError(userMessage(cause));
+      setAiRunError(cause ?? new Error());
     }
   };
   /** Same input as the shown result, another threshold (the estimate made real). */
@@ -1072,7 +1091,7 @@ export default function Viewer({
       threshold: Number(threshold.toFixed(2)),
       ...(input.timeStart ? { timeStart: String(input.timeStart) } : {}),
       ...(input.timeEnd ? { timeEnd: String(input.timeEnd) } : {}),
-      name: `${selectedResult?.name ?? selected.name} · 임계값 ${threshold.toFixed(2)}`,
+      name: t("viewer.ai.form.rerunName", { name: selectedResult?.name ?? selected.name, threshold: threshold.toFixed(2) }),
     });
   };
   const chooseResult = (entry: ResultEntry) => {
@@ -1089,20 +1108,20 @@ export default function Viewer({
   const pickableProject = useMemo(() => projectDatasets.filter((item) => item.kind !== "AI_RESULT"), [projectDatasets]);
   const projectName = projects.find((item) => item.id === projectId)?.name;
   // With personal pods on, the pill shows the user's own xcube; otherwise the main server.
-  const podLabel: Record<string, string> = {
-    READY: "내 시각화 서버 연결됨",
-    STARTING: "시각화 서버를 준비하고 있습니다",
-    ERROR: "내 시각화 서버 오류",
+  const podLabel: Record<string, TKey> = {
+    READY: "viewer.status.podReady",
+    STARTING: "viewer.status.podStarting",
+    ERROR: "viewer.status.podError",
   };
-  const connectionLabel =
+  const connectionLabel: TKey =
     xcubeConnected === null
-      ? "확인 중"
+      ? "viewer.status.checking"
       : xcubeConnected
-        ? "연결됨"
-        : "연결 안 됨";
+        ? "viewer.status.connected"
+        : "viewer.status.disconnected";
   // ABSENT: everything of this user is already merged into the main xcube, so show the main server.
   const showPod = !!podState && podState !== "ABSENT";
-  const statusText = showPod ? podLabel[podState!] ?? podState! : `지도 서버 ${connectionLabel}`;
+  const statusText = showPod ? (podLabel[podState!] ? t(podLabel[podState!]) : podState!) : t(connectionLabel);
   // Status is said in words; the icon shape differs per state so colour is never the only cue.
   const statusTone: "online" | "offline" | "starting" | "unknown" = showPod
     ? podState === "READY"
@@ -1123,16 +1142,16 @@ export default function Viewer({
     starting: LoaderCircle,
     unknown: CircleDashed,
   }[statusTone];
-  const userName = user?.name ?? "사용자";
+  const userName = user?.name ?? t("viewer.top.user");
   const currentProject = projects.find((item) => item.id === projectId);
   const splitActive = compareActive && displayMode === "split";
   // Entry with datasets shows the map and one plain hint; the tour explains the rest.
   const emptyMessage = loading
-    ? "데이터를 불러오는 중입니다…"
+    ? t("viewer.empty.loading")
     : apiError ||
       (datasets.length || noDataHidden
         ? ""
-        : "등록된 Zarr가 없습니다. 데이터를 추가해 시작하세요.");
+        : t("viewer.empty.noData"));
   const pickHint = !selected && !loading && !apiError && datasets.length > 0 && !pickHintHidden;
   // Keep the layer sheet's bottom above the legend stack: measure the stack (its size and its
   // compare-mode offset) and hand the space it takes to the sheet as --vx-legend-space.
@@ -1157,9 +1176,9 @@ export default function Viewer({
   }, [selected, compareActive, displayMode, panelOpen]);
 
   return (
-    <main className="viewer vx" aria-label="XCube 시계열 GIS Viewer">
+    <main className="viewer vx" aria-label={t("viewer.top.main")}>
       <header className="vx-top">
-        <a className="vx-brand" href="/" aria-label="XCube 소개 홈">
+        <a className="vx-brand" href="/" aria-label={t("viewer.top.home")}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
               d="M12 3.2 19.6 7.6v8.8L12 20.8 4.4 16.4V7.6L12 3.2Z"
@@ -1178,7 +1197,7 @@ export default function Viewer({
           </svg>
           <span className="vx-brand__name">XCube</span>
         </a>
-        <nav className="vx-crumbs" aria-label="보고 있는 프로젝트와 데이터">
+        <nav className="vx-crumbs" aria-label={t("viewer.top.crumbs")}>
           <span className="vx-crumbs__project" data-tour="project">
             {/* Quick project actions stay in the Viewer; long tasks open the app pages in a new tab. */}
             <ProjectQuickMenu
@@ -1188,7 +1207,7 @@ export default function Viewer({
               onCreated={(created) => {
                 setProjects((items) => [created, ...items]);
                 setProjectId(created.id);
-                setFlash(`“${created.name}” 프로젝트를 만들었습니다.`);
+                setFlash(t("viewer.toast.projectCreated", { name: created.name }));
               }}
               onLinked={(dataset, project) => {
                 setProjectDatasets((items) =>
@@ -1196,17 +1215,17 @@ export default function Viewer({
                     ? items
                     : [...items, dataset],
                 );
-                setFlash(`“${dataset.name}”을 “${project.name}”에 추가했습니다.`);
+                setFlash(t("viewer.toast.linked", { dataset: dataset.name, project: project.name }));
               }}
             />
             <label className={`vx-crumb ${projectId ? "" : "is-none"}`}>
-              <span className="vx-sr">프로젝트</span>
+              <span className="vx-sr">{t("viewer.top.project")}</span>
               <select
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
-                aria-label="프로젝트 선택"
+                aria-label={t("viewer.top.projectSelect")}
               >
-                <option value="">프로젝트 없음</option>
+                <option value="">{t("viewer.top.noProject")}</option>
                 {projects.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
@@ -1227,15 +1246,13 @@ export default function Viewer({
             openRequest={pickerRequest}
             project={
               projectId
-                ? { name: projectName ?? "프로젝트", items: pickableProject }
+                ? { name: projectName ?? t("viewer.top.project"), items: pickableProject }
                 : undefined
             }
             onUnavailable={(item) =>
               // Datasets reached only through a shared project are not in
               // the catalog list until the server grants project access.
-              setNotice(
-                `“${item.name}”은 공유받은 프로젝트를 통해서만 연결된 데이터라 아직 열 수 없습니다. 서버 권한 규칙이 반영되면 표시됩니다.`,
-              )
+              setNotice(t("viewer.toast.sharedOnly", { name: item.name }))
             }
           />
         </nav>
@@ -1248,7 +1265,7 @@ export default function Viewer({
             <StatusIcon size={15} aria-hidden="true" />
             <span className="vx-status__text">{statusText}</span>
             <span className="vx-status__short" aria-hidden="true">
-              {{ online: "연결됨", offline: "연결 안 됨", starting: "준비 중", unknown: "확인 중" }[statusTone]}
+              {t(`viewer.status.short.${statusTone}`)}
             </span>
           </span>
           <a
@@ -1257,24 +1274,24 @@ export default function Viewer({
             href="/app/data/new"
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Zarr 업로드 또는 생성"
-            title="데이터 추가 (새 탭)"
+            aria-label={t("viewer.top.addDataAria")}
+            title={t("viewer.top.addDataTitle")}
           >
             <Plus size={16} aria-hidden="true" />
-            <span className="vx-hide-md">데이터 추가</span>
+            <span className="vx-hide-md">{t("viewer.top.addData")}</span>
           </a>
           {selected && selected.kind !== "AI_RESULT" && (
             <button
               type="button"
               className="vx-btn vx-btn--line"
-              aria-label="AI 수체 추출"
-              title="AI 수체 추출"
+              aria-label={t("viewer.top.ai")}
+              title={t("viewer.top.ai")}
               data-tour="ai"
               aria-pressed={drawer === "ai"}
               onClick={() => openRightPanel("ai")}
             >
               <Waves size={16} aria-hidden="true" />
-              <span className="vx-hide-sm">AI 수체 추출</span>
+              <span className="vx-hide-sm">{t("viewer.top.ai")}</span>
             </button>
           )}
           {hasInference && (
@@ -1288,15 +1305,15 @@ export default function Viewer({
               }}
             >
               <Layers2 size={16} aria-hidden="true" />
-              <span>결과</span>
+              <span>{t("viewer.top.results")}</span>
             </button>
           )}
           <button
             type="button"
             className="vx-icon-btn"
             onClick={() => setTourOpen(true)}
-            aria-label="기능 둘러보기"
-            title="기능 둘러보기"
+            aria-label={t("viewer.top.tour")}
+            title={t("viewer.top.tour")}
           >
             <CircleHelp size={18} aria-hidden="true" />
           </button>
@@ -1316,7 +1333,7 @@ export default function Viewer({
         <section
           ref={mapBoxRef}
           className={`vx-map ${splitActive ? "is-split" : ""} ${compareActive ? "is-comparing" : ""}`}
-          aria-label="시계열 위성 데이터 지도"
+          aria-label={t("viewer.map.region")}
         >
           <OlMap
             onMapReady={onMapReady}
@@ -1330,25 +1347,25 @@ export default function Viewer({
               className="vx-sheet-open"
               onClick={() => setPanelOpen(true)}
               data-tour="layers"
-              aria-label="레이어 및 AI 작업 패널 열기"
-              title="레이어 / AI 작업"
+              aria-label={t("viewer.map.openSheet")}
+              title={t("viewer.map.openSheetTitle")}
             >
               <Layers size={16} aria-hidden="true" />
-              <span>레이어</span>
+              <span>{t("viewer.panel.layers")}</span>
             </button>
           )}
           <div
             className="vx-tools"
             role="toolbar"
-            aria-label="지도 도구"
+            aria-label={t("viewer.map.tools")}
             aria-orientation="vertical"
             data-tour="tools"
           >
             <div className="vx-tools__group">
               <button
                 type="button"
-                aria-label="이동"
-                title="이동"
+                aria-label={t("viewer.map.pan")}
+                title={t("viewer.map.pan")}
                 aria-pressed={mapTool === "pan"}
                 onClick={() => selectMapTool("pan")}
               >
@@ -1356,8 +1373,8 @@ export default function Viewer({
               </button>
               <button
                 type="button"
-                aria-label="픽셀 값 조회"
-                title="픽셀 값 조회 (키보드: 방향키로 이동, Enter로 조회)"
+                aria-label={t("viewer.map.pixel")}
+                title={t("viewer.map.pixelTitle")}
                 aria-pressed={mapTool === "pixel"}
                 disabled={!selected}
                 onClick={(event) => selectMapTool("pixel", event.detail === 0)}
@@ -1368,24 +1385,24 @@ export default function Viewer({
             <div className="vx-tools__group">
               <button
                 type="button"
-                aria-label="확대"
-                title="확대"
+                aria-label={t("viewer.map.zoomIn")}
+                title={t("viewer.map.zoomIn")}
                 onClick={() => zoomMap(1)}
               >
                 <ZoomIn size={18} aria-hidden="true" />
               </button>
               <button
                 type="button"
-                aria-label="축소"
-                title="축소"
+                aria-label={t("viewer.map.zoomOut")}
+                title={t("viewer.map.zoomOut")}
                 onClick={() => zoomMap(-1)}
               >
                 <ZoomOut size={18} aria-hidden="true" />
               </button>
               <button
                 type="button"
-                aria-label="데이터 영역 맞춤"
-                title="데이터 영역 맞춤"
+                aria-label={t("viewer.map.fit")}
+                title={t("viewer.map.fit")}
                 disabled={!selectedBbox}
                 onClick={fitDataset}
               >
@@ -1396,8 +1413,8 @@ export default function Viewer({
               <div className="vx-tools__group">
                 <button
                   type="button"
-                  aria-label="픽셀 선택 지우기"
-                  title="픽셀 선택 지우기"
+                  aria-label={t("viewer.map.clearPixel")}
+                  title={t("viewer.map.clearPixel")}
                   onClick={clearPixel}
                 >
                   <X size={18} aria-hidden="true" />
@@ -1411,20 +1428,19 @@ export default function Viewer({
               type="button"
               className="vx-probe"
               style={{ left: probe[0], top: probe[1] }}
-              aria-label="키보드 픽셀 조회"
+              aria-label={t("viewer.map.probe")}
               aria-describedby="vx-probe-hint"
               onKeyDown={moveProbe}
               onClick={queryProbe}
             >
               <span id="vx-probe-hint" className="vx-sr">
-                방향키로 십자선을 옮기고 Enter로 그 지점의 시계열을 조회합니다. Shift를
-                함께 누르면 크게 움직이고, Esc를 누르면 이동 도구로 돌아갑니다.
+                {t("viewer.map.probeHint")}
               </span>
             </button>
           )}
           {pixelTip && (
             <div className="vx-toast" role="status">
-              지도를 클릭하면 그 지점의 시계열이 아래에 열립니다. 키보드는 방향키와 Enter.
+              {t("viewer.map.pixelTip")}
             </div>
           )}
           {!selected && emptyMessage && (
@@ -1446,7 +1462,7 @@ export default function Viewer({
                   rel="noopener noreferrer"
                 >
                   <Plus size={16} aria-hidden="true" />
-                  데이터 추가
+                  {t("viewer.top.addData")}
                 </a>
               )}
             </div>
@@ -1454,15 +1470,15 @@ export default function Viewer({
           {pickHint && !tourOpen && (
             <div className="vx-empty vx-empty--pick">
               <p>
-                <strong>지도에 띄울 위성 데이터를 고르세요.</strong>
-                고르면 촬영 시점별 영상과 아래 타임라인이 나타납니다.
+                <strong>{t("viewer.empty.pickTitle")}</strong>
+                {t("viewer.empty.pickBody")}
               </p>
               <button
                 type="button"
                 className="vx-btn vx-btn--ink"
                 onClick={() => setPickerRequest((value) => value + 1)}
               >
-                데이터 고르기
+                {t("viewer.empty.pick")}
               </button>
             </div>
           )}
@@ -1536,7 +1552,7 @@ export default function Viewer({
                 {aiCompare ? (
                   <>
                     <i className="vx-swatch vx-swatch--source" aria-hidden="true" />
-                    <span>원본 <span className="tabular">{times[timeIndex]?.label ?? "—"}</span></span>
+                    <span>{t("viewer.compare.source")} <span className="tabular">{times[timeIndex]?.label ?? "—"}</span></span>
                   </>
                 ) : (
                   <>
@@ -1565,7 +1581,7 @@ export default function Viewer({
         {panelOpen && (
           <aside
             className="vx-panel"
-            aria-label="레이어 및 AI 작업 패널"
+            aria-label={t("viewer.panel.aria")}
             data-tour="layers"
           >
             <div className="vx-panel__head">
@@ -1576,7 +1592,7 @@ export default function Viewer({
                   aria-selected={tab === "layers"}
                   onClick={() => setTab("layers")}
                 >
-                  레이어
+                  {t("viewer.panel.layers")}
                 </button>
                 <button
                   type="button"
@@ -1584,7 +1600,7 @@ export default function Viewer({
                   aria-selected={tab === "jobs"}
                   onClick={() => setTab("jobs")}
                 >
-                  AI 작업
+                  {t("viewer.panel.aiJobs")}
                   {entries.length > 0 && (
                     <span className="vx-count tabular">{entries.length}</span>
                   )}
@@ -1594,8 +1610,8 @@ export default function Viewer({
                 type="button"
                 className="vx-icon-btn"
                 onClick={() => setPanelOpen(false)}
-                aria-label="패널 닫기"
-                title="패널 접기"
+                aria-label={t("viewer.panel.close")}
+                title={t("viewer.panel.collapse")}
               >
                 <X size={18} aria-hidden="true" />
               </button>
@@ -1604,7 +1620,7 @@ export default function Viewer({
               <div className="vx-panel__body">
                 {selected && (
                   <section className="vx-section">
-                    <h2 className="vx-section__title">표시할 밴드</h2>
+                    <h2 className="vx-section__title">{t("viewer.panel.bands")}</h2>
                     <div className="vx-chips">
                       {hasRgb && (
                         <button
@@ -1632,17 +1648,17 @@ export default function Viewer({
                     </div>
                     {activeVariable === "rgb" && (
                       <p className="vx-section__hint">
-                        RGB는 눈으로 보는 색입니다. 픽셀 시계열은 개별 밴드에서 조회합니다.
+                        {t("viewer.panel.rgbHint")}
                       </p>
                     )}
                   </section>
                 )}
                 <section className="vx-section">
-                  <h2 className="vx-section__title">레이어</h2>
+                  <h2 className="vx-section__title">{t("viewer.panel.layers")}</h2>
                   <div className="vx-layers">
                     {hasInference && (
                       <LayerControl
-                        label="AI 수체 결과"
+                        label={t("viewer.panel.aiResult")}
                         accent="result"
                         checked={resultVisible}
                         onChecked={setResultVisible}
@@ -1652,7 +1668,7 @@ export default function Viewer({
                     )}
                     {selected && (
                       <LayerControl
-                        label="원본 영상"
+                        label={t("viewer.panel.source")}
                         accent="source"
                         checked={sourceVisible}
                         onChecked={setSourceVisible}
@@ -1668,37 +1684,37 @@ export default function Viewer({
                           onChange={(e) => setBaseVisible(e.target.checked)}
                         />
                         <i className="vx-swatch vx-swatch--base" aria-hidden="true" />
-                        <span>배경지도</span>
+                        <span>{t("viewer.panel.basemap")}</span>
                       </label>
                     </div>
                   </div>
                 </section>
                 {selected && (
                   <section className="vx-section">
-                    <h3 className="vx-section__title">데이터 정보</h3>
+                    <h3 className="vx-section__title">{t("viewer.panel.info")}</h3>
                     <dl className="vx-meta">
                       <div>
-                        <dt>이름</dt>
+                        <dt>{t("viewer.panel.name")}</dt>
                         <dd title={selected.name}>{selected.name}</dd>
                       </div>
                       <div>
-                        <dt>시점</dt>
-                        <dd className="tabular">{times.length}개</dd>
+                        <dt>{t("viewer.panel.times")}</dt>
+                        <dd className="tabular">{t("viewer.panel.count", { count: times.length })}</dd>
                       </div>
                       {times.length > 0 && (
                         <div>
-                          <dt>기간</dt>
+                          <dt>{t("viewer.panel.period")}</dt>
                           <dd className="tabular">
-                            {times[0]?.label} ~ {times[times.length - 1]?.label}
+                            {t("viewer.panel.periodValue", { start: times[0]?.label, end: times[times.length - 1]?.label })}
                           </dd>
                         </div>
                       )}
                       <div>
-                        <dt>밴드</dt>
-                        <dd className="tabular">{selected.variables.length}개</dd>
+                        <dt>{t("viewer.panel.bandCount")}</dt>
+                        <dd className="tabular">{t("viewer.panel.count", { count: selected.variables.length })}</dd>
                       </div>
                       <div>
-                        <dt>좌표계</dt>
+                        <dt>{t("viewer.panel.crs")}</dt>
                         <dd>EPSG:4326</dd>
                       </div>
                     </dl>
@@ -1708,16 +1724,16 @@ export default function Viewer({
             ) : (
               <div className="vx-panel__body">
                 <section className="vx-section">
-                  <h2 className="vx-section__title">이 데이터의 AI 결과</h2>
+                  <h2 className="vx-section__title">{t("viewer.panel.aiResults")}</h2>
                   {jobsError && (
                     <p className="vx-section__hint" role="status">
-                      연결된 결과 목록: {jobsError}
+                      {t("viewer.panel.linkedError", { error: jobsError })}
                     </p>
                   )}
                   {selected ? (
                     <AiResultList entries={entries} selectedKey={resultKey} onMap={!!selectedResult && (resultVisible || aiCompare)} onSelect={chooseResult} />
                   ) : (
-                    <p className="vx-section__hint">데이터를 고르면 그 데이터의 AI 결과가 보입니다.</p>
+                    <p className="vx-section__hint">{t("viewer.panel.pickFirst")}</p>
                   )}
                 </section>
               </div>
@@ -1730,7 +1746,7 @@ export default function Viewer({
             <button
               type="button"
               onClick={() => setRightCollapsed(false)}
-              aria-label={`${drawer === "ai" ? "AI 작업" : "결과"} 열기`}
+              aria-label={t("viewer.drawer.open", { name: t(drawer === "ai" ? "viewer.drawer.aiTab" : "viewer.drawer.resultTab") })}
             >
               {drawer === "ai" ? (
                 <Waves size={18} aria-hidden="true" />
@@ -1743,17 +1759,17 @@ export default function Viewer({
         {drawer && !rightCollapsed && (
           <aside
             className="vx-drawer"
-            aria-label={drawer === "ai" ? "AI 수체 추출 설정" : "결과 비교"}
+            aria-label={t(drawer === "ai" ? "viewer.drawer.aiAria" : "viewer.drawer.resultAria")}
           >
             <div className="vx-drawer__head">
               <div>
-                <h2>{drawer === "ai" ? "AI 수체 추출" : "원본 대비 결과"}</h2>
+                <h2>{t(drawer === "ai" ? "viewer.drawer.aiTitle" : "viewer.drawer.resultTitle")}</h2>
                 <p title={drawer === "ai" ? selected?.name : selectedResult?.name}>
                   {drawer === "ai"
                     ? isRunning(aiRunHere)
-                      ? "수체 추출 실행 중"
-                      : selected?.name ?? "새 분석 작업"
-                    : selectedResult?.name ?? "원본과 결과 레이어"}
+                      ? t("viewer.drawer.running")
+                      : selected?.name ?? t("viewer.drawer.newJob")
+                    : selectedResult?.name ?? t("viewer.drawer.layersFallback")}
                 </p>
               </div>
               <span>
@@ -1761,8 +1777,8 @@ export default function Viewer({
                   type="button"
                   className="vx-icon-btn"
                   onClick={() => setRightCollapsed(true)}
-                  aria-label="분석 패널 접기"
-                  title="분석 패널 접기"
+                  aria-label={t("viewer.drawer.collapse")}
+                  title={t("viewer.drawer.collapse")}
                 >
                   <ChevronsRight size={18} aria-hidden="true" />
                 </button>
@@ -1770,21 +1786,21 @@ export default function Viewer({
                   type="button"
                   className="vx-icon-btn"
                   onClick={closeRightPanel}
-                  aria-label="패널 닫기"
-                  title="닫기"
+                  aria-label={t("viewer.drawer.close")}
+                  title={t("common.close")}
                 >
                   <X size={18} aria-hidden="true" />
                 </button>
               </span>
             </div>
-            <div className="vx-tabs vx-tabs--full" role="tablist" aria-label="분석 패널 탭">
+            <div className="vx-tabs vx-tabs--full" role="tablist" aria-label={t("viewer.drawer.tabs")}>
               <button
                 type="button"
                 role="tab"
                 aria-selected={drawer === "ai"}
                 onClick={() => openRightPanel("ai")}
               >
-                AI 작업
+                {t("viewer.drawer.aiTab")}
                 {isRunning(aiRunHere) && (
                   <i className="vx-pulse" aria-hidden="true" />
                 )}
@@ -1796,7 +1812,7 @@ export default function Viewer({
                   aria-selected={drawer === "result"}
                   onClick={() => openRightPanel("result")}
                 >
-                  결과
+                  {t("viewer.drawer.resultTab")}
                 </button>
               )}
             </div>
@@ -1813,7 +1829,7 @@ export default function Viewer({
                     onRetry={retryAi}
                   />
                   <section className="vx-section vx-section--top">
-                    <h3 className="vx-section__title">이 데이터의 AI 결과</h3>
+                    <h3 className="vx-section__title">{t("viewer.panel.aiResults")}</h3>
                     <AiResultList entries={entries} selectedKey={resultKey} onMap={!!selectedResult && (resultVisible || aiCompare)} onSelect={chooseResult} />
                   </section>
                 </>
@@ -1821,10 +1837,10 @@ export default function Viewer({
                 <>
                   {readyEntries.length > 1 && (
                     <label className="vx-field vx-form__pad">
-                      <span>결과 고르기</span>
-                      <select aria-label="비교할 AI 결과" value={resultKey} onChange={(event) => setResultKey(event.target.value)}>
+                      <span>{t("viewer.drawer.pickResult")}</span>
+                      <select aria-label={t("viewer.drawer.pickResultAria")} value={resultKey} onChange={(event) => setResultKey(event.target.value)}>
                         {readyEntries.map((entry) => (
-                          <option key={entry.key} value={entry.key}>{`${entry.name} · ${entryDetail(entry)}`}</option>
+                          <option key={entry.key} value={entry.key}>{`${entry.name} · ${entryDetail(entry, lang)}`}</option>
                         ))}
                       </select>
                     </label>
@@ -1851,7 +1867,7 @@ export default function Viewer({
                   />
                 </>
               ) : (
-                <p className="vx-section__hint vx-form__pad">아직 고를 수 있는 AI 결과가 없습니다.</p>
+                <p className="vx-section__hint vx-form__pad">{t("viewer.drawer.noResult")}</p>
               )}
             </div>
           </aside>
@@ -1892,7 +1908,7 @@ export default function Viewer({
           )}
           <section
             className="vx-timeline"
-            aria-label="시계열 탐색기"
+            aria-label={t("viewer.dock.timeline")}
             data-tour="timeline"
           >
             <div className="vx-timeline__lead">
@@ -1901,8 +1917,8 @@ export default function Viewer({
                   type="button"
                   className="vx-icon-btn"
                   onClick={() => setTimeIndex(Math.max(0, timeIndex - 1))}
-                  aria-label="이전 시점"
-                  title="이전 시점 (←)"
+                  aria-label={t("viewer.dock.prev")}
+                  title={t("viewer.dock.prevTitle")}
                 >
                   <ChevronLeft size={18} aria-hidden="true" />
                 </button>
@@ -1911,9 +1927,9 @@ export default function Viewer({
                   className="vx-play"
                   onClick={() => setPlaying(canPlay && !playing)}
                   disabled={!canPlay}
-                  aria-label={!canPlay ? "재생 (시점이 2개 이상일 때 재생할 수 있습니다)" : playing ? "일시정지" : "재생"}
+                  aria-label={t(!canPlay ? "viewer.dock.playDisabled" : playing ? "viewer.dock.pause" : "viewer.dock.play")}
                   aria-pressed={canPlay && playing}
-                  title={!canPlay ? "시점이 하나뿐이라 재생할 수 없습니다" : playing ? "일시정지 (Space)" : "재생 (Space)"}
+                  title={t(!canPlay ? "viewer.dock.playDisabledTitle" : playing ? "viewer.dock.pauseTitle" : "viewer.dock.playTitle")}
                 >
                   {playing ? (
                     <Pause size={16} aria-hidden="true" />
@@ -1927,8 +1943,8 @@ export default function Viewer({
                   onClick={() =>
                     setTimeIndex(Math.min(times.length - 1, timeIndex + 1))
                   }
-                  aria-label="다음 시점"
-                  title="다음 시점 (→)"
+                  aria-label={t("viewer.dock.next")}
+                  title={t("viewer.dock.nextTitle")}
                 >
                   <ChevronRight size={18} aria-hidden="true" />
                 </button>
@@ -1940,13 +1956,13 @@ export default function Viewer({
                       A
                     </b>
                   )}
-                  {times[timeIndex]?.label ?? "시점 없음"}
+                  {times[timeIndex]?.label ?? t("viewer.dock.noTime")}
                   {/* Always present so screen readers hear it appear; silent while playing (1.5 s steps). */}
                   <span className="vx-current__live" role="status" aria-live={playing ? "off" : "polite"}>
                     {waitShown && (
                       <span className="vx-current__wait">
                         <LoaderCircle size={12} className="vx-spin" aria-hidden="true" />
-                        <span className="vx-current__wait-text">불러오는 중…</span>
+                        <span className="vx-current__wait-text">{t("viewer.dock.waiting")}</span>
                       </span>
                     )}
                   </span>
@@ -1954,7 +1970,7 @@ export default function Viewer({
                 {aiCompare ? (
                   <span className="vx-btime vx-btime--ai">
                     <i className="vx-hatch" aria-hidden="true" />
-                    원본 ↔ AI 결과
+                    {t("viewer.dock.aiCompare")}
                   </span>
                 ) : compareActive ? (
                   <CompareTime
@@ -1964,7 +1980,7 @@ export default function Viewer({
                   />
                 ) : null}
                 <small className="tabular vx-current__count">
-                  {times.length ? `${timeIndex + 1} / ${times.length}` : "시점 없음"}
+                  {times.length ? `${timeIndex + 1} / ${times.length}` : t("viewer.dock.noTime")}
                 </small>
               </div>
             </div>

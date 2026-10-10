@@ -1,4 +1,4 @@
-import { translate } from '../i18n/core';
+import { getLanguage, translate } from '../i18n/core';
 import type { Lang, TKey } from '../i18n/types';
 export type ApiErrorBody = { code?: string; message?: string; timestamp?: string; traceId?: string };
 export class ApiError extends Error {
@@ -95,10 +95,11 @@ export async function requestBlob(baseUrl: string, path: string): Promise<Blob> 
 }
 
 /**
- * A failed request in plain words. Korean by default, so the screens that are still Korean-only (add-data
- * wizard, Viewer) stay Korean; translated screens pass their language. A server sentence is shown as given.
+ * A failed request in plain words, in the current screen language unless one is given (every screen is
+ * translated since UR-53 stage 4; components pass the language of their context). A server sentence is
+ * shown as given.
  */
-export function userMessage(error: unknown, lang: Lang = 'ko'): string {
+export function userMessage(error: unknown, lang: Lang = getLanguage()): string {
   const say = (key: TKey) => translate(lang, key);
   if (!(error instanceof ApiError)) return say('errors.unexpected');
   if (error.status === 0) return say('errors.network');

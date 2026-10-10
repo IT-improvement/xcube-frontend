@@ -1,3 +1,6 @@
+import { useT } from "../../i18n";
+import "../../i18n/viewer";
+
 /** One overlay row in the layer sheet: visibility toggle and opacity slider. */
 export default function LayerControl({
   label,
@@ -14,6 +17,7 @@ export default function LayerControl({
   opacity: number;
   onOpacity: (value: number) => void;
 }) {
+  const t = useT();
   return (
     <div className={`vx-layer-row ${checked ? "" : "is-off"}`}>
       <label className="vx-layer">
@@ -26,7 +30,7 @@ export default function LayerControl({
         <span>{label}</span>
       </label>
       <label className="vx-opacity">
-        <span>불투명도</span>
+        <span>{t("viewer.layer.opacity")}</span>
         <output className="tabular">{opacity}%</output>
         <input
           type="range"
@@ -34,7 +38,7 @@ export default function LayerControl({
           max="100"
           value={opacity}
           disabled={!checked}
-          aria-label={`${label} 불투명도`}
+          aria-label={t("viewer.layer.opacityOf", { label })}
           onChange={(e) => onOpacity(Number(e.target.value))}
         />
       </label>

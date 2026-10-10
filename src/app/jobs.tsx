@@ -21,14 +21,9 @@ export const jobTypeLabel = (type: string, lang: Lang = getLanguage()) =>
   type === 'FUSION' || type === 'AI_WATER' ? translate(lang, `jobType.${type}`) : SOURCE_TYPE_LABEL[type] ?? type;
 
 /**
- * Model names for job rows when the model list is not loaded (ids from the M7 contract). Korean, for the
- * Viewer (still Korean); the management screens use `aiModelLabel`.
+ * Model names for job rows when the model list is not loaded (ids from the M7 contract). The Viewer has its
+ * own copy of these names in its dictionary part (viewer.ai.models), so it does not load the app part.
  */
-export const AI_MODEL_LABEL: Record<string, string> = {
-  'ndwi-baseline': 'NDWI 기준선',
-  'unet-s1s2-10ch': 'U-Net (S1+S2 10채널)',
-  'deeplabv3plus-s1s2-10ch': 'DeepLabV3+ (S1+S2 10채널)',
-};
 const AI_MODEL_KEY: Record<string, TKey> = {
   'ndwi-baseline': 'aiModels.ndwiBaseline',
   'unet-s1s2-10ch': 'aiModels.unet',
