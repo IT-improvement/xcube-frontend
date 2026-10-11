@@ -80,7 +80,7 @@
 .vx-btn--ink:hover:not(:disabled) { background: color-mix(in srgb, var(--vx-ink) 86%, var(--vx-surface)); }
 .vx-btn--line { background: var(--vx-surface); border-color: var(--vx-rule-strong); color: var(--vx-ink); }
 .vx-btn--line:hover:not(:disabled) { background: var(--vx-sunken); }
-.vx-btn--line[aria-pressed='true'] { border-color: var(--vx-ink); background: var(--vx-sunken); }
+.vx-btn--line[aria-pressed='true'], .vx-btn--line[aria-expanded='true'] { border-color: var(--vx-ink); background: var(--vx-sunken); }
 .vx-btn--quiet { background: transparent; color: var(--vx-ink-2); }
 .vx-btn--quiet:hover { background: var(--vx-sunken); color: var(--vx-ink); }
 .vx-icon-btn {
@@ -179,6 +179,8 @@
 .vx .dataset-search input { flex: 1; min-width: 0; height: 36px; border: 0; background: transparent; padding: 0; font: 400 14px/1 var(--vx-font); color: var(--vx-ink); }
 .vx .dataset-search input::placeholder { color: var(--vx-ink-3); }
 .vx .dataset-search input:focus { outline: none; }
+/* The search field's focus shows on its row: a 2px ink rule under it (the field itself has no border). */
+.vx .dataset-search:focus-within { box-shadow: inset 0 -2px 0 var(--vx-focus); }
 .vx .dataset-scope {
   flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px;
   background: var(--vx-ground); border-bottom: 1px solid var(--vx-rule); color: var(--vx-ink-2); font: 400 12.5px/1.4 var(--vx-font);
@@ -406,6 +408,8 @@
 .vx-layer input, .vx-radio input, .vx-tour__check input, .vx-popt__check input { accent-color: var(--vx-ink); width: 16px; height: 16px; margin: 0; cursor: pointer; }
 .vx-swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
 .vx-swatch--source { background: var(--vx-water); }
+/* The source layer's swatch is a small ramp of the colour map the map is drawn with (UX13). */
+.vx-swatch--ramp { width: 18px; height: 10px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--vx-rule); }
 .vx-swatch--result { background: var(--vx-ai-water); }
 .vx-swatch--base { background: var(--vx-base); }
 .vx-opacity { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 8px; padding-left: 26px; color: var(--vx-ink-3); font: 400 12px/1.4 var(--vx-font); }
@@ -581,6 +585,7 @@
 .vx .vx-area__bar { fill: var(--vx-ai-water); opacity: 0.55; cursor: pointer; }
 .vx .vx-area__bar.is-current { opacity: 1; }
 .vx .vx-area__bar:hover { opacity: 0.85; }
+.vx .vx-area__hit { fill: transparent; cursor: pointer; }
 .vx-area__unit { position: absolute; left: 6px; top: -2px; color: var(--vx-ink-3); font: 500 11px/1 var(--vx-font); }
 
 /* Bottom dock: the pixel reading and the time staff share one plot column */
@@ -873,3 +878,75 @@
 .vx-status.is-starting svg { animation: none; }
 }
 .vx-legend__wait { color: var(--vx-ink-2); }
+
+/* UX13 — keyboard map, side-by-side space, touch targets */
+
+/* The focused map: an inset ring (readable on any tile) and the centre reticle that Enter/Space queries. */
+.vx .map-component.has-keys:focus { outline: none; }
+.vx .map-component.has-keys:focus-visible::before {
+  content: ''; position: absolute; z-index: 2; inset: 0; pointer-events: none;
+  box-shadow: inset 0 0 0 2px var(--vx-focus), inset 0 0 0 4px var(--vx-surface);
+}
+.vx .map-component.has-keys:focus-visible::after {
+  content: ''; position: absolute; z-index: 2; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px;
+  border: 2px dashed var(--vx-mark); border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, var(--vx-mark) 0 2px, transparent 2.5px);
+  box-shadow: 0 0 0 2px var(--vx-surface);
+}
+
+/* An alert stays until closed. */
+.vx-toast__close { width: 28px; height: 28px; margin: -4px -8px -4px 2px; color: inherit; }
+
+/* Side by side: a reopened layer sheet or analysis drawer sits beside the maps instead of over map B
+   (index.tsx folds both when side by side starts and keeps only one open at a time). */
+@media (min-width: 768px) {
+  .vx-body.is-split.panel-open .vx-map { left: 336px; }
+  .vx-body.is-split.drawer-open .vx-map { right: 364px; }
+  .vx-body.is-split.drawer-open .vx-tools,
+  .vx-body.is-split.drawer-open .vx-maplabel--b,
+  .vx-body.is-split.drawer-open .vx-compare-map .vx-maplabel--b { right: 12px; }
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .vx-body.is-split.drawer-open .vx-map { right: min(364px, 100% - 12px); }
+}
+
+/* Touch: no double-tap zoom delay on controls; notches and home bars keep clear of the bars. */
+.vx :where(button, a, select, input, label, summary) { touch-action: manipulation; }
+.vx-top { padding-top: env(safe-area-inset-top, 0px); padding-left: calc(14px + env(safe-area-inset-left, 0px)); padding-right: calc(10px + env(safe-area-inset-right, 0px)); }
+.vx-dock { padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+@media (max-width: 767px) {
+  .vx-top { padding: calc(6px + env(safe-area-inset-top, 0px)) calc(8px + env(safe-area-inset-right, 0px)) 0 calc(12px + env(safe-area-inset-left, 0px)); }
+  /* While comparing the target switch sits at the top; the tool hint and notices go below it. */
+  .vx-map.is-comparing .vx-toast { top: 100px; }
+  .vx-map.is-comparing .vx-toast--notice, .vx-map.is-comparing .vx-toast--done { top: 148px; }
+}
+
+/* Coarse pointers (finger): every Viewer control is at least 44 x 44 px. Mouse sizes stay as they are. */
+@media (pointer: coarse) {
+  .vx { --vx-hit: 44px; }
+  .vx-btn, .vx-icon-btn, .vx-play, .vx-popt__toggle, .vx-sheet-open, .vx-user__button,
+  .vx .dataset-trigger, .vx-crumb select, .vx-field select, .vx-input, .vx-range2 select, .vx-radio,
+  .vx-popt__pair button, .vx .dataset-scope button { min-height: var(--vx-hit); height: auto; }
+  .vx-btn { height: var(--vx-hit); }
+  .vx-icon-btn, .vx-play { min-width: var(--vx-hit); width: var(--vx-hit); height: var(--vx-hit); }
+  .vx-btn:has(.vx-hide-sm), .vx-btn:has(.vx-hide-md) { min-width: var(--vx-hit); }
+  .vx-tools button, .vx-drawer-rail button { width: var(--vx-hit); height: var(--vx-hit); }
+  .vx-tools__group { gap: 0; }
+  .vx-chips button { min-width: var(--vx-hit); height: var(--vx-hit); }
+  .vx-modes button, .vx-seg button, .vx-cmp-target .vx-seg--2 button { min-width: var(--vx-hit); height: var(--vx-hit); }
+  .vx-btime select { height: var(--vx-hit); }
+  .vx-tabs [role='tab'] { min-width: var(--vx-hit); min-height: var(--vx-hit); }
+  .vx-panel__head { height: 48px; }
+  .vx-tabs--full { height: 48px; }
+  .vx-layer { min-height: var(--vx-hit); }
+  .vx-layer input, .vx-radio input, .vx-tour__check input, .vx-popt__check input, .vx-model input { width: 20px; height: 20px; }
+  .vx-opacity input, .vx-field input[type='range'] { height: var(--vx-hit); }
+  .vx-popt__check label, .vx-tour__check { min-height: var(--vx-hit); }
+  .vx-model, .vx-result, .vx-job { min-height: var(--vx-hit); }
+  .vx-menu [role^='menuitem'], .vx-pmenu__list :where(button, a) { min-height: var(--vx-hit); }
+  .vx .dataset-list [role='option'] { min-height: 52px; }
+  .vx-link { min-height: var(--vx-hit); padding: 0 4px; }
+  .vx-toast__close { width: var(--vx-hit); height: var(--vx-hit); margin: -12px -14px -12px 0; }
+  .vx-swipe__handle { width: var(--vx-hit); height: 56px; }
+  .vx-staff { min-height: 60px; }
+}

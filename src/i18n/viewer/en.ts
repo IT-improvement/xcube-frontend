@@ -5,6 +5,7 @@ const enViewer: ViewerTranslation = {
   viewer: {
     top: {
       main: 'XCube time-series GIS Viewer',
+      heading: 'XCube Viewer · {name}',
       home: 'XCube home',
       crumbs: 'Current project and data',
       project: 'Project',
@@ -47,6 +48,10 @@ const enViewer: ViewerTranslation = {
       probe: 'Keyboard pixel query',
       probeHint: 'Move the crosshair with the arrow keys and press Enter to query the time series there. Hold Shift for bigger steps; press Esc to go back to the pan tool.',
       pixelTip: 'Click the map to open that point’s time series below. With a keyboard: arrow keys and Enter.',
+      keysLabel: 'Map: {name}. Arrow keys pan, Enter queries the centre pixel',
+      keysLabelEmpty: 'Map. Arrow keys pan',
+      keysHelp: 'Arrow keys move the map (hold Shift for bigger steps), + and - zoom, Home zooms to the data. Enter or Space opens the time series under the centre crosshair below.',
+      keysHelpEmpty: 'Arrow keys move the map, + and - zoom. Once data is chosen, Enter queries the centre pixel.',
     },
     empty: {
       loading: 'Loading data…',
@@ -63,6 +68,7 @@ const enViewer: ViewerTranslation = {
       tileFailed: 'Couldn’t load map tiles. {error}',
       rgbNoSeries: 'Choose a single band instead of the RGB composite to query a pixel time series.',
       noVariable: 'No variable to query. Check the data’s sync status.',
+      close: 'Close notice',
     },
     panel: {
       aria: 'Layers and AI jobs panel',
@@ -163,8 +169,8 @@ const enViewer: ViewerTranslation = {
       placeholder: 'Choose data',
       shared: 'Shared with you',
       mine: 'My data',
-      searchIn: 'Search {name}',
-      search: 'Search by name',
+      searchIn: 'Search {name}…',
+      search: 'Search by name…',
       searchAria: 'Search Zarr',
       projectData: 'Data in {name}',
       all: 'All data',

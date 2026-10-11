@@ -51,13 +51,13 @@ test('프로젝트 선택을 취소해도 전역 Zarr와 지도 사용을 유지
   fireEvent.change(project, { target: { value: '' } });
   expect(project).toHaveValue('');
   expect(screen.queryByRole('region', { name: '현재 프로젝트의 Zarr 데이터큐브' })).not.toBeInTheDocument();
-  expect(screen.getByRole('combobox', { name: '데이터 또는 Zarr 선택' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^데이터 또는 Zarr 선택/ })).toBeInTheDocument();
   expect(screen.getByText('OpenLayers map')).toBeInTheDocument();
 });
 
 test('summary 선택 후 detail의 첫 band, time, bbox로 임의 XCube tile layer를 만든다', async () => {
   render(<Viewer />);
-  const select = await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' });
+  const select = await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ });
   fireEvent.click(select); fireEvent.click(await screen.findByRole('option', { name: /임의 데이터셋/ }));
   await waitFor(() => expect(mockBackoffice.getDatasetDetail).toHaveBeenCalledWith('77'));
   await waitFor(() => expect(mockBackoffice.tileUrl).toHaveBeenCalledWith('custom_cube_2026', 'red', '2026-01-01T00:00:00Z'));
@@ -66,7 +66,7 @@ test('summary 선택 후 detail의 첫 band, time, bbox로 임의 XCube tile lay
 
 test('RGB 조건과 band 선택이 실제 tile variable을 바꾼다', async () => {
   render(<Viewer />);
-  const select = await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' });
+  const select = await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ });
   fireEvent.click(select); fireEvent.click(await screen.findByRole('option', { name: /임의 데이터셋/ }));
   await waitFor(() => expect(mockAddLayer).toHaveBeenCalled());
   fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
@@ -79,13 +79,13 @@ test('RGB 조건과 band 선택이 실제 tile variable을 바꾼다', async () 
 
 test('시간 프레임을 변경하면 같은 band의 새 time query layer를 만든다', async () => {
   render(<Viewer />);
-  const select = await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' }); fireEvent.click(select); fireEvent.click(await screen.findByRole('option', { name: /임의 데이터셋/ }));
+  const select = await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ }); fireEvent.click(select); fireEvent.click(await screen.findByRole('option', { name: /임의 데이터셋/ }));
   const slider = await screen.findByRole('slider', { name: '관측 시점' }); fireEvent.change(slider, { target: { value: '1' } });
   await waitFor(() => expect(mockBackoffice.tileUrl).toHaveBeenCalledWith('custom_cube_2026', 'red', '2026-02-01T00:00:00Z'));
 });
 
 async function selectBaselineDataset() {
-  fireEvent.click(await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' }));
+  fireEvent.click(await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ }));
   fireEvent.click(await screen.findByRole('option', { name: /임의 데이터셋/ }));
   await waitFor(() => expect(mockAddLayer).toHaveBeenCalled());
 }
@@ -118,7 +118,7 @@ test('M0 FR-VIEW-03: 첫/마지막/이전/다음, 재생, 반복과 속도를 �
 test('시점이 하나뿐이면 재생 버튼을 막고 재생 상태로 들어가지 않는다', async () => {
   mockBackoffice.getDatasetDetail.mockResolvedValue({ id: '77', projectId: '4', name: '한 시점', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: '77', defaultVariable: 'red', variables: ['red'], times: [{ iso: '2026-01-01T00:00:00Z', label: '2026. 1. 1.' }], bbox: [126, 33, 127, 34] });
   render(<Viewer />);
-  const select = await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' });
+  const select = await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ });
   fireEvent.click(select); fireEvent.click(await screen.findByRole('option', { name: /임의 데이터셋/ }));
   const play = await screen.findByRole('button', { name: /^재생 \(시점이 2개 이상/ });
   expect(play).toBeDisabled();
@@ -190,7 +190,7 @@ test('M0 FR-VIEW-02: 데이터셋 전환은 기존 layer를 제거하고 새 dat
   mockBackoffice.getDatasetDetail.mockImplementation(async (id) => id === '77' ? first : second);
   render(<Viewer />);
   await selectBaselineDataset();
-  fireEvent.click(screen.getByRole('combobox', { name: '데이터 또는 Zarr 선택' }));
+  fireEvent.click(screen.getByRole('button', { name: /^데이터 또는 Zarr 선택/ }));
   fireEvent.click(await screen.findByRole('option', { name: /두 번째 데이터셋/ }));
   await waitFor(() => expect(mockBackoffice.tileUrl).toHaveBeenLastCalledWith('cube-b', 'nir', undefined));
   expect(mockMap.removeLayer).toHaveBeenCalledWith(mockLayer);
@@ -223,7 +223,7 @@ test('공유받은 프로젝트로만 연결된 Zarr는 아무 반응 없이 넘
   fireEvent.change(await screen.findByRole('combobox', { name: '프로젝트 선택' }), { target: { value: '4' } });
   // The project's data is listed in the dataset picker, narrowed to that project.
   await waitFor(() => expect(mockAdapter.getProjectDatasets).toHaveBeenCalledWith('4'));
-  fireEvent.click(screen.getByRole('combobox', { name: '데이터 또는 Zarr 선택' }));
+  fireEvent.click(screen.getByRole('button', { name: /^데이터 또는 Zarr 선택/ }));
   fireEvent.click(await screen.findByRole('option', { name: /남의 Zarr/ }));
   expect(await screen.findByRole('alert')).toHaveTextContent('공유받은 프로젝트를 통해서만 연결된 데이터라 아직 열 수 없습니다');
   expect(screen.queryByRole('region', { name: '시계열 탐색기' })).not.toBeInTheDocument();
@@ -234,7 +234,7 @@ test('M2: 소유자 Pod 주소(tileBaseUrl)가 있으면 그 주소에서 tile�
   mockAdapter.getDatasets.mockResolvedValue([withPod]);
   mockBackoffice.getDatasetDetail.mockResolvedValue({ ...withPod, defaultVariable: 'red', variables: ['red'], times: [{ iso: '2026-05-01T00:00:00Z', label: '2026. 5. 1.' }], bbox: [126, 33, 127, 34] });
   render(<Viewer />);
-  fireEvent.click(await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' }));
+  fireEvent.click(await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ }));
   fireEvent.click(await screen.findByRole('option', { name: /임의 데이터셋/ }));
   await waitFor(() => expect(mockBackoffice.tileUrl).toHaveBeenCalledWith('u7-d62', 'red', '2026-05-01T00:00:00Z', 'http://localhost:18007', undefined));
 });

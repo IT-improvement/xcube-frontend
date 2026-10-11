@@ -9,6 +9,7 @@ export default function LayerControl({
   onChecked,
   opacity,
   onOpacity,
+  swatch,
 }: {
   label: string;
   accent: string;
@@ -16,6 +17,8 @@ export default function LayerControl({
   onChecked: (value: boolean) => void;
   opacity: number;
   onOpacity: (value: number) => void;
+  /** CSS background drawing the layer's colour ramp; without it the accent colour square. */
+  swatch?: string;
 }) {
   const t = useT();
   return (
@@ -26,7 +29,11 @@ export default function LayerControl({
           checked={checked}
           onChange={(e) => onChecked(e.target.checked)}
         />
-        <i className={`vx-swatch vx-swatch--${accent}`} aria-hidden="true" />
+        <i
+          className={`vx-swatch vx-swatch--${accent} ${swatch ? "vx-swatch--ramp" : ""}`}
+          style={swatch ? { background: swatch } : undefined}
+          aria-hidden="true"
+        />
         <span>{label}</span>
       </label>
       <label className="vx-opacity">

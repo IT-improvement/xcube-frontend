@@ -4,6 +4,9 @@ import { ZarrDataset } from "../../api/viewerAdapter";
 import { useT } from "../../i18n";
 import "../../i18n/viewer";
 
+const coarsePointer = () =>
+  typeof window.matchMedia === "function" && !!window.matchMedia("(pointer: coarse)")?.matches;
+
 /**
  * Searchable combobox for choosing the Zarr shown on the map (owned first, then shared).
  * With a project selected the list is narrowed to that project's data, and one button
@@ -126,17 +129,19 @@ export default function DatasetPicker({
       onKeyDown={onKeyDown}
       data-tour={tourId}
     >
+      {/* The trigger names its purpose and the data now shown (UX13); the search field below is the combobox. */}
+      <span id="dataset-trigger-label" className="vx-sr">{t("viewer.picker.trigger")}</span>
       <button
         ref={triggerRef}
         type="button"
         className={`dataset-trigger ${selected ? "" : "is-empty"}`}
-        role="combobox"
-        aria-label={t("viewer.picker.trigger")}
+        aria-haspopup="listbox"
+        aria-labelledby="dataset-trigger-label dataset-trigger-name"
         aria-expanded={open}
-        aria-controls="zarr-listbox"
+        aria-controls={open ? "zarr-listbox" : undefined}
         onClick={() => setOpen((current) => !current)}
       >
-        <span className="dataset-trigger__name">{selected?.name ?? t("viewer.picker.placeholder")}</span>
+        <span id="dataset-trigger-name" className="dataset-trigger__name">{selected?.name ?? t("viewer.picker.placeholder")}</span>
         {selected?.accessType === "SHARED" && (
           <small className="dataset-trigger__tag">{t("viewer.picker.shared")}</small>
         )}
@@ -147,7 +152,13 @@ export default function DatasetPicker({
           <div className="dataset-search">
             <Search size={16} aria-hidden="true" />
             <input
-              autoFocus
+              // A touch keyboard would cover the list at once; touch users tap the field when they want to type.
+              autoFocus={!coarsePointer()}
+              role="combobox"
+              aria-expanded={true}
+              aria-controls="zarr-listbox"
+              aria-autocomplete="list"
+              aria-activedescendant={filtered[active] ? `zarr-option-${active}` : undefined}
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value);
@@ -190,6 +201,8 @@ export default function DatasetPicker({
                 <button
                   type="button"
                   role="option"
+                  id={`zarr-option-${index}`}
+                  tabIndex={-1}
                   aria-selected={item.id === value}
                   key={item.id}
                   ref={(node) => {

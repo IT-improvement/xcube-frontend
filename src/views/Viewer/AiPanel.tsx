@@ -403,8 +403,13 @@ export function AiRunForm({
       </label>
 
       {run && (
-        <div className={`vx-run is-${run.status.toLowerCase()}`} aria-live="polite">
-          <div className="vx-run__head">
+        <div className={`vx-run is-${run.status.toLowerCase()}`}>
+          {/* Heard when the status or stage changes, not at every percent (UX13). */}
+          <span className="vx-sr" role="status">
+            {statusLabel(run.status, lang)}
+            {busy && run.stage ? ` · ${stageLabel(run.stage, lang)}` : ""}
+          </span>
+          <div className="vx-run__head" aria-hidden="true">
             <strong>{statusLabel(run.status, lang)}</strong>
             <span className="tabular">{busy ? `${percentDone}%${run.stage ? ` · ${stageLabel(run.stage, lang)}` : ""}` : ""}</span>
           </div>
@@ -753,17 +758,27 @@ export function WaterAreaRow({
                     <title>{t("viewer.ai.area.missing", { time: times[at].label })}</title>
                   </circle>
                 ) : (
-                  <rect
-                    key={times[at].iso}
-                    className={`vx-area__bar ${at === index ? "is-current" : ""}`}
-                    x={x(at) - barWidth / 2}
-                    width={barWidth}
-                    y={y(value)}
-                    height={Math.max(1, y(0) - y(value))}
-                    onClick={() => onIndex(at)}
-                  >
-                    <title>{times[at].label}: {km2(value, lang)} km² ({percent(series[at]?.waterRatio, lang)})</title>
-                  </rect>
+                  <g key={times[at].iso}>
+                    <rect
+                      className={`vx-area__bar ${at === index ? "is-current" : ""}`}
+                      x={x(at) - barWidth / 2}
+                      width={barWidth}
+                      y={y(value)}
+                      height={Math.max(1, y(0) - y(value))}
+                    >
+                      <title>{times[at].label}: {km2(value, lang)} km² ({percent(series[at]?.waterRatio, lang)})</title>
+                    </rect>
+                    {/* A pointer shortcut only (24 px wide at least); the time staff below is the keyboard path. */}
+                    <rect
+                      className="vx-area__hit"
+                      aria-hidden="true"
+                      x={x(at) - Math.max(24, barWidth) / 2}
+                      width={Math.max(24, barWidth)}
+                      y={padTop}
+                      height={Math.max(1, y(0) - padTop)}
+                      onClick={() => onIndex(at)}
+                    />
+                  </g>
                 ),
               )}
               {times[index] && <line className="cursor" x1={x(index)} x2={x(index)} y1={padTop} y2={height - padBottom} />}

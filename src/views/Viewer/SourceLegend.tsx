@@ -84,6 +84,23 @@ export function categoriesOf(name?: string): Array<{ code: number; color: string
   }
 }
 
+/**
+ * CSS background of a small ramp for the layer row swatch (UX13): the colour map's stops, the class colours of a
+ * categorical map, or red-green-blue stripes for the RGB composite. Undefined when the map is not known here.
+ */
+export function swatchBackground(variable: string, colorBarName?: string): string | undefined {
+  if (variable === "rgb") return "linear-gradient(90deg, #d0342c 0 33%, #2e9d4a 33% 67%, #2f6fd0 67%)";
+  const classes = categoriesOf(colorBarName);
+  if (classes) {
+    const width = 100 / classes.length;
+    return `linear-gradient(90deg, ${classes.map((item, index) => `${item.color} ${index * width}% ${(index + 1) * width}%`).join(", ")})`;
+  }
+  const colorBar = parseColorBar(colorBarName);
+  const stops = colorBar ? STOPS[colorBar.base] : undefined;
+  if (!stops) return undefined;
+  return `linear-gradient(90deg, ${(colorBar!.reversed ? [...stops].reverse() : stops).join(", ")})`;
+}
+
 export const legendValue = (value: number, lang: Lang = getLanguage()) => formatNumber(value, { maximumSignificantDigits: 4 }, lang);
 const CHANNELS = ["red", "green", "blue"] as const;
 
