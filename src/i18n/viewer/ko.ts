@@ -5,6 +5,7 @@ const koViewer = {
   viewer: {
     top: {
       main: 'XCube 시계열 GIS Viewer',
+      heading: 'XCube Viewer · {name}',
       home: 'XCube 소개 홈',
       crumbs: '보고 있는 프로젝트와 데이터',
       project: '프로젝트',
@@ -48,6 +49,10 @@ const koViewer = {
       probe: '키보드 픽셀 조회',
       probeHint: '방향키로 십자선을 옮기고 Enter로 그 지점의 시계열을 조회합니다. Shift를 함께 누르면 크게 움직이고, Esc를 누르면 이동 도구로 돌아갑니다.',
       pixelTip: '지도를 클릭하면 그 지점의 시계열이 아래에 열립니다. 키보드는 방향키와 Enter.',
+      keysLabel: '지도: {name}. 방향키로 이동, Enter로 가운데 픽셀 조회',
+      keysLabelEmpty: '지도. 방향키로 이동',
+      keysHelp: '방향키로 지도를 옮기고(Shift를 함께 누르면 크게), + 와 - 로 확대·축소, Home으로 데이터 영역에 맞춥니다. Enter나 Space를 누르면 가운데 십자선 자리의 시계열을 아래에 엽니다.',
+      keysHelpEmpty: '방향키로 지도를 옮기고 + 와 - 로 확대·축소합니다. 데이터를 고르면 Enter로 가운데 픽셀을 조회할 수 있습니다.',
     },
     empty: {
       loading: '데이터를 불러오는 중입니다…',
@@ -64,6 +69,7 @@ const koViewer = {
       tileFailed: '지도 이미지를 받지 못했습니다. {error}',
       rgbNoSeries: 'RGB 합성 대신 개별 band를 선택하면 픽셀 시계열을 조회할 수 있습니다.',
       noVariable: '조회 가능한 변수가 없습니다. 데이터 동기화 상태를 확인해 주세요.',
+      close: '알림 닫기',
     },
     /** Layer sheet (left). */
     panel: {
@@ -167,8 +173,8 @@ const koViewer = {
       placeholder: '데이터 고르기',
       shared: '공유받음',
       mine: '내 데이터',
-      searchIn: '{name}에서 검색',
-      search: '이름으로 검색',
+      searchIn: '{name}에서 검색…',
+      search: '이름으로 검색…',
       searchAria: 'Zarr 검색',
       /** {name} is drawn in bold. */
       projectData: '{name}의 데이터',

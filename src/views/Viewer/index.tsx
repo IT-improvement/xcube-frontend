@@ -38,7 +38,7 @@ import ProjectQuickMenu from "./ProjectQuickMenu";
 import { BottomGraphPanel, PixelMarker } from "./PixelGraph";
 import DatasetPicker from "./DatasetPicker";
 import LayerControl from "./LayerControl";
-import SourceLegend from "./SourceLegend";
+import SourceLegend, { swatchBackground } from "./SourceLegend";
 import {
   CompareMap,
   CompareModes,
@@ -136,8 +136,21 @@ function readUrlState(): UrlState {
 function ownsKeys(target: EventTarget | null, key: string) {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
-  const fields = "input, textarea, select, [role='slider'], [role='combobox'], [role='listbox'], [role='dialog'], [role='menu'], [role='tablist']";
+  const fields = "input, textarea, select, [role='slider'], [role='combobox'], [role='listbox'], [role='dialog'], [role='menu'], [role='tablist'], [role='application']";
   return !!target.closest(key === " " ? `${fields}, button, a, summary` : fields);
+}
+
+/** ←/→ (and Home/End) move between the tabs of a tablist and select the one reached (roving tab stop). */
+function moveTab(event: React.KeyboardEvent<HTMLElement>) {
+  const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("[role='tab']"));
+  const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
+  if (index < 0 || tabs.length < 2) return;
+  const next = ({ ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: tabs.length - 1 } as Record<string, number>)[event.key];
+  if (next === undefined) return;
+  event.preventDefault();
+  const tab = tabs[(next + tabs.length) % tabs.length];
+  tab.focus();
+  tab.click();
 }
 
 /** How often and how long the Viewer asks whether a new AI result is on the map yet (pod restart, FR-AI). */
@@ -392,11 +405,6 @@ export default function Viewer({
     const timer = window.setTimeout(() => setPickHintHidden(true), 3000);
     return () => window.clearTimeout(timer);
   }, [pickHintCandidate]);
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(""), 6000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
   useEffect(() => {
     if (!flash) return;
     const timer = window.setTimeout(() => setFlash(""), 3200);
@@ -854,19 +862,66 @@ export default function Viewer({
     if (times.length < 2 && selectedResult && compareTarget !== "ai") setCompareTarget("ai");
   }, [times.length, selectedResult, compareTarget]);
   const onMapReady = useCallback((instance: Map) => setMap(instance), []);
-  const openRightPanel = useCallback((type: Exclude<Drawer, null>) => {
+  // Focus follows the sheets (UX13): into a sheet when it opens, back to what opened it when it closes.
+  const focusNextRef = useRef<(() => HTMLElement | null | undefined) | null>(null);
+  useEffect(() => {
+    const next = focusNextRef.current;
+    if (!next) return;
+    focusNextRef.current = null;
+    next()?.focus();
+  });
+  const sheetOpenRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const drawerBoxRef = useRef<HTMLElement>(null);
+  const railRef = useRef<HTMLButtonElement>(null);
+  const aiButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerReturnRef = useRef<HTMLElement | null>(null);
+  const drawerRef = useRef<Drawer>(drawer);
+  drawerRef.current = drawer;
+  const panelOpenRef = useRef(panelOpen);
+  panelOpenRef.current = panelOpen;
+  const rightCollapsedRef = useRef(rightCollapsed);
+  rightCollapsedRef.current = rightCollapsed;
+  const splitActiveRef = useRef(false);
+  const selectedTabIn = (box: HTMLElement | null) => box?.querySelector<HTMLElement>("[role='tab'][aria-selected='true']");
+  /** Opens (or switches) the analysis drawer. `focus`: opened from a button, so focus moves into it and returns there on close. */
+  const openRightPanel = useCallback((type: Exclude<Drawer, null>, focus = false) => {
+    if (focus) {
+      if (!drawerRef.current) drawerReturnRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      focusNextRef.current = () => selectedTabIn(drawerBoxRef.current);
+    }
     setDrawer(type);
     setRightCollapsed(false);
-    if (window.innerWidth < 1180) setPanelOpen(false);
+    // Narrow screens and side by side: one sheet at a time, so the maps stay in view.
+    if (window.innerWidth < 1180 || splitActiveRef.current) setPanelOpen(false);
   }, []);
-  const onPixelSelect = useCallback(
+  /** The top-bar AI / 결과 buttons open their drawer tab, or close the drawer when that tab is already open. */
+  const toggleRightPanel = (type: Exclude<Drawer, null>) => {
+    if (drawer === type && !rightCollapsed) closeRightPanel();
+    else openRightPanel(type, true);
+  };
+  const openPanel = () => {
+    setPanelOpen(true);
+    if (splitActiveRef.current && drawerRef.current) setRightCollapsed(true);
+    focusNextRef.current = () => selectedTabIn(panelRef.current);
+  };
+  const closePanel = () => {
+    setPanelOpen(false);
+    focusNextRef.current = () => sheetOpenRef.current;
+  };
+  const collapseRightPanel = () => {
+    setRightCollapsed(true);
+    focusNextRef.current = () => railRef.current;
+  };
+  const expandRightPanel = () => {
+    setRightCollapsed(false);
+    if (splitActiveRef.current) setPanelOpen(false);
+    focusNextRef.current = () => selectedTabIn(drawerBoxRef.current);
+  };
+  /** Time series at a map coordinate: from a click with the pixel tool, the keyboard reticle or the focused map's centre. */
+  const queryPixel = useCallback(
     async (coordinate: [number, number]) => {
-      if (
-        mapTool !== "pixel" ||
-        !selected ||
-        (!sourceVisible && !resultVisible)
-      )
-        return;
+      if (!selected || (!sourceVisible && !resultVisible)) return;
       setPixelTip(false);
       setPlaying(false);
       setViewerNotice(null);
@@ -912,7 +967,13 @@ export default function Viewer({
         setViewerNotice({ cause });
       }
     },
-    [mapTool, selected, sourceVisible, resultVisible, times, activeVariable],
+    [selected, sourceVisible, resultVisible, times, activeVariable],
+  );
+  const onPixelSelect = useCallback(
+    (coordinate: [number, number]) => {
+      if (mapTool === "pixel") queryPixel(coordinate);
+    },
+    [mapTool, queryPixel],
   );
   const selectMapTool = (tool: MapTool, fromKeyboard = false) => {
     setMapTool(tool);
@@ -1017,10 +1078,13 @@ export default function Viewer({
         : 180,
     });
   }, [map, selectedId, selectedBbox]);
-  const closeRightPanel = () => {
+  function closeRightPanel() {
     setDrawer(null);
     setRightCollapsed(false);
-  };
+    const back = drawerReturnRef.current;
+    drawerReturnRef.current = null;
+    focusNextRef.current = () => (back?.isConnected ? back : aiButtonRef.current);
+  }
   // Keep centre and zoom when the graph panel opens or closes. Skip the first run so it
   // does not undo the fit to a dataset selected right at load (/app/viewer?dataset=…).
   const layoutRef = useRef<string | null>(null);
@@ -1155,6 +1219,22 @@ export default function Viewer({
   const userName = user?.name ?? t("viewer.top.user");
   const currentProject = projects.find((item) => item.id === projectId);
   const splitActive = compareActive && displayMode === "split";
+  // Side by side (UX13): fold the layer sheet to its button and the drawer to its rail so both maps keep about
+  // half the width; leaving side by side brings back what was open before.
+  const splitRestoreRef = useRef<{ panel: boolean; rail: boolean } | null>(null);
+  useEffect(() => {
+    splitActiveRef.current = splitActive;
+    if (splitActive) {
+      splitRestoreRef.current = { panel: panelOpenRef.current, rail: rightCollapsedRef.current };
+      setPanelOpen(false);
+      setRightCollapsed(true);
+    } else if (splitRestoreRef.current) {
+      const before = splitRestoreRef.current;
+      splitRestoreRef.current = null;
+      setPanelOpen((open) => open || before.panel);
+      setRightCollapsed((collapsed) => collapsed && before.rail);
+    }
+  }, [splitActive]);
   // Entry with datasets shows the map and one plain hint; the tour explains the rest.
   const emptyMessage = loading
     ? t("viewer.empty.loading")
@@ -1187,6 +1267,7 @@ export default function Viewer({
 
   return (
     <main className="viewer vx" aria-label={t("viewer.top.main")}>
+      <h1 className="vx-sr">{selected ? t("viewer.top.heading", { name: selected.name }) : t("viewer.top.main")}</h1>
       <header className="vx-top">
         <a className="vx-brand" href="/" aria-label={t("viewer.top.home")}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1297,8 +1378,10 @@ export default function Viewer({
               aria-label={t("viewer.top.ai")}
               title={t("viewer.top.ai")}
               data-tour="ai"
-              aria-pressed={drawer === "ai"}
-              onClick={() => openRightPanel("ai")}
+              ref={aiButtonRef}
+              aria-expanded={drawer === "ai" && !rightCollapsed}
+              aria-controls={drawer === "ai" && !rightCollapsed ? "vx-drawer" : undefined}
+              onClick={() => toggleRightPanel("ai")}
             >
               <Waves size={16} aria-hidden="true" />
               <span className="vx-hide-sm">{t("viewer.top.ai")}</span>
@@ -1308,10 +1391,11 @@ export default function Viewer({
             <button
               type="button"
               className="vx-btn vx-btn--line"
-              aria-pressed={drawer === "result"}
+              aria-expanded={drawer === "result" && !rightCollapsed}
+              aria-controls={drawer === "result" && !rightCollapsed ? "vx-drawer" : undefined}
               onClick={() => {
                 setResultVisible(true);
-                openRightPanel("result");
+                toggleRightPanel("result");
               }}
             >
               <Layers2 size={16} aria-hidden="true" />
@@ -1338,8 +1422,185 @@ export default function Viewer({
 
       <div
         style={{ "--vx-legend-space": `${legendSpace}px` } as React.CSSProperties}
-        className={`vx-body ${panelOpen ? "panel-open" : ""} ${drawer && !rightCollapsed ? "drawer-open" : ""} ${drawer && rightCollapsed ? "rail-open" : ""}`}
+        className={`vx-body ${panelOpen ? "panel-open" : ""} ${drawer && !rightCollapsed ? "drawer-open" : ""} ${drawer && rightCollapsed ? "rail-open" : ""} ${splitActive ? "is-split" : ""}`}
       >
+        {panelOpen && (
+          <aside
+            ref={panelRef}
+            id="vx-panel"
+            className="vx-panel"
+            aria-label={t("viewer.panel.aria")}
+            data-tour="layers"
+            onKeyDown={(event) => {
+              if (event.key !== "Escape" || event.defaultPrevented) return;
+              event.preventDefault();
+              closePanel();
+            }}
+          >
+            <div className="vx-panel__head">
+              <div className="vx-tabs" role="tablist" aria-label={t("viewer.panel.aria")} onKeyDown={moveTab}>
+                <button
+                  type="button"
+                  role="tab"
+                  id="vx-tab-layers"
+                  aria-controls="vx-panel-body"
+                  tabIndex={tab === "layers" ? 0 : -1}
+                  aria-selected={tab === "layers"}
+                  onClick={() => setTab("layers")}
+                >
+                  {t("viewer.panel.layers")}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="vx-tab-jobs"
+                  aria-controls="vx-panel-body"
+                  tabIndex={tab === "jobs" ? 0 : -1}
+                  aria-selected={tab === "jobs"}
+                  onClick={() => setTab("jobs")}
+                >
+                  {t("viewer.panel.aiJobs")}
+                  {entries.length > 0 && (
+                    <span className="vx-count tabular">{entries.length}</span>
+                  )}
+                </button>
+              </div>
+              <button
+                type="button"
+                className="vx-icon-btn"
+                onClick={closePanel}
+                aria-label={t("viewer.panel.close")}
+                title={t("viewer.panel.collapse")}
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
+            {tab === "layers" ? (
+              <div className="vx-panel__body" id="vx-panel-body" role="tabpanel" aria-labelledby="vx-tab-layers">
+                {selected && (
+                  <section className="vx-section">
+                    <h2 className="vx-section__title">{t("viewer.panel.bands")}</h2>
+                    <div className="vx-chips">
+                      {hasRgb && (
+                        <button
+                          type="button"
+                          aria-pressed={activeVariable === "rgb"}
+                          className={activeVariable === "rgb" ? "active" : ""}
+                          onClick={() => setActiveVariable("rgb")}
+                        >
+                          RGB
+                        </button>
+                      )}
+                      {selected.variables.map((variable) => (
+                        <button
+                          type="button"
+                          key={variable}
+                          aria-pressed={activeVariable === variable}
+                          className={
+                            activeVariable === variable ? "active" : ""
+                          }
+                          onClick={() => setActiveVariable(variable)}
+                        >
+                          {variable}
+                        </button>
+                      ))}
+                    </div>
+                    {activeVariable === "rgb" && (
+                      <p className="vx-section__hint">
+                        {t("viewer.panel.rgbHint")}
+                      </p>
+                    )}
+                  </section>
+                )}
+                <section className="vx-section">
+                  <h2 className="vx-section__title">{t("viewer.panel.layers")}</h2>
+                  <div className="vx-layers">
+                    {hasInference && (
+                      <LayerControl
+                        label={t("viewer.panel.aiResult")}
+                        accent="result"
+                        checked={resultVisible}
+                        onChecked={setResultVisible}
+                        opacity={resultOpacity}
+                        onOpacity={setResultOpacity}
+                      />
+                    )}
+                    {selected && (
+                      <LayerControl
+                        label={t("viewer.panel.source")}
+                        accent="source"
+                        swatch={activeVariable ? swatchBackground(activeVariable, variableStyle?.colorBarName) : undefined}
+                        checked={sourceVisible}
+                        onChecked={setSourceVisible}
+                        opacity={sourceOpacity}
+                        onOpacity={setSourceOpacity}
+                      />
+                    )}
+                    <div className="vx-layer-row">
+                      <label className="vx-layer">
+                        <input
+                          type="checkbox"
+                          checked={baseVisible}
+                          onChange={(e) => setBaseVisible(e.target.checked)}
+                        />
+                        <i className="vx-swatch vx-swatch--base" aria-hidden="true" />
+                        <span>{t("viewer.panel.basemap")}</span>
+                      </label>
+                    </div>
+                  </div>
+                </section>
+                {selected && (
+                  <section className="vx-section">
+                    <h2 className="vx-section__title">{t("viewer.panel.info")}</h2>
+                    <dl className="vx-meta">
+                      <div>
+                        <dt>{t("viewer.panel.name")}</dt>
+                        <dd title={selected.name}>{selected.name}</dd>
+                      </div>
+                      <div>
+                        <dt>{t("viewer.panel.times")}</dt>
+                        <dd className="tabular">{t("viewer.panel.count", { count: times.length })}</dd>
+                      </div>
+                      {times.length > 0 && (
+                        <div>
+                          <dt>{t("viewer.panel.period")}</dt>
+                          <dd className="tabular">
+                            {t("viewer.panel.periodValue", { start: times[0]?.label, end: times[times.length - 1]?.label })}
+                          </dd>
+                        </div>
+                      )}
+                      <div>
+                        <dt>{t("viewer.panel.bandCount")}</dt>
+                        <dd className="tabular">{t("viewer.panel.count", { count: selected.variables.length })}</dd>
+                      </div>
+                      <div>
+                        <dt>{t("viewer.panel.crs")}</dt>
+                        <dd>EPSG:4326</dd>
+                      </div>
+                    </dl>
+                  </section>
+                )}
+              </div>
+            ) : (
+              <div className="vx-panel__body" id="vx-panel-body" role="tabpanel" aria-labelledby="vx-tab-jobs">
+                <section className="vx-section">
+                  <h2 className="vx-section__title">{t("viewer.panel.aiResults")}</h2>
+                  {jobsError && (
+                    <p className="vx-section__hint" role="status">
+                      {t("viewer.panel.linkedError", { error: jobsError })}
+                    </p>
+                  )}
+                  {selected ? (
+                    <AiResultList entries={entries} selectedKey={resultKey} onMap={!!selectedResult && (resultVisible || aiCompare)} onSelect={chooseResult} />
+                  ) : (
+                    <p className="vx-section__hint">{t("viewer.panel.pickFirst")}</p>
+                  )}
+                </section>
+              </div>
+            )}
+          </aside>
+        )}
+
         <section
           ref={mapBoxRef}
           className={`vx-map ${splitActive ? "is-split" : ""} ${compareActive ? "is-comparing" : ""}`}
@@ -1350,12 +1611,24 @@ export default function Viewer({
             onPixelSelect={onPixelSelect}
             baseVisible={baseVisible}
             interactionMode={mapTool}
+            keyboard={{
+              label: selected ? t("viewer.map.keysLabel", { name: selected.name }) : t("viewer.map.keysLabelEmpty"),
+              helpId: "vx-map-keys",
+              onPick: selected ? queryPixel : undefined,
+              onHome: selectedBbox ? fitDataset : undefined,
+            }}
           />
+          <p id="vx-map-keys" className="vx-sr">
+            {t(selected ? "viewer.map.keysHelp" : "viewer.map.keysHelpEmpty")}
+          </p>
           {!panelOpen && (
             <button
+              ref={sheetOpenRef}
               type="button"
               className="vx-sheet-open"
-              onClick={() => setPanelOpen(true)}
+              aria-expanded={false}
+              aria-controls="vx-panel"
+              onClick={openPanel}
               data-tour="layers"
               aria-label={t("viewer.map.openSheet")}
               title={t("viewer.map.openSheetTitle")}
@@ -1493,9 +1766,13 @@ export default function Viewer({
             </div>
           )}
           {notice && (
+            // An alert stays until it is closed (WCAG 2.2.1): it is never gone before it has been read.
             <div className="vx-toast vx-toast--notice" role="alert">
               <CircleAlert size={16} aria-hidden="true" />
-              {notice}
+              <span>{notice}</span>
+              <button type="button" className="vx-icon-btn vx-toast__close" onClick={() => setNotice("")} aria-label={t("viewer.toast.close")}>
+                <X size={16} aria-hidden="true" />
+              </button>
             </div>
           )}
           {flash && (
@@ -1588,174 +1865,14 @@ export default function Viewer({
           )}
         </section>
 
-        {panelOpen && (
-          <aside
-            className="vx-panel"
-            aria-label={t("viewer.panel.aria")}
-            data-tour="layers"
-          >
-            <div className="vx-panel__head">
-              <div className="vx-tabs" role="tablist">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === "layers"}
-                  onClick={() => setTab("layers")}
-                >
-                  {t("viewer.panel.layers")}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === "jobs"}
-                  onClick={() => setTab("jobs")}
-                >
-                  {t("viewer.panel.aiJobs")}
-                  {entries.length > 0 && (
-                    <span className="vx-count tabular">{entries.length}</span>
-                  )}
-                </button>
-              </div>
-              <button
-                type="button"
-                className="vx-icon-btn"
-                onClick={() => setPanelOpen(false)}
-                aria-label={t("viewer.panel.close")}
-                title={t("viewer.panel.collapse")}
-              >
-                <X size={18} aria-hidden="true" />
-              </button>
-            </div>
-            {tab === "layers" ? (
-              <div className="vx-panel__body">
-                {selected && (
-                  <section className="vx-section">
-                    <h2 className="vx-section__title">{t("viewer.panel.bands")}</h2>
-                    <div className="vx-chips">
-                      {hasRgb && (
-                        <button
-                          type="button"
-                          aria-pressed={activeVariable === "rgb"}
-                          className={activeVariable === "rgb" ? "active" : ""}
-                          onClick={() => setActiveVariable("rgb")}
-                        >
-                          RGB
-                        </button>
-                      )}
-                      {selected.variables.map((variable) => (
-                        <button
-                          type="button"
-                          key={variable}
-                          aria-pressed={activeVariable === variable}
-                          className={
-                            activeVariable === variable ? "active" : ""
-                          }
-                          onClick={() => setActiveVariable(variable)}
-                        >
-                          {variable}
-                        </button>
-                      ))}
-                    </div>
-                    {activeVariable === "rgb" && (
-                      <p className="vx-section__hint">
-                        {t("viewer.panel.rgbHint")}
-                      </p>
-                    )}
-                  </section>
-                )}
-                <section className="vx-section">
-                  <h2 className="vx-section__title">{t("viewer.panel.layers")}</h2>
-                  <div className="vx-layers">
-                    {hasInference && (
-                      <LayerControl
-                        label={t("viewer.panel.aiResult")}
-                        accent="result"
-                        checked={resultVisible}
-                        onChecked={setResultVisible}
-                        opacity={resultOpacity}
-                        onOpacity={setResultOpacity}
-                      />
-                    )}
-                    {selected && (
-                      <LayerControl
-                        label={t("viewer.panel.source")}
-                        accent="source"
-                        checked={sourceVisible}
-                        onChecked={setSourceVisible}
-                        opacity={sourceOpacity}
-                        onOpacity={setSourceOpacity}
-                      />
-                    )}
-                    <div className="vx-layer-row">
-                      <label className="vx-layer">
-                        <input
-                          type="checkbox"
-                          checked={baseVisible}
-                          onChange={(e) => setBaseVisible(e.target.checked)}
-                        />
-                        <i className="vx-swatch vx-swatch--base" aria-hidden="true" />
-                        <span>{t("viewer.panel.basemap")}</span>
-                      </label>
-                    </div>
-                  </div>
-                </section>
-                {selected && (
-                  <section className="vx-section">
-                    <h3 className="vx-section__title">{t("viewer.panel.info")}</h3>
-                    <dl className="vx-meta">
-                      <div>
-                        <dt>{t("viewer.panel.name")}</dt>
-                        <dd title={selected.name}>{selected.name}</dd>
-                      </div>
-                      <div>
-                        <dt>{t("viewer.panel.times")}</dt>
-                        <dd className="tabular">{t("viewer.panel.count", { count: times.length })}</dd>
-                      </div>
-                      {times.length > 0 && (
-                        <div>
-                          <dt>{t("viewer.panel.period")}</dt>
-                          <dd className="tabular">
-                            {t("viewer.panel.periodValue", { start: times[0]?.label, end: times[times.length - 1]?.label })}
-                          </dd>
-                        </div>
-                      )}
-                      <div>
-                        <dt>{t("viewer.panel.bandCount")}</dt>
-                        <dd className="tabular">{t("viewer.panel.count", { count: selected.variables.length })}</dd>
-                      </div>
-                      <div>
-                        <dt>{t("viewer.panel.crs")}</dt>
-                        <dd>EPSG:4326</dd>
-                      </div>
-                    </dl>
-                  </section>
-                )}
-              </div>
-            ) : (
-              <div className="vx-panel__body">
-                <section className="vx-section">
-                  <h2 className="vx-section__title">{t("viewer.panel.aiResults")}</h2>
-                  {jobsError && (
-                    <p className="vx-section__hint" role="status">
-                      {t("viewer.panel.linkedError", { error: jobsError })}
-                    </p>
-                  )}
-                  {selected ? (
-                    <AiResultList entries={entries} selectedKey={resultKey} onMap={!!selectedResult && (resultVisible || aiCompare)} onSelect={chooseResult} />
-                  ) : (
-                    <p className="vx-section__hint">{t("viewer.panel.pickFirst")}</p>
-                  )}
-                </section>
-              </div>
-            )}
-          </aside>
-        )}
-
         {drawer && rightCollapsed && (
           <aside className="vx-drawer-rail">
             <button
+              ref={railRef}
               type="button"
-              onClick={() => setRightCollapsed(false)}
+              aria-expanded={false}
+              aria-controls="vx-drawer"
+              onClick={expandRightPanel}
               aria-label={t("viewer.drawer.open", { name: t(drawer === "ai" ? "viewer.drawer.aiTab" : "viewer.drawer.resultTab") })}
             >
               {drawer === "ai" ? (
@@ -1768,8 +1885,15 @@ export default function Viewer({
         )}
         {drawer && !rightCollapsed && (
           <aside
+            ref={drawerBoxRef}
+            id="vx-drawer"
             className="vx-drawer"
             aria-label={t(drawer === "ai" ? "viewer.drawer.aiAria" : "viewer.drawer.resultAria")}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape" || event.defaultPrevented) return;
+              event.preventDefault();
+              closeRightPanel();
+            }}
           >
             <div className="vx-drawer__head">
               <div>
@@ -1786,7 +1910,7 @@ export default function Viewer({
                 <button
                   type="button"
                   className="vx-icon-btn"
-                  onClick={() => setRightCollapsed(true)}
+                  onClick={collapseRightPanel}
                   aria-label={t("viewer.drawer.collapse")}
                   title={t("viewer.drawer.collapse")}
                 >
@@ -1803,10 +1927,13 @@ export default function Viewer({
                 </button>
               </span>
             </div>
-            <div className="vx-tabs vx-tabs--full" role="tablist" aria-label={t("viewer.drawer.tabs")}>
+            <div className="vx-tabs vx-tabs--full" role="tablist" aria-label={t("viewer.drawer.tabs")} onKeyDown={moveTab}>
               <button
                 type="button"
                 role="tab"
+                id="vx-dtab-ai"
+                aria-controls="vx-drawer-body"
+                tabIndex={drawer === "ai" ? 0 : -1}
                 aria-selected={drawer === "ai"}
                 onClick={() => openRightPanel("ai")}
               >
@@ -1819,6 +1946,9 @@ export default function Viewer({
                 <button
                   type="button"
                   role="tab"
+                  id="vx-dtab-result"
+                  aria-controls="vx-drawer-body"
+                  tabIndex={drawer === "result" ? 0 : -1}
                   aria-selected={drawer === "result"}
                   onClick={() => openRightPanel("result")}
                 >
@@ -1826,7 +1956,7 @@ export default function Viewer({
                 </button>
               )}
             </div>
-            <div className="vx-drawer__body" role="tabpanel">
+            <div className="vx-drawer__body" id="vx-drawer-body" role="tabpanel" aria-labelledby={drawer === "result" ? "vx-dtab-result" : "vx-dtab-ai"}>
               {drawer === "ai" && selected ? (
                 <>
                   <AiRunForm

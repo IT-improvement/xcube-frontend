@@ -49,7 +49,7 @@ describe('Viewer chrome in English', () => {
     expect(screen.getByRole('link', { name: 'XCube home' })).toHaveAttribute('href', '/');
     const crumbs = screen.getByRole('navigation', { name: 'Current project and data' });
     expect(within(crumbs).getByRole('combobox', { name: 'Choose project' })).toHaveDisplayValue('No project');
-    expect(within(crumbs).getByRole('combobox', { name: 'Choose data or Zarr' })).toHaveTextContent('Landsat-8 · 2024');
+    expect(within(crumbs).getByRole('button', { name: /^Choose data or Zarr/ })).toHaveTextContent('Landsat-8 · 2024');
     expect(within(crumbs).getByRole('button', { name: 'Manage project' })).toBeInTheDocument();
     // Demo mode counts as connected to the main map server.
     const status = screen.getAllByRole('status').find((item) => item.classList.contains('vx-status'))!;

@@ -34,7 +34,7 @@ test('Zarr를 선택하기 전에는 배경지도만 유지하고 데이터 도�
 
 test('원본 Zarr 선택 후 시간 도구와 원본 레이어만 표시한다', async () => {
   render(<Viewer />);
-  const selector = await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' });
+  const selector = await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ });
   fireEvent.click(selector);
   fireEvent.click(await screen.findByRole('option', { name: /Sentinel-2/ }));
   expect(await screen.findByRole('region', { name: '시계열 탐색기' })).toBeInTheDocument();
@@ -47,7 +47,7 @@ test('원본 Zarr 선택 후 시간 도구와 원본 레이어만 표시한다',
 
 test('연결된 infer 결과가 있는 Zarr에서만 결과 UI를 표시하고 픽셀 클릭 시 그래프를 연다', async () => {
   render(<Viewer />);
-  const selector = await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' });
+  const selector = await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ });
   fireEvent.click(selector);
   fireEvent.click(await screen.findByRole('option', { name: /Landsat-8/ }));
   expect(await screen.findByRole('button', { name: '결과' })).toBeInTheDocument();
@@ -91,13 +91,13 @@ test('연결된 infer 결과가 있는 Zarr에서만 결과 UI를 표시하고 �
 
 test('Zarr 목록을 검색하고 키보드로 선택할 수 있다', async () => {
   render(<Viewer />);
-  const selector = await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' });
+  const selector = await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ });
   fireEvent.click(selector);
   await screen.findByRole('option', { name: /Sentinel-2/ });
-  fireEvent.change(screen.getByRole('textbox', { name: 'Zarr 검색' }), { target: { value: 'sentinel' } });
+  fireEvent.change(screen.getByRole('combobox', { name: 'Zarr 검색' }), { target: { value: 'sentinel' } });
   expect(screen.getByRole('option', { name: /Sentinel-2/ })).toBeInTheDocument();
   expect(screen.queryByRole('option', { name: /Landsat-8/ })).not.toBeInTheDocument();
-  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Zarr 검색' }), { key: 'Enter' });
+  fireEvent.keyDown(screen.getByRole('combobox', { name: 'Zarr 검색' }), { key: 'Enter' });
   expect(selector).toHaveTextContent('Sentinel-2');
 });
 
@@ -116,9 +116,9 @@ test('45개 Zarr 목록에서 마지막 항목을 검색해 선택할 수 있다
   }));
   const getDatasets = jest.spyOn(viewerAdapter, 'getDatasets').mockResolvedValueOnce(datasets);
   render(<Viewer />);
-  const selector = await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' });
+  const selector = await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ });
   fireEvent.click(selector);
-  const search = await screen.findByRole('textbox', { name: 'Zarr 검색' });
+  const search = await screen.findByRole('combobox', { name: 'Zarr 검색' });
   fireEvent.change(search, { target: { value: 'xcube_dataset_45' } });
   const last = await screen.findByRole('option', { name: /테스트 데이터셋 45/ });
   fireEvent.click(last);
@@ -166,13 +166,13 @@ test('프로젝트 버튼의 작은 창에서 새 프로젝트를 만들고 바�
 
 test('지금 보는 데이터를 선택한 프로젝트에 추가하고, 이미 있으면 막는다', async () => {
   render(<Viewer />);
-  fireEvent.click(await screen.findByRole('combobox', { name: '데이터 또는 Zarr 선택' }));
+  fireEvent.click(await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ }));
   fireEvent.click(await screen.findByRole('option', { name: /Sentinel-2/ }));
   fireEvent.change(screen.getByRole('combobox', { name: '프로젝트 선택' }), { target: { value: 'nakdong-river' } });
   // The project's data now lives in the dataset picker, narrowed to the project.
-  fireEvent.click(screen.getByRole('combobox', { name: '데이터 또는 Zarr 선택' }));
+  fireEvent.click(screen.getByRole('button', { name: /^데이터 또는 Zarr 선택/ }));
   expect(await screen.findByRole('listbox', { name: '낙동강 변화 분석의 데이터' })).toBeInTheDocument();
-  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Zarr 검색' }), { key: 'Escape' });
+  fireEvent.keyDown(screen.getByRole('combobox', { name: 'Zarr 검색' }), { key: 'Escape' });
   fireEvent.click(screen.getByRole('button', { name: '프로젝트 관리' }));
   const add = within(screen.getByRole('dialog', { name: '프로젝트 작업' })).getByRole('button', { name: /지금 보는 데이터를 이 프로젝트에 추가/ });
   await waitFor(() => expect(add).toBeEnabled());
@@ -187,7 +187,7 @@ test('지금 보는 데이터를 선택한 프로젝트에 추가하고, 이미 
 test('주소로 받은 데이터셋을 목록을 불러온 뒤 한 번 선택한다', async () => {
   render(<Viewer initialDatasetId="landsat" />);
   expect(await screen.findByRole('region', { name: '시계열 탐색기' })).toBeInTheDocument();
-  expect(screen.getByRole('combobox', { name: '데이터 또는 Zarr 선택' })).toHaveTextContent('Landsat-8');
+  expect(screen.getByRole('button', { name: /^데이터 또는 Zarr 선택/ })).toHaveTextContent('Landsat-8');
 });
 
 test('데이터 고르기 안내는 3초 뒤 사라진다', async () => {
@@ -199,7 +199,7 @@ test('데이터 고르기 안내는 3초 뒤 사라진다', async () => {
     expect(screen.getByText('지도에 띄울 위성 데이터를 고르세요.')).toBeInTheDocument();
     act(() => { jest.advanceTimersByTime(200); });
     expect(screen.queryByText('지도에 띄울 위성 데이터를 고르세요.')).not.toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: '데이터 또는 Zarr 선택' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^데이터 또는 Zarr 선택/ })).toBeInTheDocument();
   } finally {
     jest.useRealTimers();
   }
