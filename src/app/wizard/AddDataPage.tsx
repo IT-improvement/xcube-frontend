@@ -26,8 +26,8 @@ import { FixedVariables, SarOptions } from './SarPairing';
 import { defaultSar, FIXED_NAMES, PRESET_GEE, PRESET_STYLE, isS2, orbitOption, pairingActive, presetSar, S2_COLLECTION, sarError, sarRequest, SarState, WATER_BANDS, WATER_NAME, withPairingBlockers } from './sarModel';
 import { withStrong } from './strong';
 import UploadMeter, { UploadTrack } from './UploadMeter';
-import { busyProducts, doneProducts, ProductInspection, ProductSource, useProductUploads } from './ProductUpload';
-import { defaultChoices, estimateBytes, estimateText, hasRgbNames, PRODUCT_JOB_TYPE, productBands, productFields, ProductKind, productPeriod, productsOf, RESOLUTIONS, suggestProductName, uniqueDates } from './productModel';
+import { busyProducts, doneProducts, ProductInspection, ProductSource, skippedTexts, useProductUploads } from './ProductUpload';
+import { defaultChoices, estimateBytes, estimateText, exportResolution, hasRgbNames, isExport, PRODUCT_JOB_TYPE, productBands, productFields, ProductKind, productPeriod, productsOf, RESOLUTIONS, suggestProductName, uniqueDates } from './productModel';
 import './wizard.css';
 import { failureText, formatNumber, registrationFailureText, serverText, useLanguage, useT } from '../../i18n';
 import type { Lang, TFunction, TKey } from '../../i18n';
@@ -184,7 +184,9 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const isGee = method === 'gee';
   const isProduct = method === 'product';
   const doneItems = useMemo(() => (isProduct ? doneProducts(productUploads.items) : []), [isProduct, productUploads.items]);
-  const products = useMemo(() => productsOf(doneItems.map((item) => item.inspection!)), [doneItems]);
+  const products = useMemo(() => productsOf(doneItems.map((item) => item.inspection!), productKind), [doneItems, productKind]);
+  // Copernicus Browser exports keep their own grid: no resolution choice, and none is sent.
+  const exported = isProduct && isExport(products);
   const productsBusy = isProduct && busyProducts(productUploads.items);
 
   // Leaving the tab mid-way loses the inputs; ask first.
@@ -340,7 +342,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
     if (Object.keys(variableErrors).length) return say('style', 'wizard.settings.checkStyle');
     if (pairing && choices.some((choice) => (FIXED_NAMES as readonly string[]).includes(choice.name.trim()))) return say('style', 'wizard.settings.fixedNames', { names: FIXED_NAMES.join('·') });
     if (method === 'shape' && !(Number(resolution) > 0)) return say('resolution', 'wizard.settings.resolutionCheck');
-    if (isProduct && !RESOLUTIONS[productKind].includes(productResolution)) return say('resolution', 'wizard.settings.resolutionCheck');
+    if (isProduct && !exported && !RESOLUTIONS[productKind].includes(productResolution)) return say('resolution', 'wizard.settings.resolutionCheck');
     if (genericRaster && !sensorValue) return say('sensor', 'wizard.settings.sensorRequired');
     if (dateRequired && !obsDate) return say('obsDate', 'wizard.settings.obsDateMissing');
     if (nodata !== '' && !Number.isFinite(Number(nodata))) return say('nodata', 'wizard.settings.nodataNumber');
@@ -416,7 +418,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
         setJob(await generation.createFileJob({
           type: PRODUCT_JOB_TYPE[productKind], name: name.trim(),
           inputs: doneItems.flatMap((item) => item.inspection?.inputs ?? []), variables: specs,
-          params: { resolution: productResolution },
+          params: exported ? {} : { resolution: productResolution },
           ...(projectId ? { projectId } : {}),
         }));
       } else if (method === 'zarr') {
@@ -729,7 +731,13 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
                 )}
                 {fileInputs && <TextField label={t('wizard.settings.nodata')} type="number" step="any" value={nodata} onChange={(event) => setNodata(event.target.value)} help={t('wizard.settings.nodataHelp')} error={errorFor('nodata') || undefined} />}
               </div>
-              {isProduct && (
+              {exported && (
+                <div className="xc-field">
+                  <span className="xc-label">{t('wizard.product.resolution')}</span>
+                  <p className="xc-hint">{t('wizard.product.resolutionExport', { value: exportResolution(products) ?? '—' })}</p>
+                </div>
+              )}
+              {isProduct && !exported && (
                 <div className="xc-field" data-invalid={invalid('resolution')}>
                   <span className="xc-label" id="product-resolution">{t('wizard.product.resolution')}</span>
                   <div className="segmented" role="group" aria-labelledby="product-resolution" aria-describedby="product-resolution-help">
@@ -810,7 +818,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
           )}
 
           {current === 'inspection' && (isProduct
-            ? (products.length ? <ProductInspection kind={productKind} products={products} /> : <Alert tone="warning">{t('wizard.inspect.missing')}</Alert>)
+            ? (products.length ? <ProductInspection kind={productKind} products={products} skipped={skippedTexts(productUploads.items, lang)} /> : <Alert tone="warning">{t('wizard.inspect.missing')}</Alert>)
             : <InspectionSummary method={method!} rasterKind={rasterKind} inspection={inspection} fields={fields} />)}
 
           {current === 'confirm' && (
@@ -828,7 +836,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
                       </details>
                     </dd>
                     {period && <><dt>{t('wizard.inspect.period')}</dt><dd className="tabular">{period.start === period.end ? period.start : t('wizard.summary.period', { start: period.start, end: period.end })}</dd></>}
-                    <dt>{t('wizard.summary.resolution')}</dt><dd className="tabular">{t('wizard.product.resolutionValue', { value: productResolution })}</dd>
+                    <dt>{t('wizard.summary.resolution')}</dt><dd className="tabular">{exported ? t('wizard.product.resolutionNative', { value: exportResolution(products) ?? '—' }) : t('wizard.product.resolutionValue', { value: productResolution })}</dd>
                   </>
                 ) : (
                   <><dt>{t('wizard.summary.source')}</dt><dd>{method === 'zarr' ? storageUri : inspection?.fileName}</dd></>

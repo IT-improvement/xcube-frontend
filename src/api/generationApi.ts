@@ -28,20 +28,34 @@ export type FileInput = { kind?: string; uri?: string; path?: string; fileName?:
 export type InspectType = 'geotiff' | 'shapefile' | 'cas500' | 'sentinel2' | 'landsat';
 /** A product package's band (Backend guide "위성 원본 제품 업로드"): `name` is the registry name AI and band math use. */
 export type ProductBand = { source: string; name: string; resolution: number; kind: 'continuous' | 'categorical'; default: boolean;
-  /** Not in the contract yet; used for the display range when a server sends it. */
-  approxStats?: ValueStats };
+  /** Loose band files (UPL2) send their statistics; used for the display range. */
+  approxStats?: ValueStats;
+  /** Loose band files (UPL2): the file the band came from. */
+  file?: string };
+/** UPL2: `package` (UR-55 .zip/.tar), `bands` (loose Landsat band files) or `browserExport` (Copernicus Browser). */
+export type ProductLayout = 'package' | 'bands' | 'browserExport';
 /** `footprint` is an EPSG:4326 bbox; both `[w, s, e, n]` and `{west, south, east, north}` are read. */
 export type ProductInfo = {
-  sensor: 'SENTINEL2_L2A' | 'LANDSAT_C2_L2' | string; platform: string; productId: string; acquiredAt: string;
+  sensor: 'SENTINEL2_L2A' | 'LANDSAT_C2_L2' | string; platform?: string | null; productId: string; acquiredAt: string;
   tile?: string | null; pathRow?: string | null; processingBaseline?: string | null; boaAddOffset?: number | null; cloudCover?: number | null;
   footprint?: Bbox | { west: number; south: number; east: number; north: number } | null;
   bands: ProductBand[];
+  /** Older servers leave it out (= package). */
+  layout?: ProductLayout;
+  /** "day" when only the file name's date is known (`acquiredAt` is then 00:00 UTC). */
+  timePrecision?: 'day' | null;
+  /** "reflectance" when values are already 0–1 reflectance (browser exports). */
+  valueScale?: 'reflectance' | null;
 };
 export type SpatialInspection = { sourceType: 'GEOTIFF' | 'SHAPEFILE' | 'CAS500' | 'SENTINEL2_L2A' | 'LANDSAT_C2L2' | string; fileName: string; bands: string[]; fields?: InspectionField[]; bounds: { west: number; south: number; east: number; north: number } | null; width?: number; height?: number; files: string[]; message: string; inputs?: FileInput[];
   /** `GEOTIFF_CHECKED`·`SHAPEFILE_CHECKED`·`CAS500_CHECKED` with values (UR-53 stage 5); older servers send only `message`. */
   messageCode?: string; messageParams?: ServerParams;
   /** Satellite product packages only (`SENTINEL2_CHECKED`·`LANDSAT_CHECKED`). */
-  product?: ProductInfo };
+  product?: ProductInfo;
+  /** UPL2: every scene of a loose upload (one per date or Landsat product). */
+  products?: ProductInfo[];
+  /** UPL2: e.g. `PRODUCT_VISUAL_SKIPPED{files}` for True color and other visual images. */
+  warnings?: string[]; warningItems?: ServerItem[] };
 /** One output variable of a generation job: only selected bands/attributes become Zarr variables. */
 export type VariableSpec = { source: string; name: string; kind: 'continuous' | 'categorical'; style: { colorBar: string; min?: number; max?: number } };
 export type FileJobType = 'GEOTIFF_BANDS' | 'CAS500' | 'SHAPEFILE' | 'SENTINEL2_L2A' | 'LANDSAT_C2L2';
