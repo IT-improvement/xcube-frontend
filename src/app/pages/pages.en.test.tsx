@@ -174,7 +174,7 @@ describe('Jobs in English', () => {
     renderAt('/app/jobs');
     expect(await screen.findByText('Ulsan Shape')).toBeInTheDocument();
     const types = screen.getByRole('group', { name: 'Job type' });
-    expect(within(types).getAllByRole('button').map((button) => button.textContent)).toEqual(['All', 'GEE', 'GeoTIFF·CAS500', 'Shapefile', 'Band math', 'AI water extraction']);
+    expect(within(types).getAllByRole('button').map((button) => button.textContent)).toEqual(['All', 'GEE', 'GeoTIFF·CAS500', 'Sentinel-2·Landsat', 'Shapefile', 'Band math', 'AI water extraction']);
     const status = screen.getByRole('combobox', { name: 'Status' });
     expect(within(status).getAllByRole('option').map((option) => option.textContent)).toEqual(['All statuses', 'In progress', 'Done', 'Failed or cancelled']);
     expect(screen.getByText('Running')).toBeInTheDocument();

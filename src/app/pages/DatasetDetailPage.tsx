@@ -71,11 +71,12 @@ function jobOf(dataset: ZarrDataset): Promise<JobSummary | null> {
   return request.catch(() => null);
 }
 
-/** Pixel size the job asked for: metres (GEE) or degrees (files). */
+/** Pixel size the job asked for: metres (GEE, satellite products) or degrees (GeoTIFF·CAS500·Shapefile files). */
 function resolutionOf(job: JobSummary | null, lang: Lang) {
   const input = job?.input ?? {};
   const params = (input.params as Record<string, unknown> | undefined) ?? {};
   if (input.scaleMeters != null) return `${input.scaleMeters} m`;
+  if (params.resolution != null && (job?.type === 'SENTINEL2_L2A' || job?.type === 'LANDSAT_C2L2')) return `${params.resolution} m`;
   if (params.resolution != null) return translate(lang, 'dataset.resolutionDegrees', { value: String(params.resolution) });
   return '';
 }

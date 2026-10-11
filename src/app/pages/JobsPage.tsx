@@ -14,14 +14,14 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 // The management screens' text (UR-53 stage 2) loads with these pages, not with the main bundle.
 import '../../i18n/app';
 
-type TypeFilter = '' | 'GEE_TO_ZARR' | 'GEOTIFF_BANDS,CAS500' | 'SHAPEFILE' | 'FUSION' | 'AI_WATER';
+type TypeFilter = '' | 'GEE_TO_ZARR' | 'GEOTIFF_BANDS,CAS500' | 'SENTINEL2_L2A,LANDSAT_C2L2' | 'SHAPEFILE' | 'FUSION' | 'AI_WATER';
 type StatusFilter = '' | 'QUEUED,RUNNING' | 'SUCCEEDED' | 'FAILED,CANCELLED';
-const TYPES: TypeFilter[] = ['', 'GEE_TO_ZARR', 'GEOTIFF_BANDS,CAS500', 'SHAPEFILE', 'FUSION', 'AI_WATER'];
+const TYPES: TypeFilter[] = ['', 'GEE_TO_ZARR', 'GEOTIFF_BANDS,CAS500', 'SENTINEL2_L2A,LANDSAT_C2L2', 'SHAPEFILE', 'FUSION', 'AI_WATER'];
 const STATUSES: StatusFilter[] = ['', 'QUEUED,RUNNING', 'SUCCEEDED', 'FAILED,CANCELLED'];
 const pick = <T extends string>(value: string | null, allowed: T[]) => (allowed.includes(value as T) ? (value as T) : ('' as T));
 /** Type filter buttons: source types keep their product names; the rest are dictionary keys. */
 const TYPE_BUTTONS: Array<[TypeFilter, { key: TKey } | { text: string }]> = [
-  ['', { key: 'app.all' }], ['GEE_TO_ZARR', { text: 'GEE' }], ['GEOTIFF_BANDS,CAS500', { text: 'GeoTIFF·CAS500' }], ['SHAPEFILE', { text: 'Shapefile' }],
+  ['', { key: 'app.all' }], ['GEE_TO_ZARR', { text: 'GEE' }], ['GEOTIFF_BANDS,CAS500', { text: 'GeoTIFF·CAS500' }], ['SENTINEL2_L2A,LANDSAT_C2L2', { text: 'Sentinel-2·Landsat' }], ['SHAPEFILE', { text: 'Shapefile' }],
   ['FUSION', { key: 'jobType.FUSION' }], ['AI_WATER', { key: 'jobType.AI_WATER' }],
 ];
 // Seconds, so each 10-second refresh visibly changes the time.
