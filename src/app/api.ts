@@ -59,7 +59,7 @@ const demoJob = (name = '새 데이터', type = 'GEOTIFF_BANDS'): GenerationJob 
   demoJobList.unshift(job);
   return { id: job.id, status: 'QUEUED' };
 };
-const DEMO_COLORBARS: ColorBarOption[] = ['viridis', 'plasma', 'magma', 'cividis', 'Blues', 'Greens', 'RdYlGn', 'Spectral', 'terrain', 'Greys'].map((id, index) => ({ id, category: index < 4 ? 'Perceptually Uniform Sequential' : index < 6 ? 'Sequential' : 'Diverging' }));
+const DEMO_COLORBARS: ColorBarOption[] = ['viridis', 'plasma', 'magma', 'cividis', 'Blues', 'Greens', 'RdYlGn', 'Spectral', 'terrain', 'Greys', 'gray'].map((id, index) => ({ id, category: index < 4 ? 'Perceptually Uniform Sequential' : index < 6 ? 'Sequential' : 'Diverging' }));
 const DEMO_COLLECTIONS: GeeCollection[] = [
   { id: 'COPERNICUS/S2_SR_HARMONIZED', name: 'Sentinel-2 L2A (Harmonized)', bands: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12', 'SCL'] },
   { id: 'LANDSAT/LC09/C02/T1_L2', name: 'Landsat 9 C2 L2', bands: ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7'] },

@@ -1,6 +1,6 @@
 /* UR-54: the GEE steps changed, the requests did not. The bodies below were recorded from the wizard before the
    change (dev 901d3f5, old 원본 입력 → 검사 → 설정 → 확인 order) for the same choices; the new flow must send the
-   same JSON. The one intended difference: the water preset's optical bands now default to the Greys colour map
+   same JSON. The one intended difference: the water preset's optical bands now default to the gray colour map
    (audit D-wizard U3) instead of viridis. */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
@@ -59,13 +59,13 @@ const CUSTOM_ESTIMATE = {
 };
 /** What goes over the wire: JSON drops undefined fields. */
 const wire = (body: unknown) => JSON.parse(JSON.stringify(body));
-const greys = (body: typeof PRESET_CREATE_BEFORE) => JSON.parse(JSON.stringify(body).replace(/"viridis"/g, '"Greys"'));
+const greys = (body: typeof PRESET_CREATE_BEFORE) => JSON.parse(JSON.stringify(body).replace(/"viridis"/g, '"gray"'));
 
 function renderWizard() {
   return render(<MemoryRouter initialEntries={['/app/data/new']}><Routes><Route path="/app/data/new" element={<AddDataPage />} /></Routes></MemoryRouter>);
 }
 
-test('수체 분석용 프리셋: 같은 선택이면 생성·추정 요청 본문이 이전과 같다 (색상표만 Greys)', async () => {
+test('수체 분석용 프리셋: 같은 선택이면 생성·추정 요청 본문이 이전과 같다 (색상표만 gray)', async () => {
   const estimate = jest.spyOn(generation, 'estimateGee');
   const create = jest.spyOn(generation, 'createGeeJob');
   const flow = geeFlow();

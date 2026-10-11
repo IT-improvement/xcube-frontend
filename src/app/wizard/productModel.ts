@@ -72,13 +72,13 @@ function defaultRange(kind: ProductKind, band: ProductBand, hint: DisplayHint) {
   return { min: offset, max: 3000 + offset };
 }
 
-/** One band as a variable: the registry name, Greys for reflectance, a categorical map for SCL / QA_PIXEL. */
+/** One band as a variable: the registry name, gray (dark = low, so water is dark) for reflectance, a categorical map for SCL / QA_PIXEL. */
 export function productChoice(kind: ProductKind, band: ProductBand, colorBars: ColorBarOption[], hint: DisplayHint = {}): VariableChoice {
   const pick = (...ids: string[]) => ids.map((id) => colorBars.find((item) => item.id === id)?.id).find(Boolean) ?? colorBars[0]?.id ?? '';
   if (band.kind === 'categorical') return { source: band.source, name: band.name, kind: 'categorical', colorBar: pick('tab10', 'Set3', 'Paired'), min: '', max: '' };
   const range = defaultRange(kind, band, hint);
   const round = (value: number) => (Math.abs(value) >= 1000 ? Math.round(value) : Number(value.toPrecision(4)));
-  return { source: band.source, name: band.name, kind: 'continuous', colorBar: pick('Greys', 'gray', 'Greys_r'), min: String(round(range.min)), max: String(round(range.max)), origin: band.approxStats ? undefined : 'product' };
+  return { source: band.source, name: band.name, kind: 'continuous', colorBar: pick('gray', 'Greys_r', 'Greys'), min: String(round(range.min)), max: String(round(range.max)), origin: band.approxStats ? undefined : 'product' };
 }
 
 type Bounds = { west: number; south: number; east: number; north: number };

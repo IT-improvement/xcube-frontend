@@ -268,7 +268,7 @@ describe('이름·확인 단계', () => {
     // The preset's display settings are one line until "바꾸기"; the bands carry their RGB channel.
     expect(screen.getByText('수체 분석 기본값 (band 5 · 레이더 2 · 참조 1)')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '표시 설정 바꾸기' }));
-    expect(screen.getByRole('combobox', { name: 'B2 색상표' })).toHaveValue('Greys');
+    expect(screen.getByRole('combobox', { name: 'B2 색상표' })).toHaveValue('gray');
     expect(screen.getByRole('region', { name: 'B4 표시 설정' })).toHaveTextContent('RGB R');
     expect(screen.getByRole('region', { name: 'B4 표시 설정' })).toHaveTextContent('프리셋 값 0 ~ 3,000 (수체 분석용)');
     expect(screen.getByLabelText('빨강 (R)')).toHaveDisplayValue('red (B4)');
