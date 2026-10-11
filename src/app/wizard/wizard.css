@@ -79,6 +79,12 @@
 .product-row__icon { display: grid; place-items: center; color: var(--fb-ink-2); }
 .product-row.is-done .product-row__icon { color: var(--fb-ok); }
 .product-row.is-failed .product-row__icon { color: var(--fb-bad); }
+.product-row.is-skipped .product-row__name { color: var(--fb-ink-2); }
+.product-row__skip { overflow-wrap: anywhere; }
+/* UPL2: files the server left out (visual images), under the inspection table. */
+.product-skipped { display: grid; gap: 4px; font-size: 13.5px; color: var(--fb-ink-2); }
+.product-skipped ul { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
+.product-skipped strong { color: var(--fb-ink); font-weight: 600; }
 .product-row__name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font: 500 13.5px/1.35 var(--font-sans); font-variant-numeric: tabular-nums; }
 .product-table__note { font-size: 13px; color: var(--fb-ink-2); min-width: 16ch; }
 .product-rgb { color: var(--fb-ink-2); }

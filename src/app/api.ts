@@ -95,6 +95,45 @@ const LANDSAT_BANDS: ProductBand[] = [
 ].map(([source, name, picked]) => ({ source: source as string, name: name as string, resolution: 30, kind: 'continuous', default: picked as boolean }) as ProductBand)
   .concat([{ source: 'QA_PIXEL', name: 'qa_pixel', resolution: 30, kind: 'categorical', default: true }]);
 const iso = (stamp: string) => `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(9, 11) || '02'}:${stamp.slice(11, 13) || '15'}:${stamp.slice(13, 15) || '00'}Z`;
+/**
+ * UPL2 loose band files, one per upload: Landsat `LC08_L2SP_116034_20251104_20251126_02_T1_SR_B2.TIF` and Copernicus
+ * Browser `2022-06-01-00:00_2022-06-01-23:59_Sentinel-2_L2A_B02_(Raw).tiff`; `…_True_color.tiff` is left out.
+ */
+function demoLoose(type: 'sentinel2' | 'landsat', name: string): SpatialInspection | null {
+  const landsat = /^((L[CO]0[89])_L2S[PR]_(\d{6})_(\d{4})(\d{2})(\d{2})_\d{8}_\d{2}_\w{2})_(SR_B[1-7]|QA_PIXEL)\.TIFF?$/i.exec(name);
+  const s2 = /^((\d{4}-\d{2}-\d{2})-[\d:]+_[\d-]+-[\d:]+_Sentinel-2_L2A)_(?:(B0[1-9]|B1[0-2]|B8A|SCL)_\(Raw\)|(\w+))\.tiff?$/i.exec(name);
+  const bounds = { west: 126.9977, south: 37.7163, east: 127.1213, north: 37.7831 };
+  if (type === 'landsat' && landsat) {
+    const band = LANDSAT_BANDS.find((item) => item.source === landsat[7].toUpperCase())!;
+    return {
+      sourceType: 'LANDSAT_C2L2', fileName: name, bands: [band.source], bounds, files: [name], message: 'Landsat Collection 2 Level-2 제품을 확인했습니다. (데모)', messageCode: 'LANDSAT_CHECKED',
+      inputs: [{ kind: 'geotiff', uri: `file:///demo/${name}` }], warnings: [], warningItems: [],
+      product: {
+        sensor: 'LANDSAT_C2_L2', platform: landsat[2].toUpperCase(), productId: landsat[1], acquiredAt: `${landsat[4]}-${landsat[5]}-${landsat[6]}T00:00:00Z`, pathRow: landsat[3],
+        cloudCover: null, footprint: bounds, layout: 'bands', timePrecision: 'day',
+        bands: [{ ...band, default: band.default, file: name, approxStats: { min: 7198, max: 22536, p2: 7559, p98: 10807 } }],
+      },
+    };
+  }
+  if (type !== 'sentinel2' || !s2) return null;
+  const product = (bands: ProductBand[]) => ({
+    sensor: 'SENTINEL2_L2A', platform: null, productId: s2[1], acquiredAt: `${s2[2]}T00:00:00Z`, cloudCover: null,
+    footprint: bounds, layout: 'browserExport' as const, timePrecision: 'day' as const, valueScale: 'reflectance' as const, bands,
+  });
+  if (!s2[3]) {
+    const message = `보기용 이미지는 분석 값이 아니어서 제외했습니다: ${name}`;
+    return {
+      sourceType: 'SENTINEL2_L2A', fileName: name, bands: [], bounds, files: [name], message: 'Sentinel-2 L2A 제품을 확인했습니다. (데모)', messageCode: 'SENTINEL2_CHECKED',
+      inputs: [], warnings: [message], warningItems: [{ code: 'PRODUCT_VISUAL_SKIPPED', params: { files: [name] }, message }], product: product([]),
+    };
+  }
+  const band = S2_BANDS.find((item) => item.source === s2[3].toUpperCase()) ?? S2_BANDS[S2_BANDS.length - 1];
+  return {
+    sourceType: 'SENTINEL2_L2A', fileName: name, bands: [band.source], bounds, files: [name], message: 'Sentinel-2 L2A 제품을 확인했습니다. (데모)', messageCode: 'SENTINEL2_CHECKED',
+    inputs: [{ kind: 'geotiff', uri: `file:///demo/${name}` }], warnings: [], warningItems: [],
+    product: product([{ ...band, resolution: 16, file: name, approxStats: { min: 0.0224, max: 0.6932, p2: 0.0303, p98: 0.2039 } }]),
+  };
+}
 function demoProduct(type: 'sentinel2' | 'landsat', file: File): SpatialInspection {
   const name = file.name;
   const s2 = /^S2([ABC])_MSIL(1C|2A)_(\d{8}T\d{6})_N(\d{2})(\d{2})_R\d{3}_T(\w{5})_/i.exec(name);
@@ -102,6 +141,8 @@ function demoProduct(type: 'sentinel2' | 'landsat', file: File): SpatialInspecti
   if ((type === 'sentinel2' && landsat) || (type === 'landsat' && s2)) throw new ApiError(400, 'PRODUCT_TYPE_MISMATCH', '고른 제품 종류와 다른 파일입니다.');
   if ((s2 && s2[2].toUpperCase() === '1C') || (landsat && landsat[2].toUpperCase().startsWith('L1'))) throw new ApiError(400, 'PRODUCT_LEVEL_UNSUPPORTED', 'Level-1 제품은 올릴 수 없습니다.');
   const footprint: [number, number, number, number] = [127.21, 36.04, 128.45, 37.03];
+  const loose = demoLoose(type, name);
+  if (loose) return loose;
   if (type === 'sentinel2') {
     const baseline = s2 ? `${s2[4]}.${s2[5]}` : '05.11';
     return {

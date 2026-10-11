@@ -13,7 +13,7 @@ const adapter = require('../../api').activeViewerAdapter as Record<string, jest.
 const { generation } = require('../api');
 const { ApiError } = require('../../api/httpClient');
 const AddDataPage = require('./AddDataPage').default;
-const { clientProblem, defaultChoices, estimateBytes, productFromName, suggestProductName } = require('./productModel');
+const { clientProblem, defaultChoices, estimateBytes, partialBands, productBands, productFromName, productsOf, suggestProductName } = require('./productModel');
 const { secondsLeft } = require('./UploadMeter');
 
 const T = 4000;
@@ -23,6 +23,10 @@ const S2_B = 'S2A_MSIL2A_20240829T021531_N0511_R003_T52SCG_20240829T080000.zip';
 const LC_A = 'LC09_L2SP_115034_20240816_20240817_02_T1.tar';
 const LC_B = 'LC08_L2SP_115034_20240824_20240830_02_T1.tar';
 const file = (name: string, size = 64) => new File(['x'.repeat(size)], name);
+// UPL2: what users actually download (one file per band).
+const EXPORT = (layer: string) => `2022-06-01-00:00_2022-06-01-23:59_Sentinel-2_L2A_${layer}.tiff`;
+const B01 = EXPORT('B01_(Raw)'), B02 = EXPORT('B02_(Raw)'), B03 = EXPORT('B03_(Raw)'), TRUE_COLOR = EXPORT('True_color');
+const LANDSAT_BAND = (band: string) => `LC08_L2SP_116034_20251104_20251126_02_T1_${band}.TIF`;
 
 beforeEach(() => {
   adapter.getProjects.mockResolvedValue([]);
@@ -75,7 +79,7 @@ describe('method card and product type', () => {
     expect(within(kind).getByRole('button', { name: /Sentinel-2 L2A/ })).toHaveAttribute('aria-pressed', 'true');
     expect(within(kind).getByRole('button', { name: /Sentinel-2 L2A/ })).toHaveTextContent('.zip (.SAFE)');
     expect(screen.getByText(/Copernicus Browser에서/)).toBeInTheDocument();
-    expect(screen.getByLabelText(ko.choose)).toHaveAttribute('accept', '.zip,application/zip');
+    expect(screen.getByLabelText(ko.choose)).toHaveAttribute('accept', '.zip,.tif,.tiff,application/zip,image/tiff');
     expect(screen.getByLabelText(ko.choose)).toHaveAttribute('multiple');
     fireEvent.click(within(kind).getByRole('button', { name: /Landsat 8\/9 Collection 2 Level-2/ }));
     expect(within(kind).getByRole('button', { name: /Landsat/ })).toHaveAttribute('aria-pressed', 'true');
@@ -256,6 +260,125 @@ describe('Landsat 8/9 C2 L2', () => {
   });
 });
 
+describe('loose band files (UPL2)', () => {
+  test('Copernicus Browser export: Raw bands are one date, True color is left out with the reason, the grid is kept', async () => {
+    const create = jest.spyOn(generation, 'createFileJob');
+    await renderWizard();
+    await toSource();
+    expect(screen.getByLabelText(ko.choose).getAttribute('accept')).toContain('.tiff');
+    expect(screen.getByText(/band를 "Raw"로 골라 받은 \.tiff 파일들을 올립니다/)).toBeInTheDocument();
+    add([B01, B02, B03, TRUE_COLOR]);
+    await waitFor(() => [B01, B02, B03].forEach((name) => expect(within(rowOf(name)).getByText('확인됨')).toBeInTheDocument()), { timeout: T });
+    expect(within(rowOf(B02)).getByText('2022-06-01 · Copernicus Browser 내보내기 · blue ← B02')).toBeInTheDocument();
+    await waitFor(() => expect(within(rowOf(TRUE_COLOR)).getByText('제외됨')).toBeInTheDocument(), { timeout: T });
+    expect(within(rowOf(TRUE_COLOR)).getByText(`보기용 이미지라 분석 값이 아니어서 제외했습니다: ${TRUE_COLOR}`)).toBeInTheDocument();
+    next();
+
+    // One product row for the date: day only, the layout and the skipped file.
+    const table = screen.getByRole('table', { name: '제품 검사 결과' });
+    const rows = within(table).getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('2022. 6. 1.');
+    expect(rows[0]).not.toHaveTextContent(':');
+    expect(rows[0]).toHaveTextContent('Copernicus Browser 내보내기 · band 3개 · 반사도 값 그대로');
+    expect(rows[0]).toHaveTextContent('파일 이름에 날짜만 있어 시각은 0시(UTC)로 둡니다');
+    expect(within(screen.getByRole('list', { name: '제외한 파일' })).getByText(`보기용 이미지라 분석 값이 아니어서 제외했습니다: ${TRUE_COLOR}`)).toBeInTheDocument();
+    const bands = screen.getByRole('list', { name: 'band' });
+    expect(bands).toHaveTextContent('blue ← B02 · 16 m');
+    expect(bands).toHaveTextContent('coastal ← B01 · 16 m');
+    next();
+
+    // Defaults among the received bands (not B01); reflectance range from the file; no resolution choice.
+    expectPicked(['B02', 'B03']);
+    expect(screen.queryByRole('group', { name: '출력 해상도' })).not.toBeInTheDocument();
+    expect(screen.getByText('Copernicus Browser 내보내기는 받은 격자(약 16 m)를 그대로 씁니다. 값도 바꾸지 않습니다.')).toBeInTheDocument();
+    expect(screen.getByLabelText('B02 표시 최솟값')).toHaveValue(0.0303);
+    expect(screen.getByLabelText('B02 표시 최댓값')).toHaveValue(0.2039);
+    next();
+    expect(screen.getByText('받은 격자 그대로 (약 16 m)')).toBeInTheDocument();
+    expect(screen.getByText('1개 · 시점 1개')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '생성 시작' }));
+    await waitFor(() => expect(create).toHaveBeenCalled(), { timeout: T });
+    const body = create.mock.calls[0][0] as Record<string, any>;
+    expect(body.type).toBe('SENTINEL2_L2A');
+    expect(body.params).toEqual({});
+    expect(body.inputs).toEqual([B01, B02, B03].map((name) => ({ kind: 'geotiff', uri: `file:///demo/${name}` })));
+    expect(body.variables.map((item: { source: string }) => item.source)).toEqual(['B02', 'B03']);
+  });
+
+  test('Landsat SR band files: one product per scene, Path/Row from the name, 30 m', async () => {
+    const create = jest.spyOn(generation, 'createFileJob');
+    await renderWizard();
+    await toSource();
+    fireEvent.click(screen.getByRole('button', { name: /Landsat 8\/9/ }));
+    expect(screen.getByText(/필요한 SR band 파일\(…_SR_B2\.TIF 등\)만 받아 올려도 됩니다/)).toBeInTheDocument();
+    const names = ['SR_B2', 'SR_B3', 'SR_B4'].map(LANDSAT_BAND);
+    await uploaded(names);
+    expect(within(rowOf(names[2])).getByText('2025-11-04 · USGS band 파일 · red ← SR_B4')).toBeInTheDocument();
+    next();
+    const rows = within(screen.getByRole('table', { name: '제품 검사 결과' })).getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('LC08');
+    expect(rows[0]).toHaveTextContent('116034');
+    expect(rows[0]).toHaveTextContent('2025. 11. 4.');
+    expect(rows[0]).toHaveTextContent('USGS band 파일 3개');
+    next();
+    expect(screen.getByLabelText('데이터 이름')).toHaveValue('116034 2025-11');
+    expectPicked(['SR_B2', 'SR_B3', 'SR_B4']);
+    expect(screen.getByLabelText('SR_B4 표시 최솟값')).toHaveValue(7559);
+    expect(within(screen.getByRole('group', { name: '출력 해상도' })).getAllByRole('button').map((button) => button.textContent)).toEqual(['30 m']);
+    next();
+    fireEvent.click(screen.getByRole('button', { name: '생성 시작' }));
+    await waitFor(() => expect(create).toHaveBeenCalled(), { timeout: T });
+    const body = create.mock.calls[0][0] as Record<string, any>;
+    expect(body).toMatchObject({ type: 'LANDSAT_C2L2', params: { resolution: 30 } });
+    expect(body.inputs).toEqual(names.map((name) => ({ kind: 'geotiff', uri: `file:///demo/${name}` })));
+  });
+
+  test('each band file has its own progress and cancel', async () => {
+    jest.spyOn(generation, 'inspect').mockImplementation((...args: unknown[]) => {
+      const options = args[2] as { onProgress?: (p: { loaded: number; total: number }) => void; signal?: AbortSignal };
+      return new Promise((_, reject) => {
+        setTimeout(() => options.onProgress?.({ loaded: 30, total: 100 }), 0);
+        options.signal?.addEventListener('abort', () => reject(new DOMException('Upload cancelled', 'AbortError')));
+      });
+    });
+    await renderWizard();
+    await toSource();
+    add([B02, B03]);
+    expect(await screen.findByRole('progressbar', { name: `${B02} 업로드 진행률` })).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: `${B03} 업로드 진행률` })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: `${B02} 업로드 취소` }));
+    expect(await within(rowOf(B02)).findByText('취소됨')).toBeInTheDocument();
+    expect(within(rowOf(B03)).getByText('올리는 중')).toBeInTheDocument();
+  });
+
+  test('a browser export next to a package is refused (reflectance and DN don’t mix)', async () => {
+    await renderWizard();
+    await toSource();
+    await uploaded([S2_A]);
+    add([B02]);
+    await waitFor(() => expect(within(rowOf(B02)).getByRole('alert')).toHaveTextContent('Copernicus Browser 내보내기(반사도)와 원본 제품 파일(DN)은 값 척도가 달라 한 데이터로 만들 수 없습니다.'), { timeout: T });
+  });
+
+  test('in English: the row, the skipped reason and the grid note', async () => {
+    await renderWizard('en');
+    await toSource(en);
+    expect(screen.getByText(/choose the "Raw" bands and upload those \.tiff files/)).toBeInTheDocument();
+    add([B02, TRUE_COLOR], en);
+    await waitFor(() => expect(within(rowOf(B02)).getByText('2022-06-01 · Copernicus Browser export · blue ← B02')).toBeInTheDocument(), { timeout: T });
+    await waitFor(() => expect(within(rowOf(TRUE_COLOR)).getByText(`Left out because it’s a visual image, not analysis values: ${TRUE_COLOR}`)).toBeInTheDocument(), { timeout: T });
+    expect(within(rowOf(TRUE_COLOR)).getByText('Left out')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(HANGUL);
+    next(en);
+    expect(screen.getByRole('table', { name: 'Product check results' })).toHaveTextContent('Jun 1, 2022');
+    expect(document.body).not.toHaveTextContent(HANGUL);
+    next(en);
+    expect(screen.getByText('Copernicus Browser exports keep the grid they were downloaded on (about 16 m), and their values stay unchanged.')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(HANGUL);
+  });
+});
+
 describe('in English', () => {
   test('every product step reads in English with no Hangul', async () => {
     await renderWizard('en');
@@ -300,6 +423,28 @@ describe('product model', () => {
     expect(clientProblem('landsat', LC_B, true)).toBeNull();
     const product = (acquiredAt: string, tile: string) => ({ sensor: 'SENTINEL2_L2A', platform: 'S2B', productId: tile + acquiredAt, acquiredAt, tile, bands: [] });
     expect(suggestProductName([product('2024-06-03T02:00:00Z', '52SCG'), product('2024-08-14T02:00:00Z', '52SCG'), product('2024-08-14T02:00:05Z', '52SDG')])).toBe('52SCG·52SDG 2024-06–08');
+  });
+
+  test('loose files merge per scene; only bands every date has are offered; export size in float32', () => {
+    expect(productFromName(B02)).toEqual({ kind: 'sentinel2', level1: false });
+    expect(productFromName(LANDSAT_BAND('SR_B2'))).toEqual({ kind: 'landsat', level1: false });
+    const band = (source: string, name: string) => ({ source, name, resolution: 16, kind: 'continuous', default: source !== 'B01' });
+    const scene = (date: string, ...bands: ReturnType<typeof band>[]) => ({ sourceType: 'SENTINEL2_L2A', fileName: 'x', bands: [], bounds: null, files: [], message: '',
+      product: { sensor: 'SENTINEL2_L2A', productId: `${date}_Sentinel-2_L2A`, acquiredAt: `${date}T00:00:00Z`, layout: 'browserExport', timePrecision: 'day', valueScale: 'reflectance', footprint: [127, 37.7, 127.1, 37.8], bands } });
+    const products = productsOf([
+      scene('2022-06-11', band('B03', 'green')), scene('2022-06-01', band('B03', 'green')), scene('2022-06-01', band('B02', 'blue')),
+      scene('2022-06-01', band('B04', 'red')), { ...scene('2022-06-01'), product: { ...scene('2022-06-01').product, bands: [] } },
+    ], 'sentinel2');
+    expect(products).toHaveLength(2);
+    expect(products[1].bands.map((item: { source: string }) => item.source)).toEqual(['B02', 'B03', 'B04']);
+    expect(productBands(products).map((item: { source: string }) => item.source)).toEqual(['B03']);
+    expect(partialBands(products)).toEqual(['B02', 'B04']);
+    const choices = defaultChoices('sentinel2', products, [{ id: 'Greys' }]);
+    expect(choices.map((choice: { min: string; max: string }) => [choice.min, choice.max])).toEqual([['0', '0.3']]);
+    // About 619 × 704 px at 16 m × 4 bytes × 2 dates (the chosen 10 m is not used).
+    const bytes = estimateBytes(products, choices, 10);
+    expect(bytes).toBeGreaterThan(3_000_000);
+    expect(bytes).toBeLessThan(4_000_000);
   });
 
   test('defaults follow the band flags; no size without footprints', () => {
