@@ -37,6 +37,8 @@ const SERVER_CODES = {
   ],
   estimateWarnings: ['DATE_LIST_TRUNCATED', 'ESTIMATED_SIZE_EXCEEDS_5_GIB', 'ESTIMATE_USES_MAX_SCENES', 'ESTIMATE_USES_SELECTED_DATES', 'GEE_SCENE_COUNT_UNAVAILABLE', 'MAX_SCENES_LIMIT', 'NOISE_UNAVAILABLE', 'SIDE_EXCEEDS_100_KM', 'STORAGE_USAGE_UNAVAILABLE'],
   estimateBlockers: ['DATE_LIST_UNAVAILABLE', 'QUOTA_EXCEEDED'],
+  /** S11 account settings (Backend guide "계정 설정 API"); text in the main dictionary (`errors.code`). */
+  auth: ['CURRENT_PASSWORD_INCORRECT', 'INVALID_LANGUAGE', 'INVALID_NAME', 'NOTHING_TO_UPDATE', 'PASSWORD_POLICY', 'PASSWORD_UNCHANGED'],
 };
 /**
  * UR-55 satellite product codes (Backend guide "위성 원본 제품 업로드"), not in the I18N5 table yet: they need text
@@ -79,6 +81,12 @@ describe('every I18N5 code has Korean and English text', () => {
     const listed = PENDING_CODES.filter((code) => codes.has(code));
     expect(Array.from(codes).sort()).toEqual(Array.from(new Set([...ALL_CODES, ...listed])).sort());
   });
+});
+
+test('account codes are shared text, so the main bundle knows them (S11)', () => {
+  expect(userMessage(new ApiError(400, 'CURRENT_PASSWORD_INCORRECT', '현재 비밀번호가 일치하지 않습니다.'), 'en')).toBe('The current password is incorrect.');
+  expect(userMessage(new ApiError(400, 'PASSWORD_UNCHANGED', 'same'), 'ko')).toBe('새 비밀번호가 지금 비밀번호와 같습니다. 다른 비밀번호를 입력하세요.');
+  expect(userMessage(new ApiError(400, 'PASSWORD_POLICY', '', undefined, { min: 8, max: 72 }), 'en')).toBe('Use 8 to 72 characters for the new password.');
 });
 
 test('product codes fill their values in both languages (UR-55)', () => {

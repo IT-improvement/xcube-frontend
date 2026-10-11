@@ -20,6 +20,7 @@ function renderShell(path: string) {
           <Route path="data" element={<h1>데이터 본문</h1>} />
           <Route path="data/:id" element={<h1>상세 본문</h1>} />
           <Route path="jobs" element={<h1>작업 본문</h1>} />
+          <Route path="settings" element={<h1>설정 본문</h1>} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -106,5 +107,24 @@ test('모바일 메뉴: Tab은 시트 안에서 돌고, 메뉴 항목을 누르�
   expect(within(sheet).getByRole('link', { name: '대시보드' })).toHaveFocus();
   fireEvent.click(within(sheet).getByRole('link', { name: '데이터' }));
   expect(screen.getByRole('heading', { name: '데이터 본문' })).toBeInTheDocument();
+  expect(screen.queryByRole('dialog', { name: '메뉴' })).not.toBeInTheDocument();
+});
+
+test('계정 메뉴와 모바일 시트: 로그아웃 위에 “계정 설정”이 있고 /app/settings로 간다 (S11)', () => {
+  renderShell('/app');
+  fireEvent.click(screen.getByRole('button', { name: /홍길동/ }));
+  const entry = screen.getByRole('link', { name: '계정 설정' });
+  expect(entry).toHaveAttribute('href', '/app/settings');
+  expect(entry.compareDocumentPosition(screen.getByRole('button', { name: '로그아웃' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(entry);
+  expect(screen.getByRole('heading', { name: '설정 본문' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '로그아웃' })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: '메뉴 열기' }));
+  const sheet = screen.getByRole('dialog', { name: '메뉴' });
+  const link = within(sheet).getByRole('link', { name: '계정 설정' });
+  expect(link).toHaveAttribute('href', '/app/settings');
+  expect(link.compareDocumentPosition(within(sheet).getByRole('button', { name: '로그아웃' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(link);
   expect(screen.queryByRole('dialog', { name: '메뉴' })).not.toBeInTheDocument();
 });

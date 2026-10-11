@@ -12,9 +12,10 @@ const ProjectDetailPage = lazy(() => import('./pages/ProjectsPage').then((module
 const AddDataPage = lazy(() => import('./wizard/AddDataPage'));
 const JobsPage = lazy(() => import('./pages/JobsPage'));
 const FusionPage = lazy(() => import('./pages/FusionPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AppNotFoundPage = lazy(() => import('./pages/AppNotFoundPage'));
 
-/** Routes under /app (except the full-screen Viewer), drawn inside the app shell (S2–S6, S10, S12). */
+/** Routes under /app (except the full-screen Viewer), drawn inside the app shell (S2–S6, S10–S12). */
 export default function AppSection() {
   return (
     <Routes>
@@ -27,6 +28,7 @@ export default function AppSection() {
         <Route path="projects/:projectId" element={<ProjectDetailPage />} />
         <Route path="jobs" element={<JobsPage />} />
         <Route path="analysis/fusion" element={<FusionPage />} />
+        <Route path="settings" element={<SettingsPage />} />
         {/* Unknown /app/* paths stay inside the shell (top bar visible). */}
         <Route path="*" element={<AppNotFoundPage />} />
       </Route>

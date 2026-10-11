@@ -42,6 +42,7 @@ const ko = {
     fusion: '수식 융합',
     addData: '데이터 추가',
     viewer: 'Viewer',
+    settings: '계정 설정',
   },
   notFound: {
     text: '주소를 확인하거나 홈으로 이동해 주세요.',
@@ -68,6 +69,7 @@ const ko = {
     menu: '메뉴',
     menuItems: '메뉴 항목',
     userFallback: '사용자',
+    settings: '계정 설정',
   },
   landing: {
     nav: {
@@ -224,6 +226,13 @@ const ko = {
       UNAUTHORIZED: '로그인이 필요합니다.',
       UPLOAD_TOO_LARGE: '파일이 업로드 허용 크기를 초과했습니다.',
       WORKER_FAILED: '처리 중 예상하지 못한 오류가 발생했습니다.',
+      // Account settings (S11, auth service).
+      CURRENT_PASSWORD_INCORRECT: '현재 비밀번호가 맞지 않습니다.',
+      PASSWORD_POLICY: '새 비밀번호는 {min}자 이상 {max}자 이하로 입력하세요.',
+      PASSWORD_UNCHANGED: '새 비밀번호가 지금 비밀번호와 같습니다. 다른 비밀번호를 입력하세요.',
+      NOTHING_TO_UPDATE: '바꿀 내용이 없습니다.',
+      INVALID_NAME: '이름은 {min}자 이상 {max}자 이하로 입력하세요.',
+      INVALID_LANGUAGE: '지원하지 않는 언어입니다.',
     },
   },
 };

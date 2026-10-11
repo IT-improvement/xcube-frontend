@@ -10,6 +10,9 @@ import { ApiError } from '../api/httpClient';
 import { areaDemo } from './areaDemo';
 import { aiApi, AiCheck, AiJobRequest, AiModel, AiWaterJob } from '../api/aiApi';
 import { createAiDemo } from './aiDemo';
+import { authApi, ProfileUpdate, User } from '../api/authApi';
+import { StorageUsage, storageApi } from '../api/backofficeApi';
+import { accountDemo } from './accountDemo';
 import { formatDate as i18nFormatDate, getLanguage, translate } from '../i18n';
 import type { Lang } from '../i18n';
 
@@ -198,6 +201,15 @@ export const ai = {
   getJob: (id: string): Promise<AiWaterJob> => (useMockApi ? aiDemo.get(id) : aiApi.getJob(id)),
   cancelJob: (id: string): Promise<unknown> => (useMockApi ? aiDemo.cancel(id) : aiApi.cancelJob(id)),
   retryJob: (id: string): Promise<AiWaterJob> => (useMockApi ? aiDemo.retry(id) : aiApi.retryJob(id)),
+};
+
+/** Account settings (S11): profile and password (auth service), storage usage (Backoffice); demo mode answers locally. */
+export type { StorageUsage };
+export const account = {
+  /** Returns the changed fields (the real service sends the whole user). */
+  updateProfile: (input: ProfileUpdate): Promise<Partial<User>> => (useMockApi ? accountDemo.updateProfile(input) : authApi.updateMe(input)),
+  changePassword: (input: { currentPassword: string; newPassword: string }): Promise<void> => (useMockApi ? accountDemo.changePassword(input) : authApi.changePassword(input)),
+  storageUsage: (): Promise<StorageUsage> => (useMockApi ? accountDemo.storageUsage() : storageApi.usage()),
 };
 
 export const isFusionJob = (job: Pick<JobSummary, 'type'>) => job.type === 'FUSION';

@@ -41,6 +41,7 @@ const en: Translation = {
     fusion: 'Band math',
     addData: 'Add data',
     viewer: 'Viewer',
+    settings: 'Account settings',
   },
   notFound: {
     text: 'Check the address, or go back to the home page.',
@@ -67,6 +68,7 @@ const en: Translation = {
     menu: 'Menu',
     menuItems: 'Menu items',
     userFallback: 'User',
+    settings: 'Account settings',
   },
   landing: {
     nav: {
@@ -216,6 +218,12 @@ const en: Translation = {
       UNAUTHORIZED: 'Please sign in.',
       UPLOAD_TOO_LARGE: 'The file is larger than the upload limit.',
       WORKER_FAILED: 'Processing stopped because of an unexpected error.',
+      CURRENT_PASSWORD_INCORRECT: 'The current password is incorrect.',
+      PASSWORD_POLICY: 'Use {min} to {max} characters for the new password.',
+      PASSWORD_UNCHANGED: 'The new password is the same as the current one. Choose a different password.',
+      NOTHING_TO_UPDATE: 'There’s nothing to change.',
+      INVALID_NAME: 'Use {min} to {max} characters for the name.',
+      INVALID_LANGUAGE: 'That language isn’t supported.',
     },
   },
 };

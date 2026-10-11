@@ -1,4 +1,4 @@
-import { ChevronDown, ExternalLink, LogOut, Menu, Plus, X } from 'lucide-react';
+import { ChevronDown, ExternalLink, LogOut, Menu, Plus, Settings, X } from 'lucide-react';
 import { KeyboardEvent, RefObject, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -57,7 +57,7 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-/** Signed-in layout for /app pages (S2–S6, S10, S12): a 48px top bar like the Viewer's, then the page. */
+/** Signed-in layout for /app pages (S2–S6, S10–S12): a 48px top bar like the Viewer's, then the page. */
 export default function AppShell() {
   // One jobs poller for the whole shell: the top bar badge, the dashboard and the job center share it.
   return <JobsFeedProvider><ShellFrame /></JobsFeedProvider>;
@@ -131,6 +131,7 @@ function ShellFrame() {
               <div ref={accountPanel} id="app-account-panel" className="app-account__panel">
                 <p className="app-account__who"><strong>{name}</strong>{appApi.demo && <small>{t('shell.demo')}</small>}</p>
                 <div className="app-account__lang"><LanguageSwitch block /></div>
+                <Link className="app-account__item" to="/app/settings" aria-current={location.pathname === '/app/settings' ? 'page' : undefined}><Settings size={15} aria-hidden />{t('shell.settings')}</Link>
                 <button type="button" className="app-account__item" onClick={signOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
               </div>
             )}
@@ -160,7 +161,10 @@ function ShellFrame() {
             <LanguageSwitch block />
             <div className="app-sheet__account">
               <span className="app-account__who"><strong>{name}</strong>{appApi.demo && <small>{t('shell.demo')}</small>}</span>
-              <button type="button" className="xc-btn xc-btn--line xc-btn--sm" onClick={signOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
+              <div className="app-sheet__account-actions">
+                <ButtonLink to="/app/settings" variant="line" size="sm" onClick={closeMenu}><Settings size={15} aria-hidden />{t('shell.settings')}</ButtonLink>
+                <button type="button" className="xc-btn xc-btn--line xc-btn--sm" onClick={signOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
+              </div>
             </div>
           </div>
         </>
