@@ -16,6 +16,8 @@ const SOURCE_TYPE_LABEL: Record<string, string> = {
   GEOTIFF_BANDS: 'GeoTIFF',
   CAS500: 'CAS500',
   SHAPEFILE: 'Shapefile',
+  SENTINEL2_L2A: 'Sentinel-2 L2A',
+  LANDSAT_C2L2: 'Landsat C2 L2',
 };
 /** "GEE", "수식 융합" / "Band math", "AI 수체 추출" / "AI water extraction"; unknown types as given. */
 export const jobTypeLabel = (type: string, lang: Lang = getLanguage()) =>
