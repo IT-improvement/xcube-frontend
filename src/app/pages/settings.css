@@ -1,0 +1,51 @@
+/* S11 account settings: one ruled sheet, a section per row (title on the left, controls on the right). Field-book tokens only. */
+.settings-page { max-width: 960px; }
+.settings {
+  margin-top: var(--space-6); border: 1px solid var(--fb-rule); border-radius: var(--fb-radius-lg); background: var(--fb-surface);
+}
+.settings__section {
+  display: grid; grid-template-columns: minmax(180px, 260px) minmax(0, 1fr); gap: var(--space-4) var(--space-8);
+  padding: var(--space-6);
+}
+.settings__section + .settings__section { border-top: 1px solid var(--fb-rule); }
+.settings__intro { display: grid; gap: var(--space-1); align-content: start; }
+.settings__title { font: var(--text-h3); color: var(--fb-ink); }
+.settings__text { font: var(--text-caption); color: var(--fb-ink-2); word-break: keep-all; overflow-wrap: break-word; }
+.settings__body { min-width: 0; max-width: 440px; }
+.settings__form { display: grid; gap: var(--space-4); }
+.settings__readonly { display: grid; gap: var(--space-1); }
+.settings__label { font: var(--text-label); color: var(--fb-ink); }
+.settings__value { font: var(--text-body); color: var(--fb-ink); overflow-wrap: anywhere; }
+.settings__actions { display: flex; gap: var(--space-2); }
+.settings__lang .xc-lang { width: fit-content; }
+
+/* Storage: used / quota as Value type, a ruled ink meter (warn / bad at the limits, always with words), kind rows. */
+.storage { display: grid; gap: var(--space-3); }
+.storage__head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+.storage__value { font: var(--text-kpi); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: var(--fb-ink); }
+.storage__percent { font: 600 14px/1 var(--fb-font); font-variant-numeric: tabular-nums; color: var(--fb-ink-2); }
+.storage__meter {
+  position: relative; height: 8px; overflow: hidden; border: 1px solid var(--fb-rule-strong); border-radius: 2px; background: var(--fb-sunken);
+}
+.storage__fill { position: absolute; inset: 0 auto 0 0; background: var(--fb-ink-2); transition: width 240ms var(--fb-ease-out); }
+.storage--near .storage__fill { background: var(--fb-warn); }
+.storage--over .storage__fill { background: var(--fb-bad); }
+.storage--near .storage__percent { color: var(--fb-warn); }
+.storage--over .storage__percent { color: var(--fb-bad); }
+.storage__warning { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px; font: var(--text-caption); color: var(--fb-ink); }
+.storage__warning svg { flex: none; margin-top: 1px; color: var(--fb-warn); }
+.storage--over .storage__warning svg { color: var(--fb-bad); }
+.storage__warning a { color: var(--fb-ink); font-weight: 600; }
+.storage__rows { display: grid; margin: 0; border-top: 1px solid var(--fb-rule); }
+.storage__row { display: flex; justify-content: space-between; gap: var(--space-3); padding: 8px 0; border-bottom: 1px solid var(--fb-rule); }
+.storage__row dt { font: var(--text-body); color: var(--fb-ink-2); }
+.storage__row dd { margin: 0; font: 600 14px/1.55 var(--fb-font); font-variant-numeric: tabular-nums; color: var(--fb-ink); }
+
+@media (max-width: 767px) {
+  .settings { margin-top: var(--space-4); }
+  .settings__section { grid-template-columns: minmax(0, 1fr); padding: var(--space-5) var(--space-4); }
+  .settings__body { max-width: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .storage__fill { transition: none; }
+}

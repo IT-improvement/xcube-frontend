@@ -2,7 +2,7 @@
 export { LanguageProvider, useLanguage, useT } from './LanguageProvider';
 export {
   LANGS, LANGUAGE_NAMES, LOCALES, STORAGE_KEY,
-  detectLanguage, pickLanguage, translate, getLanguage,
+  detectLanguage, pickLanguage, readSavedLanguage, translate, getLanguage,
   formatDate, formatDateTime, formatNumber,
 } from './core';
 export type { Lang, TKey, TFunction, TVars } from './types';

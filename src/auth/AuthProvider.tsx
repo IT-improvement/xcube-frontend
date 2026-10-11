@@ -2,9 +2,13 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { useLocation } from 'react-router-dom';
 import { authApi, authSession, LAST_ACTIVITY_KEY, User } from '../api/authApi';
 import { isAuthRejection, session } from '../api/httpClient';
+import { readSavedLanguage, useLanguage } from '../i18n';
 
 export const IDLE_TIMEOUT = 2 * 60 * 60 * 1000;
 const REFRESH_INTERVAL = 10 * 60 * 1000;
+// Demo mode (REACT_APP_USE_MOCK_API=true) keeps the account language in memory instead of calling the auth API.
+const DEMO = process.env.REACT_APP_USE_MOCK_API === 'true';
+const isLang = (value: unknown): value is 'ko' | 'en' => value === 'ko' || value === 'en';
 
 /** checking: restoring the session · ready: known (user may be null) · unavailable: auth server unreachable */
 export type AuthStatus = 'checking' | 'ready' | 'unavailable';
@@ -19,6 +23,8 @@ type AuthContextValue = {
   retry: () => void;
   signIn: (user: User) => void;
   signOut: () => void;
+  /** Merges fields the account settings page changed (name, language) into the signed-in user. */
+  updateUser: (patch: Partial<User>) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -76,6 +82,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { void restore(); }, [restore]);
 
+  // Screen language after sign-in (UR-53, S11): this browser's saved choice → the account's language →
+  // the browser languages (already applied at start). The account value is shown, not saved as this
+  // browser's choice, so the next person on a shared computer starts from their own browser again.
+  const { applyLang, onChoose } = useLanguage();
+  const userId = user?.id;
+  const accountLang = user?.language;
+  useEffect(() => {
+    if (userId == null || readSavedLanguage() || !isLang(accountLang)) return;
+    applyLang(accountLang);
+    // Only when a (new) user signs in; later account changes come from this browser's own choice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, applyLang]);
+
+  // A choice in any switcher (landing, login, menus, settings) is saved to the account while signed in.
+  // Failure is silent: the choice stays in this browser.
+  useEffect(() => {
+    if (userId == null) return undefined;
+    return onChoose((language) => {
+      const keep = (saved?: User['language']) => setUser((current) => (current && current.id === userId ? { ...current, language: saved ?? language } : current));
+      if (DEMO) { keep(); return; }
+      try {
+        void Promise.resolve(authApi.updateMe({ language })).then((updated) => keep(updated?.language), () => {});
+      } catch { /* silent */ }
+    });
+  }, [userId, onChoose]);
+
   useEffect(() => {
     // Refresh rejection already invalidated the session. Do not revoke the
     // shared cookie here: another tab may already have replaced it.
@@ -84,8 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('xcube:unauthorized', unauthorized);
   }, []);
 
+  const signedIn = user !== null;
   useEffect(() => {
-    if (!user) return;
+    if (!signedIn) return;
     let lastTouch = 0;
     let idleTimer: number;
     let ended = false;
@@ -137,7 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.clearInterval(timer);
       window.clearTimeout(idleTimer);
     };
-  }, [user, idleLogout]);
+  }, [signedIn, idleLogout]);
 
   const value = useMemo<AuthContextValue>(() => ({
     user,
@@ -150,6 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       try { void Promise.resolve(authApi.logout()).catch(() => {}); } catch { /* already signed out locally */ }
     },
+    updateUser: (patch) => setUser((current) => (current ? { ...current, ...patch } : current)),
   }), [user, status, endReason, restore]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

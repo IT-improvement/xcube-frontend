@@ -118,3 +118,17 @@ export const backofficeAdapter: ViewerAdapter & {
   async getTimeseries(id, variable, input) { const body = await request<any>(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${id}/timeseries/${encodeURIComponent(variable)}`, { method: 'POST', body: JSON.stringify({ lon: input.lon, lat: input.lat, startDate: input.startDate ?? null, endDate: input.endDate ?? null, aggMethods: input.aggMethods ?? null, maxValids: input.maxValids ?? null }) }); return parseSeries(body); },
   async checkXcubeStatus() { try { const response = await fetch(`${XCUBE_API_BASE_URL}/`); return response.ok; } catch { return false; } },
 };
+
+/** GET /storage/usage (S11): the signed-in user's own datacubes (not shared with them, not deleted). Display only. */
+export type StorageUsage = {
+  usedBytes: number;
+  quotaBytes: number;
+  datasetCount: number;
+  /** Datacubes whose size is not known yet; they are not in `usedBytes`. */
+  unknownSizeCount: number;
+  /** Bytes by datacube kind. */
+  byKind: { ORIGINAL: number; FUSION: number; AI_RESULT: number };
+};
+export const storageApi = {
+  usage: () => request<StorageUsage>(BACKOFFICE_API_BASE_URL, '/api/v1/storage/usage'),
+};
