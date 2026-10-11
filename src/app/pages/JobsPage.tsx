@@ -1,12 +1,12 @@
 import { ChevronDown, ChevronRight, ListChecks, RotateCcw, Square } from 'lucide-react';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { userMessage } from '../../api/httpClient';
 import { JobSummary } from '../../api/generationApi';
 import { Alert, Button, ButtonLink } from '../../components/ui';
-import { Card, ConfirmDialog, EmptyState, PageHeader, Skeleton, useToast } from '../../components/ui/kit';
-import { aiViewerHref, formatDateTime, jobs as jobService, unavailableJobsNotice } from '../api';
-import { elapsed, isActive, jobTypeLabel, JobInputSummary, JobStatusBadge, JobSteps } from '../jobs';
+import { Card, ConfirmDialog, EmptyState, PageHeader, Segmented, Skeleton, useToast } from '../../components/ui/kit';
+import { aiViewerHref, formatDateTime, JobListResult, jobs as jobService, unavailableJobsNotice } from '../api';
+import { elapsed, isActive, jobTypeLabel, JobInputSummary, JobStatusBadge, JobSteps, POLL_ACTIVE_MS, useJobsFeed } from '../jobs';
 import { useLoad } from '../useLoad';
 import { failureText, formatDate, registrationFailureText, useLanguage } from '../../i18n';
 import type { TKey } from '../../i18n';
@@ -24,7 +24,8 @@ const TYPE_BUTTONS: Array<[TypeFilter, { key: TKey } | { text: string }]> = [
   ['', { key: 'app.all' }], ['GEE_TO_ZARR', { text: 'GEE' }], ['GEOTIFF_BANDS,CAS500', { text: 'GeoTIFF·CAS500' }], ['SHAPEFILE', { text: 'Shapefile' }],
   ['FUSION', { key: 'jobType.FUSION' }], ['AI_WATER', { key: 'jobType.AI_WATER' }],
 ];
-const REFRESHED: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+// Seconds, so each 10-second refresh visibly changes the time.
+const REFRESHED: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' };
 
 /** S10 작업 센터: the user's generation, fusion and AI jobs with progress, steps, cancel and retry (FR-JOB-01·02). */
 export default function JobsPage() {
@@ -45,23 +46,34 @@ export default function JobsPage() {
   const [open, setOpen] = useState<string | null>(null); // jobKey of the expanded row
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [tick, setTick] = useState(0);
   const [cancelling, setCancelling] = useState<JobSummary | null>(null);
   const toast = useToast();
-  const jobs = useLoad(() => jobService.listWithStatus({ type, status }), [type, status, tick]);
-  const items = useMemo(() => jobs.data?.items ?? [], [jobs.data]);
-  const partialNotice = unavailableJobsNotice(jobs.data?.unavailable ?? [], lang);
-  const anyActive = items.some(isActive);
-  // Kept as a time and worded at render, so a language switch rewords it.
-  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
-  useEffect(() => { if (jobs.data) setRefreshedAt(new Date()); }, [jobs.data]);
-
-  // While something is processing, refresh every 10 seconds (FR-JOB-03).
+  // All jobs come from the shell's one poller (the top bar badge reads the same list). A type or status filter
+  // asks the services for just those jobs, and follows the poller's ticks quietly.
+  const feed = useJobsFeed();
+  const filtered = !!(type || status);
+  const own = useLoad<JobListResult | null>(() => (filtered ? jobService.listWithStatus({ type, status }) : Promise.resolve(null)), [type, status]);
+  const seenTick = useRef(feed.tick);
+  const ownRefresh = own.refresh;
+  const ownReady = !!own.data && !own.loading;
   useEffect(() => {
-    if (!anyActive) return;
-    const timer = window.setTimeout(() => setTick((value) => value + 1), 10000);
-    return () => window.clearTimeout(timer);
-  }, [anyActive, items]);
+    if (feed.tick === seenTick.current) return;
+    seenTick.current = feed.tick;
+    if (filtered && ownReady) ownRefresh();
+  }, [feed.tick, filtered, ownReady, ownRefresh]);
+  // While new filters load, the rows already on screen stay, dimmed and marked busy, instead of passing for the new result.
+  const fresh = filtered ? own.data : feed.data;
+  const lastShown = useRef<JobListResult | null>(null);
+  if (fresh) lastShown.current = fresh;
+  const shown = fresh ?? lastShown.current;
+  const stale = filtered ? own.loading && !!shown : feed.loading && !!shown;
+  const loadError = filtered ? own.error : feed.error;
+  const items = useMemo(() => shown?.items ?? [], [shown]);
+  const partialNotice = unavailableJobsNotice(shown?.unavailable ?? [], lang);
+  const anyActive = (feed.activeCount ?? 0) > 0 || items.some(isActive);
+  const refreshedAt = filtered ? (own.data ? feed.refreshedAt : null) : feed.refreshedAt;
+  const refreshAll = () => { feed.refresh(); if (filtered) own.refresh(); };
+  const retryList = () => { if (filtered) own.reload(); else feed.refresh(); };
 
   // Ids are unique per service only, so rows are keyed by type too.
   const keyOf = (job: JobSummary) => `${job.type === 'FUSION' || job.type === 'AI_WATER' ? job.type : 'GEN'}:${job.id}`;
@@ -72,7 +84,7 @@ export default function JobsPage() {
       const again = await jobService.retry(job);
       setOpen(keyOf(again));
       toast.show(t('jobs.retried'));
-      setTick((value) => value + 1);
+      refreshAll();
     } catch (cause) { setError(userMessage(cause, lang)); } finally { setBusy(''); }
   };
   // Cancelling stops work that cannot be resumed, so it is confirmed first; a failure stays in the dialog.
@@ -80,21 +92,19 @@ export default function JobsPage() {
     await jobService.cancel(job);
     setCancelling(null);
     toast.show(t('jobs.cancelled'));
-    setTick((value) => value + 1);
+    refreshAll();
   };
 
   return (
     <div className="page-stack">
-      <PageHeader title={t('titles.jobs')} description={t('jobs.description')} actions={<><ButtonLink to="/app/analysis/fusion" variant="secondary">{t('titles.fusion')}</ButtonLink><ButtonLink to="/app/data/new">{t('shell.addData')}</ButtonLink></>} />
+      {/* "데이터 추가" is the top bar's (decision 2); band math stays as the one other way to start a job. */}
+      <PageHeader title={t('titles.jobs')} description={t('jobs.description')} actions={<ButtonLink to="/app/analysis/fusion" variant="secondary">{t('titles.fusion')}</ButtonLink>} />
       <Card>
         <div className="toolbar">
-          <div className="segmented" role="group" aria-label={t('jobs.typeLabel')}>
-            {TYPE_BUTTONS.map(([value, label]) => (
-              <button key={value || 'all'} type="button" aria-pressed={type === value} onClick={() => setType(value)}>{'key' in label ? t(label.key) : label.text}</button>
-            ))}
-          </div>
+          <Segmented label={t('jobs.typeLabel')} value={type} onChange={setType} items={TYPE_BUTTONS.map(([value, label]) => ({ id: value, label: 'key' in label ? t(label.key) : label.text }))} />
           <span className="toolbar__spacer" />
-          {anyActive && refreshedAt && <span className="xc-hint tabular" aria-live="off">{t('jobs.refreshed', { time: formatDate(refreshedAt, REFRESHED, lang) })}</span>}
+          {/* A live sign: the time (with seconds) fades in anew on every refresh. Not announced. */}
+          {anyActive && refreshedAt && <span key={refreshedAt.getTime()} className="xc-hint tabular refresh-stamp" aria-live="off">{t('jobs.refreshed', { time: formatDate(refreshedAt, REFRESHED, lang), seconds: POLL_ACTIVE_MS / 1000 })}</span>}
           <label>
             <span className="sr-only">{t('app.status')}</span>
             <select className="xc-select" aria-label={t('app.status')} value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}>
@@ -106,13 +116,16 @@ export default function JobsPage() {
           </label>
         </div>
         {error && <div className="inline-error"><Alert tone="danger">{error}</Alert></div>}
-        {partialNotice && !jobs.error && <div className="inline-error"><Alert tone="warning">{partialNotice}</Alert><Button variant="line" size="sm" onClick={jobs.reload} className="inline-error__retry">{t('common.retry')}</Button></div>}
-        {jobs.loading && !jobs.data ? (
+        {partialNotice && !loadError && !stale && <div className="inline-error"><Alert tone="warning">{partialNotice}</Alert><Button variant="line" size="sm" onClick={retryList} className="inline-error__retry">{t('common.retry')}</Button></div>}
+        {!shown && !loadError ? (
           <Skeleton lines={4} label={t('jobs.loading')} />
-        ) : jobs.error ? (
-          <div className="inline-error"><Alert tone="danger">{t('app.jobListFailed', { error: jobs.error })}</Alert><Button variant="line" size="sm" onClick={jobs.reload} className="inline-error__retry">{t('common.retry')}</Button></div>
-        ) : !items.length ? (
-          <EmptyState icon={<ListChecks size={22} />} title={type || status ? t('jobs.noMatch') : t('jobs.none')} text={t('jobs.emptyText')} />
+        ) : loadError ? (
+          <div className="inline-error"><Alert tone="danger">{t('app.jobListFailed', { error: loadError })}</Alert><Button variant="line" size="sm" onClick={retryList} className="inline-error__retry">{t('common.retry')}</Button></div>
+        ) : (
+        <div className="xc-stale" aria-busy={stale} aria-label={stale ? t('jobs.updating') : undefined} data-testid="jobs-list">
+          {stale && <span className="xc-busy-line" aria-hidden />}
+          {!items.length ? (
+          <EmptyState icon={<ListChecks size={22} />} title={filtered ? t('jobs.noMatch') : t('jobs.none')} text={t('jobs.emptyText')} />
         ) : (
           <div className="xc-table-wrap">
             <table className="xc-table xc-table--cards jobs-table">
@@ -147,14 +160,14 @@ export default function JobsPage() {
                         <td className="jobs-table__progress">
                           {job.status === 'RUNNING' && (
                             <span className="job-progress-cell">
-                              <span className="job-progress" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label={t('jobs.progressNamed', { name: job.name })}>
-                                <i style={{ width: `${percent}%` }} />
-                              </span>
+                              <svg className="job-progress" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label={t('jobs.progressNamed', { name: job.name })}>
+                                <rect width={`${percent}%`} height="100%" />
+                              </svg>
                               <small className="tabular xc-hint">{percent}%</small>
                             </span>
                           )}
                         </td>
-                        <td className="hide-sm tabular nowrap">{elapsed(job, Date.now(), lang)}</td>
+                        <td className="tabular nowrap" data-label={t('jobs.duration')}>{elapsed(job, Date.now(), lang)}</td>
                         <td className="hide-sm date">{formatDateTime(job.createdAt, lang)}</td>
                         <td className="cell-actions">
                           <div className="row-actions">
@@ -187,6 +200,8 @@ export default function JobsPage() {
               </tbody>
             </table>
           </div>
+        )}
+        </div>
         )}
       </Card>
       {cancelling && (

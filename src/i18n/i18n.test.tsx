@@ -20,7 +20,7 @@ jest.mock('../api/authApi', () => ({
   authApi: { me: () => mockMe(), refresh: () => mockRefresh(), login: jest.fn(), signup: jest.fn(), logout: jest.fn() },
 }));
 jest.mock('../views/Viewer', () => ({ __esModule: true, default: () => <div>Viewer</div> }));
-jest.mock('../app/jobs', () => ({ useActiveJobCount: () => 1 }));
+jest.mock('../app/jobs', () => ({ useActiveJobCount: () => 1, JobsFeedProvider: ({ children }: { children: unknown }) => children }));
 
 const App = require('../App').default;
 

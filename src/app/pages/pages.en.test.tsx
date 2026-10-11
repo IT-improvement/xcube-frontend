@@ -117,9 +117,11 @@ describe('Data list in English', () => {
     expect(screen.getByRole('tab', { name: /^All/ })).toHaveTextContent('All4');
     expect(screen.getByRole('tab', { name: /^My data/ })).toHaveTextContent('3');
     expect(screen.getByRole('tab', { name: /^Shared with you/ })).toHaveTextContent('1');
-    expect(screen.getByRole('searchbox', { name: 'Search data' })).toHaveAttribute('placeholder', 'Search name, dataset ID or project');
+    expect(screen.getByRole('searchbox', { name: 'Search data' })).toHaveAttribute('placeholder', 'Search name, dataset ID or project…');
     expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveTextContent('Recently added');
-    for (const name of ['Name', 'Period', 'Times', 'Variables', 'Project', 'Status']) expect(screen.getByRole('columnheader', { name })).toBeInTheDocument();
+    // UX12: the status moved into the name line as a tag (exceptions only); an Updated column was added.
+    for (const name of ['Name', 'Period', 'Times', 'Variables', 'Project', 'Updated']) expect(screen.getByRole('columnheader', { name })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Status' })).not.toBeInTheDocument();
 
     // The first link of a row is its dataset (an AI result also links its source).
     const rowOf = (name: string) => screen.getAllByRole('row').find((row) => within(row).queryAllByRole('link')[0]?.textContent === name)!;
@@ -178,7 +180,7 @@ describe('Jobs in English', () => {
     expect(screen.getByText('Running')).toBeInTheDocument();
     expect(screen.getByText('Failed')).toBeInTheDocument();
     expect(screen.getByText('2m 7s')).toBeInTheDocument();
-    expect(await screen.findByText(/^Updated \d\d:\d\d$/)).toBeInTheDocument();
+    expect(await screen.findByText(/^Updated \d\d:\d\d:\d\d · every 10 s$/)).toBeInTheDocument();
     expect(screen.getByRole('progressbar', { name: 'Jeju GeoTIFF progress' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Show details for Ulsan Shape' }));

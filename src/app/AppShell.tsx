@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { ButtonLink, LanguageSwitch, Logo, RouteFallback } from '../components/ui';
 import { TKey, useT } from '../i18n';
 import { appApi } from './api';
-import { useActiveJobCount } from './jobs';
+import { JobsFeedProvider, useActiveJobCount } from './jobs';
 import './app.css';
 
 /** Pages inside the shell. The Viewer keeps its own full-screen layout and opens in a new tab. */
@@ -59,6 +59,11 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
 
 /** Signed-in layout for /app pages (S2–S6, S10, S12): a 48px top bar like the Viewer's, then the page. */
 export default function AppShell() {
+  // One jobs poller for the whole shell: the top bar badge, the dashboard and the job center share it.
+  return <JobsFeedProvider><ShellFrame /></JobsFeedProvider>;
+}
+
+function ShellFrame() {
   const { user, signOut } = useAuth();
   const t = useT();
   const name = user?.name ?? t('shell.userFallback');
@@ -106,7 +111,8 @@ export default function AppShell() {
         <nav className="app-top__nav" aria-label={t('shell.mainNav')}><NavItems /></nav>
         <div className="app-top__end">
           {jobsState}
-          <ButtonLink to="/app/data/new" size="sm" className="app-top__add"><Plus size={14} aria-hidden />{t('shell.addData')}</ButtonLink>
+          {/* The one "add data" entry on every page (decision 2): words on wide screens, the + alone on tablets. */}
+          <ButtonLink to="/app/data/new" size="sm" className="app-top__add" aria-label={t('shell.addData')}><Plus size={14} aria-hidden /><span className="app-top__add-text">{t('shell.addData')}</span></ButtonLink>
           <div className="app-account">
             <button
               ref={accountButton}
