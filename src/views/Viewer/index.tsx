@@ -1394,8 +1394,16 @@ export default function Viewer({
               aria-expanded={drawer === "result" && !rightCollapsed}
               aria-controls={drawer === "result" && !rightCollapsed ? "vx-drawer" : undefined}
               onClick={() => {
-                setResultVisible(true);
-                toggleRightPanel("result");
+                // 결과 is the switch for seeing the AI result: closing it also hides the AI water layer
+                // (and leaves the AI-result comparison), opening it shows the layer again.
+                if (drawer === "result" && !rightCollapsed) {
+                  closeRightPanel();
+                  setResultVisible(false);
+                  if (compareTarget === "ai") setCompareTarget("time");
+                } else {
+                  setResultVisible(true);
+                  openRightPanel("result", true);
+                }
               }}
             >
               <Layers2 size={16} aria-hidden="true" />

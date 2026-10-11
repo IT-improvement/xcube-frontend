@@ -139,6 +139,19 @@ describe('Esc와 초점 되돌리기', () => {
     expect(screen.queryByRole('complementary', { name: 'AI 수체 추출 설정' })).not.toBeInTheDocument();
   });
 
+  test('결과 버튼을 다시 눌러 닫으면 창만 닫는 게 아니라 AI 수체 결과 레이어도 끈다', async () => {
+    render(<Viewer initialDatasetId="landsat" />);
+    await screen.findByRole('region', { name: '시계열 탐색기' });
+    const results = await screen.findByRole('button', { name: '결과' });
+    fireEvent.click(results);
+    expect(screen.getByRole('complementary', { name: '결과 비교' })).toBeInTheDocument();
+    expect(await screen.findByText(/물로 판정 · AI 결과/)).toBeInTheDocument();
+    fireEvent.click(results);
+    expect(screen.queryByRole('complementary', { name: '결과 비교' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/물로 판정 · AI 결과/)).not.toBeInTheDocument());
+    fireEvent.click(results); // opening it again shows the layer again
+    expect(await screen.findByText(/물로 판정 · AI 결과/)).toBeInTheDocument();
+  });
   test('탭은 ←/→로 옮겨 고르고, 고르지 않은 탭은 Tab 순서에서 빠진다', async () => {
     render(<Viewer initialDatasetId="landsat" />);
     await screen.findByRole('region', { name: '시계열 탐색기' });
