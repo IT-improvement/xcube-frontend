@@ -38,7 +38,8 @@ export const PRESET_GEE = { scaleMeters: '10', maxCloudPercent: '40' } as const;
  * and 0–3,000 shows land and water well; reflectance reads as grayscale (RGB is built as well), not viridis.
  * Used only when the server offers this colour map.
  */
-export const PRESET_STYLE = { colorBar: 'Greys', min: '0', max: '3000' } as const;
+/** gray: dark = low reflectance, so water reads dark as in a photo (Greys is the reverse). */
+export const PRESET_STYLE = { colorBar: 'gray', min: '0', max: '3000' } as const;
 
 export const isS2 = (collectionId: string) => collectionId === S2_COLLECTION;
 export const pairingActive = (collectionId: string, sar: SarState) => isS2(collectionId) && sar.enabled;

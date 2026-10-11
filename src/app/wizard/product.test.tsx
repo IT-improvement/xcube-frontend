@@ -178,8 +178,8 @@ describe('Sentinel-2 L2A', () => {
     expect(within(resolution).getAllByRole('button').map((button) => button.textContent)).toEqual(['10 m', '20 m', '60 m']);
     expect(within(resolution).getByRole('button', { name: '10 m' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('red·green·blue를 모두 골라 RGB 컬러 영상도 자동으로 만듭니다.')).toBeInTheDocument();
-    // Reflectance in Greys with the +1000 offset; SCL categorical.
-    expect(screen.getByLabelText('B02 색상표')).toHaveValue('Greys');
+    // Reflectance in gray with the +1000 offset; SCL categorical.
+    expect(screen.getByLabelText('B02 색상표')).toHaveValue('gray');
     expect(screen.getByLabelText('B02 표시 최솟값')).toHaveValue(1000);
     expect(screen.getByLabelText('B02 표시 최댓값')).toHaveValue(4000);
     expect(within(screen.getByRole('region', { name: 'SCL 표시 설정' })).getByRole('button', { name: '범주형' })).toHaveAttribute('aria-pressed', 'true');
@@ -195,7 +195,7 @@ describe('Sentinel-2 L2A', () => {
     expect(screen.getByText(/^압축 전 최대 /)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '생성 시작' }));
     await waitFor(() => expect(create).toHaveBeenCalled(), { timeout: T });
-    const reflectance = (source: string, name: string) => ({ source, name, kind: 'continuous', style: { colorBar: 'Greys', min: 1000, max: 4000 } });
+    const reflectance = (source: string, name: string) => ({ source, name, kind: 'continuous', style: { colorBar: 'gray', min: 1000, max: 4000 } });
     expect(JSON.parse(JSON.stringify(create.mock.calls[0][0]))).toStrictEqual({
       type: 'SENTINEL2_L2A', name: '52SCG 2024-08',
       inputs: [{ kind: 'zip', uri: `file:///demo/${S2_A}` }, { kind: 'zip', uri: `file:///demo/${S2_B}` }],
@@ -454,8 +454,8 @@ describe('product model', () => {
       { source: 'SCL', name: 'scl', resolution: 20, kind: 'categorical', default: true },
     ];
     const products = [{ sensor: 'SENTINEL2_L2A', platform: 'S2B', productId: 'a', acquiredAt: '2024-08-14T02:00:00Z', boaAddOffset: 0, bands }];
-    const choices = defaultChoices('sentinel2', products, [{ id: 'viridis' }, { id: 'Greys' }, { id: 'tab10' }]);
-    expect(choices.map((choice: { source: string; colorBar: string; min: string }) => [choice.source, choice.colorBar, choice.min])).toEqual([['B02', 'Greys', '0'], ['SCL', 'tab10', '']]);
+    const choices = defaultChoices('sentinel2', products, [{ id: 'viridis' }, { id: 'gray' }, { id: 'tab10' }]);
+    expect(choices.map((choice: { source: string; colorBar: string; min: string }) => [choice.source, choice.colorBar, choice.min])).toEqual([['B02', 'gray', '0'], ['SCL', 'tab10', '']]);
     expect(estimateBytes(products, choices, 10)).toBeNull();
     const withFootprint = [{ ...products[0], footprint: [127, 36, 127.1, 36.1] }];
     // About 900 × 1,106 px × (2 + 1) bytes × 1 time step.
