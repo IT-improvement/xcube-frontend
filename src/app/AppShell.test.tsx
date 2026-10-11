@@ -6,7 +6,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 const mockSignOut = jest.fn();
 let mockActive: number | null = 0;
 jest.mock('../auth/AuthProvider', () => ({ useAuth: () => ({ user: { id: 1, name: '홍길동' }, signOut: mockSignOut }) }));
-jest.mock('./jobs', () => ({ useActiveJobCount: () => mockActive }));
+// The shell wraps its pages in the one jobs poller (UX12); the badge count is mocked here.
+jest.mock('./jobs', () => ({ useActiveJobCount: () => mockActive, JobsFeedProvider: ({ children }: { children: unknown }) => children }));
 
 const AppShell = require('./AppShell').default;
 

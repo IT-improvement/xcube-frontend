@@ -35,6 +35,7 @@ const panelId = (prefix: string) => `${prefix}-panel`;
 /** Accessible tablist; ←/→ (and Home/End) move between tabs. Render the content in <TabPanel> with the same `idPrefix`. */
 export function Tabs<T extends string>({ items, value, onChange, label, idPrefix }: { items: TabItem<T>[]; value: T; onChange: (id: T) => void; label: string; idPrefix: string }) {
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const strip = useOverflowCue<HTMLDivElement>();
   const onKeyDown = (event: KeyboardEvent, index: number) => {
     const last = items.length - 1;
     const next = event.key === 'ArrowRight' ? (index + 1) % items.length
@@ -46,7 +47,7 @@ export function Tabs<T extends string>({ items, value, onChange, label, idPrefix
     refs.current[next]?.focus();
   };
   return (
-    <div className="xc-tabs" role="tablist" aria-label={label}>
+    <div ref={strip} className="xc-tabs" role="tablist" aria-label={label}>
       {items.map((item, index) => (
         <button
           key={item.id}
@@ -72,6 +73,43 @@ export function Tabs<T extends string>({ items, value, onChange, label, idPrefix
 /** The one panel a <Tabs> controls; it is labelled by the selected tab. */
 export function TabPanel({ idPrefix, value, className, children }: { idPrefix: string; value: string; className?: string; children: ReactNode }) {
   return <div role="tabpanel" id={panelId(idPrefix)} aria-labelledby={tabId(idPrefix, value)} className={className}>{children}</div>;
+}
+
+/**
+ * Scroll cue for a row that scrolls sideways (tabs, segmented filters): `data-more` says which ends have more
+ * ("start", "end"), and kit.css fades those edges. The pressed or selected item is scrolled into view on mount.
+ */
+export function useOverflowCue<E extends HTMLElement>() {
+  const ref = useRef<E>(null);
+  useEffect(() => {
+    const row = ref.current;
+    if (!row) return;
+    const selected = row.querySelector<HTMLElement>('[aria-selected="true"], [aria-pressed="true"]');
+    if (selected && row.scrollWidth > row.clientWidth) row.scrollLeft = Math.max(0, selected.offsetLeft - (row.clientWidth - selected.offsetWidth) / 2);
+    const update = () => {
+      const rest = row.scrollWidth - row.clientWidth - row.scrollLeft;
+      const more = [row.scrollLeft > 1 && 'start', rest > 1 && 'end'].filter(Boolean).join(' ');
+      if (more) row.dataset.more = more; else delete row.dataset.more;
+    };
+    update();
+    row.addEventListener('scroll', update, { passive: true });
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    observer?.observe(row);
+    return () => { row.removeEventListener('scroll', update); observer?.disconnect(); };
+  }, []);
+  return ref;
+}
+
+/** Segmented filter: one pressed button in a framed track (`aria-pressed`), with the same scroll cue as tabs. */
+export function Segmented<T extends string>({ label, items, value, onChange }: { label: string; items: Array<{ id: T; label: ReactNode }>; value: T; onChange: (id: T) => void }) {
+  const ref = useOverflowCue<HTMLDivElement>();
+  return (
+    <div ref={ref} className="segmented" role="group" aria-label={label}>
+      {items.map((item) => (
+        <button key={item.id || 'all'} type="button" aria-pressed={item.id === value} onClick={() => onChange(item.id)}>{item.label}</button>
+      ))}
+    </div>
+  );
 }
 
 const RADIO_STEP: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
@@ -194,11 +232,24 @@ export function EmptyState({ title, text, action }: { icon?: ReactNode; title: s
   );
 }
 
-export function Skeleton({ lines = 3, label }: { lines?: number; label?: string }) {
+/** Loads that finish sooner than this show no skeleton (a flash reads slower than nothing). */
+export const SKELETON_DELAY_MS = 180;
+
+/**
+ * Loading bars. They appear only after `delay` ms; until then the bars keep their height but stay hidden, so the
+ * layout does not jump. Bar widths step down in kit.css.
+ */
+export function Skeleton({ lines = 3, label, delay = SKELETON_DELAY_MS }: { lines?: number; label?: string; delay?: number }) {
   const t = useT();
+  const [shown, setShown] = useState(delay <= 0);
+  useEffect(() => {
+    if (delay <= 0) return;
+    const timer = window.setTimeout(() => setShown(true), delay);
+    return () => window.clearTimeout(timer);
+  }, [delay]);
   return (
-    <div className="xc-skeleton" role="status" aria-label={label ?? t('common.loading')}>
-      {Array.from({ length: lines }, (_, index) => <span key={index} style={{ width: `${92 - index * 14}%` }} />)}
+    <div className={`xc-skeleton${shown ? '' : ' is-waiting'}`} role="status" aria-busy="true" aria-label={label ?? t('common.loading')}>
+      {Array.from({ length: lines }, (_, index) => <span key={index} />)}
     </div>
   );
 }
@@ -219,9 +270,12 @@ export function Card({ title, actions, children, className }: { title?: ReactNod
 }
 
 const TOAST_MS = 3200;
-const TOAST_EXIT_MS = 180;
+const TOAST_EXIT_MS = 150;
 
-/** Short-lived status message, announced politely. Rises 8px on enter and sinks back on exit. */
+/**
+ * Short-lived status message, announced politely. The live region is always rendered (empty when idle), so
+ * screen readers already watch it when a message arrives. Rises 8px on enter and sinks back on exit.
+ */
 export function useToast() {
   const [toast, setToast] = useState<{ text: string; leaving: boolean; key: number } | null>(null);
   useEffect(() => {
@@ -230,6 +284,10 @@ export function useToast() {
     return () => window.clearTimeout(timer);
   }, [toast]);
   const show = useCallback((text: string) => setToast({ text, leaving: false, key: Date.now() }), []);
-  const node = toast ? <div key={toast.key} className={`xc-toast${toast.leaving ? ' is-leaving' : ''}`} role="status">{toast.text}</div> : null;
+  const node = (
+    <div className="xc-toast-region" role="status" aria-live="polite" aria-atomic="true">
+      {toast && <div key={toast.key} className={`xc-toast${toast.leaving ? ' is-leaving' : ''}`}>{toast.text}</div>}
+    </div>
+  );
   return { show, node };
 }

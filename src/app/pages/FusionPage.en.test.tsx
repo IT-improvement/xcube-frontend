@@ -28,9 +28,9 @@ describe('Band math in English', () => {
     renderPage();
     expect(screen.getByRole('heading', { level: 1, name: 'Band math' })).toBeInTheDocument();
     const steps = screen.getByRole('list', { name: 'Steps' });
-    // Each step reads number + label.
-    expect(within(steps).getAllByRole('listitem').map((node) => node.textContent)).toEqual(['1Inputs', '2Formula', '3Rules', '4Preview & run']);
-    expect(screen.getByRole('heading', { level: 2, name: 'Inputs' })).toBeInTheDocument();
+    // Each step reads number + label on the tick scale (UX12: the first step is "Data").
+    expect(within(steps).getAllByRole('listitem').map((node) => node.textContent)).toEqual(['1Data', '2Formula', '3Rules', '4Preview & run']);
+    expect(screen.getByRole('heading', { level: 2, name: 'Pick the data and variables to calculate with' })).toBeInTheDocument();
 
     // Validation: nothing chosen yet.
     await waitFor(() => expect(screen.getByLabelText('A data')).not.toBeDisabled(), longWait);
@@ -41,7 +41,7 @@ describe('Band math in English', () => {
     pick('A data', 'sentinel'); pick('A variable', 'NDWI');
     pick('B data', 'landsat'); pick('B variable', 'NDWI');
     fireEvent.click(screen.getByRole('button', { name: /Next/ }));
-    expect(await screen.findByRole('heading', { level: 2, name: 'Formula' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Write the formula with the variable letters' })).toBeInTheDocument();
     expect(screen.getByText('Available variables: A, B')).toBeInTheDocument();
 
     // The demo validator answers in Korean, with a code: English words it from the code.
@@ -53,7 +53,7 @@ describe('Band math in English', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Formula' }), { target: { value: 'A - B' } });
     expect(await screen.findByText('The formula is valid.', {}, longWait)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Next/ }));
-    expect(screen.getByRole('heading', { level: 2, name: 'Rules' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Choose how resolution, extent and times are matched' })).toBeInTheDocument();
     expect(screen.getByLabelText('Grid reference')).toHaveDisplayValue('Coarsest (default)');
     expect(screen.getByRole('button', { name: 'Intersection (default)' })).toHaveAttribute('aria-pressed', 'true');
     pick('Time matching', 'nearest');

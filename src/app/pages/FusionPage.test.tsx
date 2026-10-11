@@ -70,7 +70,8 @@ describe('S12 수식 융합 화면', () => {
     expect(await screen.findByRole('alert', {}, longWait)).toHaveTextContent('2번째 글자');
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
     expect(screen.getAllByRole('alert').some((node) => node.textContent?.includes('수식 오류를 고쳐 주세요'))).toBe(true);
-    expect(screen.getByRole('heading', { name: '수식' })).toBeInTheDocument();
+    // UX12: the step heading is one line saying what the step asks for (the step name is on the scale).
+    expect(screen.getByRole('heading', { name: '변수 문자로 수식을 씁니다' })).toBeInTheDocument();
     await typeFormula('A - B');
     expect(await screen.findByText('사용 가능한 수식입니다.', {}, longWait)).toBeInTheDocument();
   });

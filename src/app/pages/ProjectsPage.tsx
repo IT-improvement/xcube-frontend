@@ -1,77 +1,95 @@
 import { ArrowLeft, Database, ExternalLink, FolderKanban, Link2, Lock, Pencil, Plus, Search, SearchX, Trash2, Unlink } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { userMessage } from '../../api/httpClient';
-import { Alert, Button, TextField } from '../../components/ui';
-import { Badge, Card, ConfirmDialog, Dialog, EmptyState, PageHeader, Skeleton, TabPanel, Tabs, useToast } from '../../components/ui/kit';
+import { Alert, Button, ButtonLink, TextField } from '../../components/ui';
+import { Card, ConfirmDialog, Dialog, EmptyState, PageHeader, Segmented, Skeleton, TabPanel, Tabs, useToast } from '../../components/ui/kit';
 import { useAuth } from '../../auth/AuthProvider';
-import { appApi, canEditProject, formatDate, isOwned, memberLabel, MemberRole, Project, ProjectMember, roleLabel, viewerHref, ZarrDataset } from '../api';
+import { appApi, canEditProject, formatDate, isOwned, memberLabel, MemberRole, Project, ProjectMember, viewerHref, ZarrDataset } from '../api';
 import { useLoad } from '../useLoad';
-import { DatasetStatus } from './DataLibraryPage';
+import { DatasetStatus, NoValue, RoleBadge } from './DataLibraryPage';
 import { useLanguage } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 // The management screens' text (UR-53 stage 2) loads with these pages, not with the main bundle.
 import '../../i18n/app';
 
 type Scope = 'all' | 'owned' | 'shared';
+const SCOPES: Scope[] = ['all', 'owned', 'shared'];
 
-function RoleBadge({ role }: { role?: string }) {
-  const { lang } = useLanguage();
-  return <Badge tone={role === 'OWNER' ? 'primary' : role === 'EDITOR' ? 'success' : 'neutral'}>{roleLabel(role, lang)}</Badge>;
-}
-
-/** S6 list: project cards with search and owned/shared filter. */
+/** S6 list: a ruled ledger of projects (name, role, owner, updated) with search and an owned/shared filter, both kept in the URL. */
 export function ProjectsPage() {
   const { lang, t } = useLanguage();
   useDocumentTitle(t('titles.projects'));
   const projects = useLoad(() => appApi.listProjects());
-  const [scope, setScope] = useState<Scope>('all');
-  const [query, setQuery] = useState('');
+  // ?scope=owned&q=… so a reload or a shared link keeps the view.
+  const [params, setParams] = useSearchParams();
+  const scope = (SCOPES.includes(params.get('scope') as Scope) ? params.get('scope') : 'all') as Scope;
+  const [query, setQueryState] = useState(() => params.get('q') ?? '');
+  const setParam = (key: string, value: string, fallback: string) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value && value !== fallback) next.set(key, value); else next.delete(key);
+      return next;
+    }, { replace: true });
+  const setScope = (value: Scope) => setParam('scope', value, 'all');
+  const setQuery = (value: string) => { setQueryState(value); setParam('q', value.trim() ? value : '', ''); };
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
   const items = useMemo(() => projects.data ?? [], [projects.data]);
+  const needle = query.trim().toLowerCase();
   const visible = items.filter((project) =>
     (scope === 'all' || (scope === 'owned' ? project.accessRole === 'OWNER' : project.accessRole !== 'OWNER')) &&
-    [project.name, project.description].some((text) => text?.toLowerCase().includes(query.trim().toLowerCase())));
+    (!needle || [project.name, project.description].some((text) => text?.toLowerCase().includes(needle))));
   return (
     <div className="page-stack">
       <PageHeader title={t('titles.projects')} description={t('projects.description')} actions={<Button onClick={() => setCreating(true)}><Plus size={16} aria-hidden />{t('projects.new')}</Button>} />
-      <div className="toolbar" style={{ padding: 0, border: 0 }}>
-        <label className="toolbar__search">
-          <Search size={16} aria-hidden />
-          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('projects.search')} aria-label={t('projects.search')} />
-        </label>
-        <div className="segmented" role="group" aria-label={t('projects.scopeLabel')}>
-          {(['all', 'owned', 'shared'] as Scope[]).map((value) => (
-            <button key={value} type="button" aria-pressed={scope === value} onClick={() => setScope(value)}>{t(value === 'all' ? 'app.all' : value === 'owned' ? 'projects.mine' : 'app.shared')}</button>
-          ))}
+      <Card>
+        <div className="toolbar">
+          <label className="toolbar__search">
+            <Search size={16} aria-hidden />
+            <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('projects.searchPlaceholder')} aria-label={t('projects.search')} autoComplete="off" spellCheck={false} />
+          </label>
+          <Segmented label={t('projects.scopeLabel')} value={scope} onChange={setScope} items={[{ id: 'all', label: t('app.all') }, { id: 'owned', label: t('projects.mine') }, { id: 'shared', label: t('app.shared') }]} />
         </div>
-      </div>
-      {projects.loading ? (
-        <Card><Skeleton lines={4} label={t('projects.loading')} /></Card>
-      ) : projects.error ? (
-        <Card><div className="inline-error"><Alert tone="danger">{t('projects.listFailed', { error: projects.error })}</Alert><Button variant="secondary" size="sm" onClick={projects.reload} style={{ marginTop: 12 }}>{t('common.retry')}</Button></div></Card>
-      ) : !items.length ? (
-        <Card><EmptyState icon={<FolderKanban size={22} />} title={t('projects.emptyTitle')} text={t('projects.emptyText')} action={<Button onClick={() => setCreating(true)}><Plus size={16} aria-hidden />{t('projects.new')}</Button>} /></Card>
-      ) : !visible.length ? (
-        <Card><EmptyState icon={<Search size={22} />} title={t('projects.noResults')} /></Card>
-      ) : (
-        <div className="project-grid">
-          {visible.map((project) => (
-            <Link key={project.id} className="project-card" to={`/app/projects/${encodeURIComponent(project.id)}`}>
-              <div className="project-card__top">
-                <span className="project-card__name">{project.name}</span>
-                <RoleBadge role={project.accessRole} />
-              </div>
-              <p className="project-card__desc">{project.description || t('app.noDescription')}</p>
-              <div className="project-card__foot">
-                <span>{project.ownerUsername ? t('projects.owner', { name: project.ownerUsername }) : ''}</span>
-                <span>{t('projects.updated', { date: formatDate(project.updatedAt ?? project.createdAt, lang) })}</span>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+        {projects.loading && !projects.data ? (
+          <Skeleton lines={4} label={t('projects.loading')} />
+        ) : projects.error ? (
+          <div className="inline-error"><Alert tone="danger">{t('projects.listFailed', { error: projects.error })}</Alert><Button variant="secondary" size="sm" onClick={projects.reload} className="inline-error__retry">{t('common.retry')}</Button></div>
+        ) : !items.length ? (
+          <EmptyState icon={<FolderKanban size={22} />} title={t('projects.emptyTitle')} text={t('projects.emptyText')} action={<Button onClick={() => setCreating(true)}><Plus size={16} aria-hidden />{t('projects.new')}</Button>} />
+        ) : !visible.length ? (
+          <EmptyState icon={<Search size={22} />} title={t('projects.noResults')} action={<Button variant="secondary" onClick={() => { setQueryState(''); setParams(new URLSearchParams(), { replace: true }); }}>{t('data.reset')}</Button>} />
+        ) : (
+          <div className="xc-table-wrap">
+            <table className="xc-table xc-table--cards">
+              <thead>
+                <tr>
+                  <th scope="col">{t('app.name')}</th>
+                  <th scope="col">{t('projects.role')}</th>
+                  <th scope="col">{t('projects.ownerColumn')}</th>
+                  <th scope="col">{t('app.updated')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((project) => (
+                  <tr key={project.id}>
+                    <td className="cell-main">
+                      <span className="xc-cell-main">
+                        <Link to={`/app/projects/${encodeURIComponent(project.id)}`}>{project.name}</Link>
+                        {/* No description, no line: "설명 없음" on every row said nothing. */}
+                        {project.description && <small className="clamp-1">{project.description}</small>}
+                      </span>
+                    </td>
+                    <td data-label={t('projects.role')}><RoleBadge role={project.accessRole} /></td>
+                    <td data-label={t('projects.ownerColumn')}>{project.accessRole === 'OWNER' ? t('projects.ownerMe') : project.ownerUsername || <NoValue label={t('app.noValue')} />}</td>
+                    <td data-label={t('app.updated')} className="date">{formatDate(project.updatedAt ?? project.createdAt, lang)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
       {creating && <ProjectFormDialog onClose={() => setCreating(false)} onSaved={(project) => navigate(`/app/projects/${encodeURIComponent(project.id)}`)} />}
     </div>
   );
@@ -83,9 +101,11 @@ function ProjectFormDialog({ project, onClose, onSaved }: { project?: Project; o
   const [description, setDescription] = useState(project?.description ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [nameError, setNameError] = useState('');
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!name.trim()) { setError(t('projects.nameRequired')); return; }
+    // A missing name is said next to the field; server errors stay below the form.
+    if (!name.trim()) { setNameError(t('projects.nameRequired')); return; }
     setBusy(true);
     setError('');
     try {
@@ -98,12 +118,12 @@ function ProjectFormDialog({ project, onClose, onSaved }: { project?: Project; o
   };
   return (
     <Dialog title={project ? t('projects.editTitle') : t('projects.new')} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button type="submit" form="project-form" disabled={busy}>{busy ? t('projects.saving') : project ? t('projects.save') : t('projects.create')}</Button></>}>
-      <form id="project-form" onSubmit={submit} style={{ display: 'grid', gap: 16 }}>
-        <TextField label={t('projects.name')} value={name} maxLength={150} required onChange={(event) => setName(event.target.value)} />
+      <form id="project-form" className="form-stack" onSubmit={submit} noValidate>
+        <TextField label={t('projects.name')} value={name} maxLength={150} required autoComplete="off" error={nameError} onChange={(event) => { setName(event.target.value); setNameError(''); }} />
         <label className="xc-field">
           <span className="xc-label">{t('projects.descriptionLabel')} <span className="xc-hint">{t('projects.optional')}</span></span>
           <textarea className="xc-textarea" value={description} maxLength={5000} onChange={(event) => setDescription(event.target.value)} />
-          <span className="xc-hint" style={{ justifySelf: 'end' }}>{description.length} / 5000</span>
+          <span className="xc-hint char-count">{description.length} / 5000</span>
         </label>
         {error && <Alert tone="danger">{error}</Alert>}
       </form>
@@ -120,17 +140,26 @@ export function ProjectDetailPage() {
   const project = useLoad(() => appApi.getProject(projectId), [projectId]);
   const { t } = useLanguage();
   useDocumentTitle(project.data?.name ? t('titles.projectNamed', { name: project.data.name }) : t('titles.projects'));
-  const [tab, setTab] = useState<DetailTab>('data');
+  // The open tab is kept in the URL (?tab=members), like the dataset detail.
+  const [params, setParams] = useSearchParams();
+  const tab: DetailTab = params.get('tab') === 'members' ? 'members' : 'data';
+  const setTab = (value: DetailTab) => setParams((current) => {
+    const next = new URLSearchParams(current);
+    if (value === 'data') next.delete('tab'); else next.set('tab', value);
+    return next;
+  }, { replace: true });
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const toast = useToast();
   const back = <Link className="page-back" to="/app/projects"><ArrowLeft size={16} aria-hidden />{t('titles.projects')}</Link>;
-  if (project.loading) return <div className="page-stack">{back}<Card><Skeleton lines={5} label={t('projects.loading')} /></Card></div>;
+  if (project.loading && !project.data) return <div className="page-stack">{back}<Card><Skeleton lines={5} label={t('projects.loading')} /></Card></div>;
   if (project.error || !project.data) {
     const forbidden = project.status === 403;
+    const missing = project.status === 404;
+    // Retrying cannot fix a missing or forbidden project: offer the list instead.
     return (
       <div className="page-stack">{back}
-        <Card><EmptyState icon={forbidden ? <Lock size={22} /> : <SearchX size={22} />} title={forbidden ? t('projects.forbiddenTitle') : project.status === 404 ? t('projects.missingTitle') : t('projects.failedTitle')} text={forbidden ? t('dataset.askOwner') : project.error} action={<Button variant="secondary" onClick={project.reload}>{t('common.retry')}</Button>} /></Card>
+        <Card><EmptyState icon={forbidden ? <Lock size={22} /> : <SearchX size={22} />} title={forbidden ? t('projects.forbiddenTitle') : missing ? t('projects.missingTitle') : t('projects.failedTitle')} text={forbidden ? t('dataset.askOwner') : project.error} action={forbidden || missing ? <ButtonLink to="/app/projects" variant="secondary">{t('projects.toList')}</ButtonLink> : <Button variant="secondary" onClick={project.reload}>{t('common.retry')}</Button>} /></Card>
       </div>
     );
   }
@@ -142,14 +171,14 @@ export function ProjectDetailPage() {
       <PageHeader
         back={back}
         title={current.name}
-        description={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><RoleBadge role={current.accessRole} />{current.description || t('app.noDescription')}</span>}
+        description={<span className="head-tags"><RoleBadge role={current.accessRole} />{current.description && <span>{current.description}</span>}</span>}
         actions={<>
           {editable && <Button variant="secondary" onClick={() => setEditing(true)}><Pencil size={16} aria-hidden />{t('projects.edit')}</Button>}
           {owner && <Button variant="ghost" onClick={() => setDeleting(true)}><Trash2 size={16} aria-hidden />{t('app.delete')}</Button>}
         </>}
       />
       <Card>
-        <div style={{ padding: '0 20px' }}>
+        <div className="sheet-tabs">
           <Tabs label={t('projects.tabsLabel')} idPrefix="project-detail" value={tab} onChange={setTab} items={[{ id: 'data', label: t('projects.tabData') }, { id: 'members', label: t('projects.tabMembers') }]} />
         </div>
         <TabPanel idPrefix="project-detail" value={tab}>
@@ -205,14 +234,14 @@ function ProjectData({ project, editable, onToast }: { project: Project; editabl
         <EmptyState icon={<Database size={22} />} title={t('projects.noLinkedTitle')} text={editable ? t('projects.noLinkedEditable') : t('projects.noLinkedReadonly')} />
       ) : (
         <div className="xc-table-wrap">
-          <table className="xc-table">
+          <table className="xc-table xc-table--cards">
             <thead><tr><th scope="col">{t('app.name')}</th><th scope="col">{t('app.status')}</th><th scope="col"><span className="sr-only">{t('app.actions')}</span></th></tr></thead>
             <tbody>
               {items.map((dataset) => (
                 <tr key={dataset.id}>
-                  <td><span className="xc-cell-main"><Link to={`/app/data/${encodeURIComponent(dataset.id)}`}>{dataset.name}</Link><small>{dataset.xcubeDatasetId}</small></span></td>
-                  <td><DatasetStatus dataset={dataset} /></td>
-                  <td>
+                  <td className="cell-main"><span className="xc-cell-main"><Link to={`/app/data/${encodeURIComponent(dataset.id)}`}>{dataset.name}</Link><small>{dataset.xcubeDatasetId}</small></span></td>
+                  <td data-label={t('app.status')}><DatasetStatus dataset={dataset} /></td>
+                  <td className="cell-actions">
                     <div className="row-actions">
                       <a className="xc-icon-btn" href={viewerHref(dataset.id)} target="_blank" rel="noopener noreferrer" aria-label={t('app.openInViewerNamed', { name: dataset.name })} title={t('app.openInViewer')}><ExternalLink size={16} aria-hidden /></a>
                       {editable && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => setUnlinking(dataset)} aria-label={t('projects.unlinkNamed', { name: dataset.name })}><Unlink size={14} aria-hidden />{t('projects.unlink')}</button>}
@@ -264,9 +293,9 @@ function LinkDatasetDialog({ linkedIds, onClose, onLink }: { linkedIds: string[]
   };
   return (
     <Dialog title={t('projects.linkData')} description={t('projects.linkDialogText')} onClose={onClose} footer={<Button variant="secondary" onClick={onClose}>{t('common.close')}</Button>}>
-      <label className="toolbar__search" style={{ maxWidth: 'none' }}>
+      <label className="toolbar__search toolbar__search--full">
         <Search size={16} aria-hidden />
-        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('projects.linkSearch')} aria-label={t('projects.linkSearchLabel')} />
+        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('projects.linkSearch')} aria-label={t('projects.linkSearchLabel')} autoComplete="off" spellCheck={false} />
       </label>
       {error && <Alert tone="danger">{error}</Alert>}
       {candidates.loading ? <Skeleton lines={3} /> : candidates.error ? <Alert tone="danger">{candidates.error}</Alert> : (
@@ -296,13 +325,18 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
   const [role, setRole] = useState<MemberRole>('VIEWER');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Problems with the typed ID are said next to the field (and focus returns there); the rest below the form.
+  const [fieldError, setFieldError] = useState('');
+  const [savingRole, setSavingRole] = useState('');
   const [removing, setRemoving] = useState<ProjectMember | null>(null);
   if (!owner) return <EmptyState icon={<Lock size={22} />} title={t('members.ownerOnlyTitle')} text={t('members.ownerOnlyText')} />;
   const add = async (event: FormEvent) => {
     event.preventDefault();
-    if (!username.trim()) { setError(t('members.usernameRequired')); return; }
+    const focusField = () => document.getElementById('member-username')?.focus();
+    if (!username.trim()) { setFieldError(t('members.usernameRequired')); focusField(); return; }
     setBusy(true);
     setError('');
+    setFieldError('');
     try {
       const member = await appApi.addMember(project.id, { username: username.trim(), role }) as ProjectMember;
       members.setData((items) => [...(items ?? []).filter((item) => item.userId !== member.userId), member]);
@@ -310,19 +344,21 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
       onToast(t('members.added', { name: label(member) }));
     } catch (cause) {
       const status = (cause as { status?: number })?.status;
-      setError(status === 404 ? t('members.userNotFound')
-        : status === 429 ? t('members.tooMany')
+      if (status === 404) { setFieldError(t('members.userNotFound')); focusField(); return; }
+      setError(status === 429 ? t('members.tooMany')
         : status === 503 ? t('members.lookupDown')
         : userMessage(cause, lang));
     } finally { setBusy(false); }
   };
+  // One role change at a time: the select is disabled while its change is saved.
   const change = async (member: ProjectMember, next: MemberRole) => {
     setError('');
+    setSavingRole(member.userId);
     try {
       const saved = await appApi.updateMember(project.id, member.userId, next);
       members.setData((items) => items?.map((item) => (item.userId === member.userId ? { ...item, ...saved } as ProjectMember : item)) ?? null);
       onToast(t('members.roleChanged'));
-    } catch (cause) { setError(userMessage(cause, lang)); }
+    } catch (cause) { setError(userMessage(cause, lang)); } finally { setSavingRole(''); }
   };
   const remove = async (member: ProjectMember) => {
     await appApi.removeMember(project.id, member.userId);
@@ -333,8 +369,9 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
   const items = members.data ?? [];
   return (
     <>
-      <form className="member-form" onSubmit={add}>
-        <TextField label={t('members.username')} help={t('members.usernameHelp')} value={username} autoComplete="off" placeholder={t('members.placeholder')} maxLength={150} onChange={(event) => setUsername(event.target.value)} />
+      <form className="member-form" onSubmit={add} noValidate>
+        {/* Login IDs are typed as they are: no capital first letter, autocorrect or spell check on phones. */}
+        <TextField id="member-username" label={t('members.username')} help={t('members.usernameHelp')} error={fieldError} value={username} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={t('members.placeholder')} maxLength={150} onChange={(event) => { setUsername(event.target.value); setFieldError(''); }} />
         <label className="xc-field">
           <span className="xc-label">{t('members.role')}</span>
           <select className="xc-select" value={role} onChange={(event) => setRole(event.target.value as MemberRole)}>
@@ -345,27 +382,27 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
         <Button type="submit" disabled={busy} className="member-form__submit">{busy ? t('members.adding') : t('members.add')}</Button>
       </form>
       {error && <div className="inline-error"><Alert tone="danger">{error}</Alert></div>}
-      {members.loading ? <Skeleton lines={3} label={t('members.loading')} /> : members.error ? (
+      {members.loading && !members.data ? <Skeleton lines={3} label={t('members.loading')} /> : members.error ? (
         <div className="inline-error"><Alert tone="danger">{members.error}</Alert></div>
       ) : (
         <div className="xc-table-wrap">
-          <table className="xc-table">
-            <thead><tr><th scope="col">{t('members.user')}</th><th scope="col">{t('members.role')}</th><th scope="col" className="hide-sm">{t('members.addedOn')}</th><th scope="col"><span className="sr-only">{t('app.actions')}</span></th></tr></thead>
+          <table className="xc-table xc-table--cards">
+            <thead><tr><th scope="col">{t('members.user')}</th><th scope="col">{t('members.role')}</th><th scope="col">{t('members.addedOn')}</th><th scope="col"><span className="sr-only">{t('app.actions')}</span></th></tr></thead>
             <tbody>
               {items.map((member) => (
                 <tr key={member.userId}>
-                  <td><strong>{member.role === 'OWNER' && String(user?.id) === member.userId ? t('members.me', { name: user?.name ?? t('members.meFallback') }) : label(member)}</strong></td>
-                  <td>{member.role === 'OWNER' ? <RoleBadge role="OWNER" /> : (
-                    <select className="xc-select" style={{ width: 110 }} aria-label={t('members.roleOf', { name: label(member) })} value={member.role} onChange={(event) => change(member, event.target.value as MemberRole)}>
+                  <td className="cell-main"><strong>{member.role === 'OWNER' && String(user?.id) === member.userId ? t('members.me', { name: user?.name ?? t('members.meFallback') }) : label(member)}</strong></td>
+                  <td data-label={t('members.role')}>{member.role === 'OWNER' ? <RoleBadge role="OWNER" /> : (
+                    <select className="xc-select member-role" aria-label={t('members.roleOf', { name: label(member) })} aria-busy={savingRole === member.userId || undefined} disabled={savingRole === member.userId} value={member.role} onChange={(event) => change(member, event.target.value as MemberRole)}>
                       <option value="VIEWER">{t('roles.VIEWER')}</option>
                       <option value="EDITOR">{t('roles.EDITOR')}</option>
                     </select>
                   )}</td>
-                  <td className="hide-sm">{formatDate(member.createdAt, lang)}</td>
-                  <td className="num">{member.role !== 'OWNER' && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => setRemoving(member)} aria-label={t('members.removeNamed', { name: label(member) })}>{t('members.remove')}</button>}</td>
+                  <td data-label={t('members.addedOn')} className="date">{member.createdAt ? formatDate(member.createdAt, lang) : <NoValue label={t('app.noDate')} />}</td>
+                  <td className="cell-actions">{member.role !== 'OWNER' && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => setRemoving(member)} aria-label={t('members.removeNamed', { name: label(member) })}>{t('members.remove')}</button>}</td>
                 </tr>
               ))}
-              {!items.length && <tr><td colSpan={4} className="xc-hint">{t('members.none')}</td></tr>}
+              {!items.length && <tr><td colSpan={4} className="xc-hint cell-full">{t('members.none')}</td></tr>}
             </tbody>
           </table>
         </div>

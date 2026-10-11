@@ -45,6 +45,12 @@
   background: var(--fb-sunken); color: var(--fb-ink-2); font: 600 11.5px/1 var(--fb-font); font-variant-numeric: tabular-nums;
 }
 
+/* Scroll cue: a row that scrolls sideways fades the edge that has more (data-more from useOverflowCue). */
+.xc-tabs[data-more='end'], .segmented[data-more='end'] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+.xc-tabs[data-more='start'], .segmented[data-more='start'] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
+.xc-tabs[data-more='start end'], .segmented[data-more='start end'] { -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
+.xc-tabs::-webkit-scrollbar { display: none; }
+
 /* Segmented: a framed track; the pressed segment is ink. Scrolls instead of overflowing the page. */
 .segmented {
   display: inline-flex; gap: 2px; max-width: 100%; padding: 2px; overflow-x: auto; scrollbar-width: none;
@@ -92,7 +98,14 @@
 
 /* Skeleton: solid sunken bars that breathe; still under reduced motion. */
 .xc-skeleton { display: grid; gap: 10px; padding: var(--space-4); }
-.xc-skeleton span { height: 12px; border-radius: var(--fb-radius-mark); background: var(--fb-sunken); animation: xc-breathe 1.2s ease-in-out infinite alternate; }
+.xc-skeleton span { width: 92%; height: 12px; border-radius: var(--fb-radius-mark); background: var(--fb-sunken); animation: xc-breathe 1.2s ease-in-out infinite alternate; }
+.xc-skeleton span:nth-child(2) { width: 78%; }
+.xc-skeleton span:nth-child(3) { width: 64%; }
+.xc-skeleton span:nth-child(4) { width: 50%; }
+.xc-skeleton span:nth-child(5) { width: 36%; }
+.xc-skeleton span:nth-child(n + 6) { width: 22%; }
+/* Before the delay: same height, nothing drawn. */
+.xc-skeleton.is-waiting span { visibility: hidden; animation: none; }
 @keyframes xc-breathe { from { opacity: 1; } to { opacity: 0.6; } }
 
 /* Sheet (was a card): ruled, no shadow. */
@@ -107,7 +120,9 @@
   font: 500 14px/1.4 var(--fb-font); box-shadow: var(--fb-lift); max-width: calc(100vw - 32px);
   animation: xc-toast-in 180ms var(--fb-ease-out);
 }
-.xc-toast.is-leaving { opacity: 0; transform: translateY(8px); transition: opacity 180ms ease-in, transform 180ms ease-in; }
+.xc-toast.is-leaving { opacity: 0; transform: translateY(8px); transition: opacity 150ms var(--fb-ease-out), transform 150ms var(--fb-ease-out); }
+/* The always-present live region is out of flow (no extra grid gap); the toast inside is fixed too. */
+.xc-toast-region { position: fixed; left: 0; bottom: 0; width: 0; height: 0; }
 @keyframes xc-toast-in { from { opacity: 0; transform: translateY(8px); } }
 
 /* Data table: rule rows, label-type head, numbers right-aligned in tabular figures, dates on one line. */
@@ -127,7 +142,16 @@
 .xc-cell-main a:hover { text-decoration: underline; }
 .xc-cell-main small { color: var(--fb-ink-3); font-size: 12px; }
 
-/* ≤767px: rows of .xc-table--cards become stacked entries (name on top, tags and actions below). */
+/* A list that is reloading for new filters: the old rows stay, dimmed, until the new ones arrive (aria-busy). */
+.xc-stale { position: relative; transition: opacity 120ms ease-out; }
+.xc-stale[aria-busy='true'] { opacity: 0.6; }
+.xc-busy-line { position: absolute; left: 0; right: 0; top: 0; height: 2px; overflow: hidden; opacity: 0; animation: xc-fade-in 120ms ease-out 400ms forwards; }
+.xc-busy-line::before { content: ''; position: absolute; inset: 0; width: 30%; background: var(--fb-ink); animation: xc-busy 1.1s ease-in-out infinite; }
+@keyframes xc-fade-in { to { opacity: 1; } }
+@keyframes xc-busy { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+
+/* ≤767px: rows of .xc-table--cards become stacked entries (name on top, tags and actions below). Cells with a
+   data-label keep their column name in front of the value, since the head row is only read by screen readers. */
 @media (max-width: 767px) {
   .xc-table--cards thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
   .xc-table--cards, .xc-table--cards tbody { display: block; }
@@ -143,6 +167,9 @@
   .xc-table--cards tbody > tr > td.cell-full { flex: 1 1 100%; }
   .xc-table--cards .hide-sm { display: none; }
   .xc-table--cards .row-actions { flex-wrap: wrap; }
+  .xc-table--cards tbody > tr > td[data-label]:not(.cell-main):not(.cell-actions)::before {
+    content: attr(data-label) ' '; color: var(--fb-ink-3); font: var(--text-caption);
+  }
 }
 
 /* Form controls (select / textarea / checkbox) used by pages */
@@ -167,7 +194,9 @@
   .segmented button { height: 34px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .xc-skeleton span, .xc-dialog, .xc-dialog-backdrop, .xc-toast { animation: none; }
+  .xc-skeleton span, .xc-dialog, .xc-dialog-backdrop, .xc-toast, .xc-busy-line::before { animation: none; }
+  .xc-busy-line { animation-duration: 0ms; }
+  .xc-stale { transition: none; }
   .xc-toast.is-leaving { transition: none; }
   .xc-icon-btn:active:not(:disabled) { transform: none; }
 }

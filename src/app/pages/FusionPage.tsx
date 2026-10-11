@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { DryRun, FormulaError, FusionBinding, FusionRequest, Normalization } from '../../api/analysisApi';
 import { blockerCode } from '../../api/analysisApi';
 import { userMessage } from '../../api/httpClient';
@@ -18,6 +18,8 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import '../../i18n/app';
 
 const STEPS: TKey[] = ['fusion.steps.inputs', 'fusion.steps.formula', 'fusion.steps.rules', 'fusion.steps.run'];
+/** One line under the scale says what this step asks for (the step name is already on the scale). */
+const STEP_TITLES: TKey[] = ['fusion.stepTitles.inputs', 'fusion.stepTitles.formula', 'fusion.stepTitles.rules', 'fusion.stepTitles.run'];
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 type NormMode = 'auto' | 'none' | 'custom';
@@ -262,24 +264,22 @@ export default function FusionPage() {
 
   return (
     <div className="page-stack wizard fusion">
-      <PageHeader
-        back={<Link className="page-back" to="/app/data"><ArrowLeft size={16} aria-hidden />{t('titles.data')}</Link>}
-        title={t('titles.fusion')}
-        description={t('fusion.description')}
-      />
+      {/* Band math is a menu of its own, so no "back to data" link; the steps read as ticks on one rule. */}
+      <PageHeader title={t('titles.fusion')} description={t('fusion.description')} />
       {prefillError && <Alert tone="warning" role="alert">{prefillError}</Alert>}
-      <ol className="wizard-steps" aria-label={t('fusion.steps.label')}>
+      <ol className="step-scale" aria-label={t('fusion.steps.label')}>
         {STEPS.map((key, index) => (
           <li key={key} className={index === step ? 'is-current' : index < step ? 'is-done' : ''} aria-current={index === step ? 'step' : undefined}>
-            <span className="wizard-steps__dot">{index < step ? <Check size={14} aria-hidden /> : index + 1}</span>
-            <span className="wizard-steps__label">{t(key)}</span>
+            <span className="step-scale__tick" aria-hidden />
+            <span className="step-scale__label"><span className="step-scale__num">{index < step ? <Check size={12} aria-hidden /> : index + 1}</span><span className="step-scale__text">{t(key)}</span></span>
+            {index < step && <span className="sr-only">{t('jobs.steps.done')}</span>}
           </li>
         ))}
       </ol>
 
       <Card className="wizard-card">
         <div className="wizard-body">
-          <h2 className="wizard-title" ref={headingRef} tabIndex={-1}>{t(STEPS[step])}</h2>
+          <h2 className="wizard-title" ref={headingRef} tabIndex={-1}>{t(STEP_TITLES[step])}</h2>
 
           {step === 0 && (
             <div className="wizard-section">
@@ -454,7 +454,7 @@ export default function FusionPage() {
         </div>
         <div className="wizard-foot">
           <Button variant="secondary" onClick={back} disabled={step === 0 || submitting}><ArrowLeft size={16} aria-hidden />{t('fusion.prev')}</Button>
-          <span className="xc-hint">{step + 1} / {STEPS.length}</span>
+          <span className="toolbar__spacer" />
           {step < STEPS.length - 1 ? (
             <Button onClick={next}>{t('fusion.next')}<ArrowRight size={16} aria-hidden /></Button>
           ) : (
@@ -494,7 +494,7 @@ function PreviewPanel({ data }: { data: DryRun }) {
         </Alert>
       )}
       {!data.blockers.length && <Alert tone="success">{t('fusion.preview.canRun')}</Alert>}
-      <dl className="meta-list" style={{ padding: 0 }}>
+      <dl className="meta-list meta-list--flush">
         <dt>{t('fusion.preview.timeCount')}</dt><dd className="tabular">{number(data.timeCount)}</dd>
         <dt>{t('fusion.preview.grid')}</dt><dd className="tabular">{t('fusion.preview.gridValue', { width: number(data.grid.width), height: number(data.grid.height), resolution: Number(data.grid.resolution.toPrecision(4)) })}</dd>
         <dt>{t('fusion.extent')}</dt><dd className="tabular">{t('app.extentValue', { west: west.toFixed(4), east: east.toFixed(4), south: south.toFixed(4), north: north.toFixed(4) })}</dd>
@@ -502,10 +502,10 @@ function PreviewPanel({ data }: { data: DryRun }) {
         <dt>{t('fusion.preview.size')}</dt><dd className="tabular">{formatBytes(data.estimatedBytes)}</dd>
         <dt>{t('fusion.preview.quotaLeft')}</dt><dd className="tabular">{formatBytes(remaining)} <span className="xc-hint">{t('fusion.preview.quotaLimit', { limit: formatBytes(quota.limitBytes) })}</span></dd>
       </dl>
-      <div className="fusion-quota" role="img" aria-label={t('fusion.preview.quotaAria', { used: formatBytes(quota.usedBytes), result: formatBytes(data.estimatedBytes), limit: formatBytes(quota.limitBytes) })}>
-        <i className="is-used" style={{ width: `${usedPercent}%` }} />
-        <i className={quota.allowed ? 'is-new' : 'is-over'} style={{ width: `${thisPercent}%` }} />
-      </div>
+      <svg className="fusion-quota" role="img" aria-label={t('fusion.preview.quotaAria', { used: formatBytes(quota.usedBytes), result: formatBytes(data.estimatedBytes), limit: formatBytes(quota.limitBytes) })}>
+        <rect className="is-used" width={`${usedPercent}%`} height="100%" />
+        <rect className={quota.allowed ? 'is-new' : 'is-over'} x={`${usedPercent}%`} width={`${Math.max(thisPercent, 0.3)}%`} height="100%" />
+      </svg>
       <p className="xc-hint">{t('fusion.preview.quotaHint')}</p>
       {data.normalization.length > 0 && (
         <div className="xc-table-wrap">

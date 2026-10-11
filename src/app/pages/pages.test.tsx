@@ -586,7 +586,7 @@ describe('M6 수식 융합 작업·데이터 표시', () => {
     expect(await screen.findByText('(A - B) / (A + B)')).toBeInTheDocument();
     expect(screen.getByText('±3일', { exact: false })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '같은 조건으로 다시 실행' }));
-    expect(await screen.findByRole('heading', { name: '입력' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '계산에 쓸 데이터와 변수를 고릅니다' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByLabelText('A 데이터')).toHaveValue('77'));
     expect(screen.getByLabelText('B 정규화')).toHaveValue('custom');
   });

@@ -3,9 +3,9 @@ import { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, ButtonLink } from '../../components/ui';
 import { Badge, Skeleton } from '../../components/ui/kit';
-import { aiViewerHref, appApi, formatDateTime, isOwned, jobs as jobService, periodLabel, unavailableJobsNotice, viewerHref, ZarrDataset } from '../api';
+import { aiViewerHref, appApi, formatDateTime, isOwned, periodLabel, unavailableJobsNotice, viewerHref, ZarrDataset } from '../api';
 import { useLoad } from '../useLoad';
-import { isActive, jobTypeLabel, JobStatusBadge } from '../jobs';
+import { isActive, jobTypeLabel, JobStatusBadge, useJobsFeed } from '../jobs';
 import { DatasetStatus } from './DataLibraryPage';
 import { useLanguage, useT } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
@@ -43,7 +43,8 @@ export default function DashboardPage() {
   const { lang, t } = useLanguage();
   useDocumentTitle(t('titles.dashboard'));
   const datasets = useLoad(() => appApi.listDatasets());
-  const jobs = useLoad(() => jobService.listWithStatus());
+  // Recent jobs and the running count come from the shell's one jobs poller (no separate request).
+  const jobs = useJobsFeed();
   const items = datasets.data ?? [];
   const jobItems = jobs.data?.items ?? [];
   const partialNotice = unavailableJobsNotice(jobs.data?.unavailable ?? [], lang);
@@ -60,7 +61,7 @@ export default function DashboardPage() {
         {empty ? (
           <p className="dash-summary">{t('dashboard.empty')}</p>
         ) : (
-          <p className="dash-summary" aria-label={t('dashboard.summary')} aria-busy={datasets.loading || jobs.loading}>
+          <p className="dash-summary" aria-label={t('dashboard.summary')} aria-busy={(datasets.loading && !datasets.data) || (jobs.loading && !jobs.data)}>
             <Link to="/app/data?scope=owned">{t('app.mine')} <strong>{count(datasets.loading, !!datasets.error, owned)}</strong></Link>
             <Link to="/app/data?scope=shared">{t('app.shared')} <strong>{count(datasets.loading, !!datasets.error, items.length - owned)}</strong></Link>
             <Link to={ACTIVE_JOBS} className={running ? 'is-running' : undefined}>{t('dashboard.running')} <strong>{count(jobs.loading, !!jobs.error, running)}</strong></Link>
@@ -98,7 +99,7 @@ export default function DashboardPage() {
 
       <div className="dash-ledgers">
         <Section id="dash-recent-data" title={t('dashboard.recentData')} more={<Link className="dash-more" to="/app/data">{t('app.viewAll')}</Link>}>
-          {datasets.loading ? (
+          {datasets.loading && !datasets.data ? (
             <Skeleton lines={4} label={t('dashboard.loadingData')} />
           ) : datasets.error ? (
             <div className="dash-note">
@@ -138,10 +139,10 @@ export default function DashboardPage() {
         </Section>
 
         <Section id="dash-recent-jobs" title={t('dashboard.recentJobs')} more={<Link className="dash-more" to="/app/jobs">{t('app.viewAll')}</Link>}>
-          {jobs.loading ? (
+          {jobs.loading && !jobs.data ? (
             <Skeleton lines={3} label={t('dashboard.loadingJobs')} />
           ) : jobs.error ? (
-            <div className="dash-note"><Alert tone="danger">{t('app.jobListFailed', { error: jobs.error })}</Alert></div>
+            <div className="dash-note"><Alert tone="danger">{t('app.jobListFailed', { error: jobs.error })}</Alert><Button variant="line" size="sm" onClick={jobs.refresh}>{t('common.retry')}</Button></div>
           ) : !jobItems.length && !partialNotice ? (
             <div className="dash-note">
               <p>{t('dashboard.noJobs')}</p>
@@ -149,7 +150,7 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
-            {partialNotice && <div className="dash-note"><Alert tone="warning">{partialNotice}</Alert><Button variant="line" size="sm" onClick={jobs.reload}>{t('common.retry')}</Button></div>}
+            {partialNotice && <div className="dash-note"><Alert tone="warning">{partialNotice}</Alert><Button variant="line" size="sm" onClick={jobs.refresh}>{t('common.retry')}</Button></div>}
             {jobItems.length > 0 && <table className="xc-table xc-table--cards dash-table">
               <thead><tr><th scope="col">{t('dashboard.job')}</th><th scope="col">{t('app.kind')}</th><th scope="col">{t('app.status')}</th><th scope="col" className="num">{t('dashboard.requested')}</th></tr></thead>
               <tbody>

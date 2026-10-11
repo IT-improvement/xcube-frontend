@@ -1,9 +1,10 @@
-// Shared pieces for generation jobs: labels, status badge, step list, request summary and the
-// "jobs in progress" poller used by the menu badge and the dashboard (FR-JOB-03).
-import { Fragment, useEffect, useState } from 'react';
+// Shared pieces for generation jobs: labels, status badge, step list, request summary and the one jobs
+// poller shared by the top bar badge, the dashboard and the job center (FR-JOB-03).
+import { createContext, Fragment, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { JobSummary } from '../api/generationApi';
+import { userMessage } from '../api/httpClient';
 import { Badge, BadgeTone } from '../components/ui/kit';
-import { jobs as allJobs } from './api';
+import { JobListResult, jobs as allJobs } from './api';
 import { AGG_LABEL, asFusionRequest, EXTENT_LABEL, GRID_LABEL, normalizationLabel, PERIOD_LABEL, RESAMPLING_LABEL, TIME_LABEL } from './fusion';
 import { FusionRequest } from '../api/analysisApi';
 import { getLanguage, translate, useLanguage } from '../i18n';
@@ -115,7 +116,7 @@ export function FusionRequestSummary({ request, names }: { request: Partial<Fusi
   if (request.outputVariable) rules.push([t('fusion.summary.outputVariable'), request.outputVariable]);
   return (
     <div className="job-input">
-      <dl className="meta-list" style={{ padding: 0 }}>
+      <dl className="meta-list meta-list--flush">
         <dt>{t('fusion.summary.formula')}</dt><dd><code className="fusion-code">{request.formula}</code></dd>
         {rules.map(([label, value]) => (<Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>))}
       </dl>
@@ -155,7 +156,7 @@ export function JobInputSummary({ job }: { job: JobSummary }) {
     ];
     return (
       <div className="job-input">
-        <dl className="meta-list" style={{ padding: 0 }}>
+        <dl className="meta-list meta-list--flush">
           {rows.map(([label, value]) => (<Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>))}
         </dl>
       </div>
@@ -173,7 +174,7 @@ export function JobInputSummary({ job }: { job: JobSummary }) {
   if (job.zarrUri) rows.push([t('jobs.input.storage'), String(job.zarrUri).replace('file://', '')]);
   return (
     <div className="job-input">
-      <dl className="meta-list" style={{ padding: 0 }}>
+      <dl className="meta-list meta-list--flush">
         {rows.map(([label, value]) => (<Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>))}
       </dl>
       {variables.length > 0 && (
@@ -201,19 +202,108 @@ export function JobInputSummary({ job }: { job: JobSummary }) {
   );
 }
 
-/** Number of jobs in progress; polls every 10 s while any is running, otherwise every 60 s. */
-export function useActiveJobCount() {
-  const [count, setCount] = useState<number | null>(null);
+/** While any job is queued or running the feed refreshes this often (FR-JOB-03); otherwise every minute. */
+export const POLL_ACTIVE_MS = 10000;
+export const POLL_IDLE_MS = 60000;
+
+export type JobsFeed = {
+  /** The last list, or null before the first answer. `full` says whether it is every job or only active ones. */
+  data: JobListResult | null;
+  full: boolean;
+  /** True until the first answer (or while retrying after an error). */
+  loading: boolean;
+  error: string;
+  /** Jobs queued or running, once known. */
+  activeCount: number | null;
+  refreshedAt: Date | null;
+  /** Increases on every answer; pages with their own filtered list reload when it moves. */
+  tick: number;
+  /** Fetch now (and restart the timer). */
+  refresh: () => void;
+};
+type FeedState = { data: JobListResult | null; full: boolean; cause: unknown; loading: boolean; at: Date | null; tick: number };
+const ACTIVE_ONLY = { status: 'QUEUED,RUNNING' };
+
+/**
+ * One timer and one request per tick. Fetches every job while a page that lists them (`wantFull`) is open,
+ * otherwise only active jobs, which is all the top bar badge needs.
+ */
+function useFeedSource(enabled: boolean, wantFull: boolean): JobsFeed {
+  const { lang } = useLanguage();
+  const [state, setState] = useState<FeedState>({ data: null, full: false, cause: null, loading: true, at: null, tick: 0 });
+  const [nonce, setNonce] = useState(0);
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     let timer: number | undefined;
-    const check = () =>
-      allJobs.list({ status: 'QUEUED,RUNNING' })
-        .then((jobs) => { if (!cancelled) setCount(jobs.length); return jobs.length; })
-        .catch(() => 0)
-        .then((active) => { if (!cancelled) timer = window.setTimeout(check, active ? 10000 : 60000); });
-    check();
+    const run = () => {
+      allJobs.listWithStatus(wantFull ? {} : ACTIVE_ONLY)
+        .then((data) => {
+          if (cancelled) return false;
+          setState((current) => ({ data, full: wantFull, cause: null, loading: false, at: new Date(), tick: current.tick + 1 }));
+          return data.items.some(isActive);
+        })
+        .catch((cause) => {
+          // A failed background refresh keeps the list already shown.
+          if (!cancelled) setState((current) => ({ ...current, cause: current.data && current.full === wantFull ? null : cause, loading: false }));
+          return false;
+        })
+        .then((active) => { if (!cancelled) timer = window.setTimeout(run, active ? POLL_ACTIVE_MS : POLL_IDLE_MS); });
+    };
+    // Started on the next task, not now: a page that lists jobs registers in the same commit, and the first
+    // request should already be the full list instead of an active-only one thrown away a moment later.
+    timer = window.setTimeout(run, 0);
     return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [enabled, wantFull, nonce]);
+  const refresh = useCallback(() => {
+    setState((current) => (current.cause ? { ...current, loading: true } : current));
+    setNonce((value) => value + 1);
   }, []);
-  return count;
+  return useMemo(() => {
+    const usable = state.full === wantFull || state.full ? state.data : null;
+    return {
+      data: usable,
+      full: state.full,
+      loading: state.loading || (!!wantFull && !state.full && !state.cause),
+      error: state.cause ? userMessage(state.cause, lang) : '',
+      activeCount: state.data ? state.data.items.filter(isActive).length : null,
+      refreshedAt: state.at,
+      tick: state.tick,
+      refresh,
+    };
+  }, [state, wantFull, lang, refresh]);
+}
+
+type FeedContextValue = { feed: JobsFeed; need: () => () => void };
+const FeedContext = createContext<FeedContextValue | null>(null);
+
+/** Wraps the app shell: the one jobs poller every page and the top bar read from. */
+export function JobsFeedProvider({ children }: { children: ReactNode }) {
+  const [listers, setListers] = useState(0);
+  const feed = useFeedSource(true, listers > 0);
+  const need = useCallback(() => {
+    setListers((count) => count + 1);
+    return () => setListers((count) => count - 1);
+  }, []);
+  const value = useMemo(() => ({ feed, need }), [feed, need]);
+  return <FeedContext.Provider value={value}>{children}</FeedContext.Provider>;
+}
+
+/**
+ * Every job of the user (generation, band math, AI), refreshed by the shared poller. Outside the shell (tests,
+ * a page rendered alone) the page runs its own poller with the same rules.
+ */
+export function useJobsFeed(): JobsFeed {
+  const shared = useContext(FeedContext);
+  const own = useFeedSource(!shared, true);
+  const need = shared?.need;
+  useEffect(() => need?.(), [need]);
+  return shared ? shared.feed : own;
+}
+
+/** Number of jobs in progress for the top bar badge (null until known). */
+export function useActiveJobCount() {
+  const shared = useContext(FeedContext);
+  const own = useFeedSource(!shared, false);
+  return (shared ? shared.feed : own).activeCount;
 }
