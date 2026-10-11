@@ -138,6 +138,13 @@ test('목록은 100개에서 자르지 않고 마지막 쪽까지 모두 읽는�
   expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([0, 1, 2].map((page) => `http://localhost:8082/api/v1/projects/9/datacubes?page=${page}&size=100`));
 });
 
+test('프로젝트 데이터 상태는 옛 status가 아니라 availabilityStatus를 따른다', async () => {
+  jest.spyOn(global, 'fetch').mockResolvedValueOnce(json({ content: [{ datacubeId: 70, projectId: 6, name: '제주', kind: 'ORIGINAL', status: 'SYNCING', integrationStatus: 'REGISTERED', availabilityStatus: 'AVAILABLE', metadata: {} }], totalPages: 1, last: true }));
+  const [item] = await backofficeAdapter.getProjectDatasets!('6');
+  expect(item.subtitle).toBe('REGISTERED · AVAILABLE');
+  expect(item.availability).toBe('AVAILABLE');
+});
+
 test('프로젝트 목록도 여러 쪽을 이어 읽고, last가 오면 멈춘다', async () => {
   const project = (id: number) => ({ id, name: `p${id}`, createdAt: '', updatedAt: '' });
   const fetchMock = jest.spyOn(global, 'fetch')
