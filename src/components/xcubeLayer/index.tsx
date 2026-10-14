@@ -2,13 +2,34 @@ import TileLayer from "ol/layer/Tile";
 import XYZ from "ol/source/XYZ";
 import TileState from "ol/TileState";
 import Map from "ol/Map";
-import { session } from "../../api/httpClient";
+import { isSameOrigin, refreshSession, session } from "../../api/httpClient";
 import { ApiError, errorFromBody } from "../../api/httpClient";
 
 /** A layer none of whose tiles has drawn yet retries after these waits (ms), about 2 minutes in all: the
  *  owner's pod restarts to serve new data (an AI result, a new Zarr) and answers 404 meanwhile, measured
  *  10–60 s. Failed tiles still free their slot at once, so the wait never blocks other layers. */
 export const TILE_RETRY_DELAYS = [2000, 3000, 5000, 5000, 10000, 10000, 15000, 15000, 20000, 30000];
+
+/** Only a main xcube on another origin (Mac development: http://localhost:8080) is loaded as a plain image: it
+ *  serves public tiles and does not accept an Authorization preflight. Everything else (the same-origin tile
+ *  gateway, which checks the signed-in user per request, and personal pods) is fetched with the access token. */
+export const isPublicXcubeTile = (src: string) => {
+  const main = process.env.REACT_APP_XCUBE_URL ?? 'http://localhost:8080';
+  return !!main && !isSameOrigin(main) && src.startsWith(main);
+};
+
+/** A tile fetch with the access token; an expired token is refreshed once (the same flow as every API call). */
+export async function fetchTile(src: string, signal: AbortSignal): Promise<Response> {
+  const token = session.getToken();
+  const response = await fetch(src, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal });
+  if (response.status !== 401 || !token) return response;
+  let next = session.getToken();
+  if (next === token) {
+    try { next = await refreshSession(); } catch { return response; }
+  }
+  if (!next) return response;
+  return fetch(src, { headers: { Authorization: `Bearer ${next}` }, signal });
+}
 
 interface Props {
   map: Map;
@@ -42,17 +63,13 @@ export default async function addDynamicXcubeLayer({
       maxZoom: 23,
       tileLoadFunction: (tile, src) => {
         const image = (tile as any).getImage() as HTMLImageElement;
-        // Official XCube tiles are public raster images. Loading them directly,
-        // exactly like the /test viewer, avoids an Authorization preflight that
-        // the XCube Server does not accept.
-        if (src.startsWith(process.env.REACT_APP_XCUBE_URL ?? 'http://localhost:8080')) {
+        if (isPublicXcubeTile(src)) {
           image.src = src;
           return;
         }
-        const token = session.getToken();
         const controller = new AbortController(); controllers.add(controller);
-        fetch(src, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal })
-          .then(async (response) => { if (!response.ok) { let body: any = {}; try { body = await response.json(); } catch { /* binary error */ } if (response.status === 401) session.clearIfCurrent(token); throw errorFromBody(response.status, body, response.statusText); } return response.blob(); })
+        fetchTile(src, controller.signal)
+          .then(async (response) => { if (!response.ok) { let body: any = {}; try { body = await response.json(); } catch { /* binary error */ } throw errorFromBody(response.status, body, response.statusText); } return response.blob(); })
           .then((blob) => { drawn = true; const objectUrl = URL.createObjectURL(blob); objectUrls.add(objectUrl); const release = () => { URL.revokeObjectURL(objectUrl); objectUrls.delete(objectUrl); }; image.onload = release; image.onerror = release; image.src = objectUrl; })
           .catch((error) => {
             if (error?.name !== 'AbortError') failed(error instanceof ApiError ? error : new ApiError(0, 'NETWORK_ERROR', 'Tile request failed'));

@@ -17,6 +17,11 @@ export const errorFromBody = (status: number, body: ApiErrorBody | null | undefi
 export const isAuthRejection = (error: unknown): error is ApiError =>
   error instanceof ApiError && (error.status === 401 || error.status === 403);
 
+/** True when the URL is on the page's own origin (relative paths such as the tile gateway `/xcube/...`). */
+export const isSameOrigin = (url: string) => {
+  try { return new URL(url, window.location.href).origin === window.location.origin; } catch { return false; }
+};
+
 const TOKEN_KEY = 'xcube-access-token';
 const AUTH_API_BASE_URL = process.env.REACT_APP_AUTH_API_URL ?? 'http://localhost:8081';
 let refreshInFlight: Promise<string> | null = null;

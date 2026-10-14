@@ -1,5 +1,5 @@
 import { Project, TimePoint, ViewerAdapter, ZarrDataset, AiJob } from './viewerAdapter';
-import { request, requestBlob } from './httpClient';
+import { isSameOrigin, request, requestBlob, session } from './httpClient';
 export const BACKOFFICE_API_BASE_URL = process.env.REACT_APP_BACKOFFICE_API_URL ?? 'http://localhost:8082';
 export const XCUBE_API_BASE_URL = process.env.REACT_APP_XCUBE_URL ?? 'http://localhost:8080';
 type ProjectDto = { id: number; name: string; description?: string; createdAt: string; updatedAt: string; ownerUserId?: number; ownerUsername?: string; accessRole?: 'OWNER' | 'EDITOR' | 'VIEWER'; canEdit?: boolean; canDelete?: boolean; canShare?: boolean };
@@ -116,7 +116,8 @@ export const backofficeAdapter: ViewerAdapter & {
   getCoordinates(id, dimension) { return request(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${id}/coordinates/${encodeURIComponent(dimension)}`); },
   async getStatistics(id, variable, query) { const params = new URLSearchParams({ lon: String(query.lon), lat: String(query.lat), ...(query.time ? { time: query.time } : {}) }); const body = await request<any>(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${id}/statistics/${encodeURIComponent(variable)}?${params}`); return { value: typeof body?.result?.value === 'number' ? body.result.value : typeof body?.value === 'number' ? body.value : null }; },
   async getTimeseries(id, variable, input) { const body = await request<any>(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${id}/timeseries/${encodeURIComponent(variable)}`, { method: 'POST', body: JSON.stringify({ lon: input.lon, lat: input.lat, startDate: input.startDate ?? null, endDate: input.endDate ?? null, aggMethods: input.aggMethods ?? null, maxValids: input.maxValids ?? null }) }); return parseSeries(body); },
-  async checkXcubeStatus() { try { const response = await fetch(`${XCUBE_API_BASE_URL}/`); return response.ok; } catch { return false; } },
+  // The same-origin tile gateway (/xcube/main) needs the signed-in user's token; a direct main xcube does not.
+  async checkXcubeStatus() { try { const token = session.getToken(); const response = await fetch(`${XCUBE_API_BASE_URL}/`, { headers: token && isSameOrigin(XCUBE_API_BASE_URL) ? { Authorization: `Bearer ${token}` } : {} }); return response.ok; } catch { return false; } },
 };
 
 /** GET /storage/usage (S11): the signed-in user's own datacubes (not shared with them, not deleted). Display only. */
