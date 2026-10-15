@@ -12,6 +12,7 @@ const mockAdmin = {
   listUsers: jest.fn(), updateUser: jest.fn(), resetPassword: jest.fn(), deleteUser: jest.fn(), listAudit: jest.fn(),
   userSummaries: jest.fn(), setQuota: jest.fn(), listDatasets: jest.fn(), deleteDataset: jest.fn(), listProjects: jest.fn(),
   system: jest.fn(), listJobs: jest.fn(), cancelJob: jest.fn(),
+  listLogins: jest.fn(), listSessions: jest.fn(), revokeSession: jest.fn(), accessSummary: jest.fn(),
 };
 jest.mock('../api', () => ({ ...jest.requireActual('../api'), admin: mockAdmin }));
 
@@ -51,9 +52,9 @@ test('관리자가 아니면 화면 대신 이유를 보이고 관리자 API를 
   expect(mockAdmin.listUsers).not.toHaveBeenCalled();
 });
 
-test('사용자 탭: 탭 4개, 요약을 합친 표, 내 행은 위험 동작이 꺼지고 이유가 있다', async () => {
+test('사용자 탭: 탭 5개, 요약을 합친 표, 내 행은 위험 동작이 꺼지고 이유가 있다', async () => {
   renderAdmin();
-  expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['사용자', '데이터·작업', '시스템', '기록']);
+  expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['사용자', '데이터·작업', '시스템', '접속 기록', '기록']);
   await screen.findByTestId('admin-user-1');
   expect(document.title).toBe('관리자 · XCube');
   await waitFor(() => expect(mockAdmin.userSummaries).toHaveBeenCalledWith(['1', '2', '3']));
@@ -251,7 +252,7 @@ test('기록: 동작·대상·내용을 말로 보인다 (등급은 이름으로
 
 test('영어 화면도 같은 구조와 문장 짝을 쓴다', async () => {
   renderAdmin('/app/admin', 'en');
-  expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Users', 'Data & jobs', 'System', 'Record']);
+  expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Users', 'Data & jobs', 'System', 'Sign-ins', 'Record']);
   const me = await screen.findByTestId('admin-user-1');
   expect(within(me).getByRole('button', { name: 'Block boss' })).toHaveAccessibleDescription('Not available for your own account.');
   expect(within(me).getByText('You')).toBeInTheDocument();

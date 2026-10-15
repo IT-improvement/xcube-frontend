@@ -2,7 +2,7 @@
 // summaries and quotas, every user's data, projects and jobs, system state and the audit record. Same codes as the
 // real services (ADMIN_SELF_CHANGE, LAST_ADMIN). In memory only; real mode never uses this.
 import { ApiError } from '../api/httpClient';
-import type { AdminDataset, AdminJob, AdminJobFilter, AdminJobList, AdminProject, AdminSystem, AdminUser, AdminUserFilter, AdminUserSummary, AuditEntry, Paged } from '../api/adminApi';
+import type { AccessSession, AccessSummary, AdminDataset, AdminJob, AdminJobFilter, AdminJobList, AdminProject, AdminSystem, AdminUser, AdminUserFilter, AdminUserSummary, AuditEntry, LoginEvent, LoginEventFilter, Paged } from '../api/adminApi';
 
 const GIB = 1024 ** 3;
 const MIB = 1024 ** 2;
@@ -84,6 +84,37 @@ export function createAdminDemo() {
   };
   const slice = <T,>(items: T[], page = 0, size = 50): Paged<T> => ({ items: items.slice(page * size, page * size + size), total: items.length });
   const has = (text: string | null | undefined, needle: string) => !!text && text.toLowerCase().includes(needle);
+  type Client = Pick<LoginEvent, 'device' | 'os' | 'browser' | 'bot'>;
+  const MAC: Client = { device: 'DESKTOP', os: 'macOS', browser: 'Chrome', bot: false };
+  const PHONE: Client = { device: 'MOBILE', os: 'iOS', browser: 'Safari', bot: false };
+  const WIN: Client = { device: 'DESKTOP', os: 'Windows', browser: 'Edge', bot: false };
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+  let loginId = 0;
+  const login = (event: string, who: string | null, ip: string, country: string | null, client: Client, at: string, reason: string | null = null): LoginEvent => {
+    const user = users.find((item) => item.loginId === who);
+    return { id: String(++loginId), userId: user?.id ?? null, loginId: who, event, reason, ip, country, ...client, userAgent: null, createdAt: at };
+  };
+  const logins: LoginEvent[] = [
+    ...Array.from({ length: 23 }, (_, index) => login('LOGIN_FAIL', index % 3 ? 'admin' : 'root', '198.51.100.66', 'RU', { device: 'BOT', os: null, browser: 'curl', bot: true }, minutesAgo(95 - index * 0.3), 'UNKNOWN_ID')),
+    login('LOGIN_SUCCESS', 'kim.water', '203.0.113.24', 'KR', PHONE, minutesAgo(40)),
+    login('LOGIN_FAIL', 'kim.water', '203.0.113.24', 'KR', PHONE, minutesAgo(41), 'BAD_PASSWORD'),
+    login('LOGIN_SUCCESS', 'designqa', '203.0.113.5', 'KR', MAC, minutesAgo(12)),
+    login('LOGOUT', 'lee.gis', '203.0.113.31', 'KR', WIN, minutesAgo(200)),
+    login('LOGIN_SUCCESS', 'lee.gis', '203.0.113.31', 'KR', WIN, minutesAgo(260)),
+    login('LOGIN_FAIL', 'research.en', '192.0.2.10', 'US', MAC, minutesAgo(600), 'BLOCKED'),
+    login('PASSWORD_CHANGE', 'viewerqa', '203.0.113.8', 'KR', MAC, minutesAgo(1500)),
+    login('REFRESH_REUSE', 'park.county', '203.0.113.77', 'KR', PHONE, minutesAgo(2900)),
+    login('ADMIN_PASSWORD_RESET', 'intern01', '203.0.113.5', 'KR', MAC, minutesAgo(3000)),
+  ].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+  const session = (familyId: string, who: string, ip: string, country: string | null, client: Client, started: number, refreshed: number, current = false): AccessSession => {
+    const user = users.find((item) => item.loginId === who);
+    return { familyId, userId: user?.id ?? null, loginId: who, name: user?.name ?? null, role: user?.role ?? null, startedAt: minutesAgo(started), lastRefreshAt: minutesAgo(refreshed), expiresAt: minutesAgo(refreshed - 120), ip, country, ...client, current };
+  };
+  const sessions: AccessSession[] = [
+    session('5b0c1d4e-0000-4000-8000-000000000001', 'designqa', '203.0.113.5', 'KR', MAC, 12, 2, true),
+    session('5b0c1d4e-0000-4000-8000-000000000002', 'kim.water', '203.0.113.24', 'KR', PHONE, 40, 6),
+    session('5b0c1d4e-0000-4000-8000-000000000003', 'lee.gis', '10.42.0.1', null, WIN, 95, 31),
+  ];
 
   return {
     async listUsers(filter: AdminUserFilter = {}, self?: Self): Promise<Paged<AdminUser>> {
@@ -187,6 +218,54 @@ export function createAdminDemo() {
       const statuses = filter.status ? filter.status.split(',') : [];
       const items = jobs.filter((job) => (!statuses.length || statuses.includes(job.status)) && (!filter.ownerId || job.ownerId === filter.ownerId));
       return { items: items.map((job) => ({ ...job })), unavailable: [] };
+    },
+    // ---- Access record (MON1): documentation IP ranges only (RFC 5737), never real addresses ----
+    async listLogins(filter: LoginEventFilter = {}): Promise<Paged<LoginEvent>> {
+      await pause();
+      const needle = filter.q?.trim().toLowerCase() ?? '';
+      const events = filter.event ? filter.event.split(',') : [];
+      const from = filter.from ? new Date(`${filter.from}T00:00:00+09:00`).getTime() : -Infinity;
+      const to = filter.to ? new Date(`${filter.to}T00:00:00+09:00`).getTime() + 86_400_000 : Infinity;
+      return slice(logins.filter((item) => (!needle || has(item.loginId, needle) || has(item.ip, needle))
+        && (!events.length || events.includes(item.event))
+        && new Date(item.createdAt ?? 0).getTime() >= from && new Date(item.createdAt ?? 0).getTime() < to).map((item) => ({ ...item })), filter.page, filter.size);
+    },
+    async listSessions(): Promise<AccessSession[]> {
+      await pause();
+      return sessions.map((item) => ({ ...item }));
+    },
+    async revokeSession(familyId: string): Promise<void> {
+      await pause();
+      const index = sessions.findIndex((item) => item.familyId === familyId);
+      if (index < 0) throw new ApiError(404, 'SESSION_NOT_FOUND', '로그인 중인 세션을 찾을 수 없습니다.');
+      const [removed] = sessions.splice(index, 1);
+      record('SESSION_REVOKE', 'USER', removed.userId ?? '', { loginId: removed.loginId, familyId, ip: removed.ip });
+    },
+    async accessSummary(days = 7): Promise<AccessSummary> {
+      await pause(300);
+      const today = new Date();
+      const daily = Array.from({ length: days }, (_, index) => {
+        const date = new Date(today.getTime() - (days - 1 - index) * 86_400_000);
+        const success = [6, 9, 4, 11, 8, 3, 7][index % 7];
+        const fail = index === days - 1 ? 26 : [1, 0, 2, 1, 0, 3, 1][index % 7];
+        return { date: date.toISOString().slice(0, 10), success, fail, uniqueIps: Math.max(1, Math.round(success * 0.6) + (fail > 5 ? 1 : 0)) };
+      });
+      const success = daily.reduce((sum, day) => sum + day.success, 0);
+      const fail = daily.reduce((sum, day) => sum + day.fail, 0);
+      return {
+        days, zone: 'Asia/Seoul',
+        totals: { success, fail, uniqueIps: 9, uniqueUsers: 5, botEvents: 2, activeSessions: sessions.length },
+        daily,
+        countries: [{ country: 'KR', success: success - 2, fail: 6 }, { country: 'RU', success: 0, fail: 23 }, { country: 'US', success: 2, fail: 1 }, { country: null, success: 0, fail: fail - 30 > 0 ? fail - 30 : 0 }].filter((item) => item.success + item.fail > 0),
+        topFailedIps: [
+          { ip: '198.51.100.66', country: 'RU', fails: 23, successes: 0, lastAt: iso(0, 2) },
+          { ip: '203.0.113.24', country: 'KR', fails: 4, successes: 6, lastAt: iso(1, 5) },
+          { ip: '192.0.2.10', country: 'US', fails: 1, successes: 2, lastAt: iso(3, 7) },
+        ],
+        warnings: [{ ip: '198.51.100.66', country: 'RU', count: 23, from: iso(0, 2), to: new Date(new Date(iso(0, 2)).getTime() + 7 * 60_000).toISOString() }],
+        rule: { failCount: 20, windowMinutes: 10 },
+        retentionDays: 90,
+      };
     },
     async cancelJob(job: Pick<AdminJob, 'id' | 'type'>): Promise<void> {
       await pause();

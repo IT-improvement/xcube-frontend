@@ -13,7 +13,7 @@ import { createAiDemo } from './aiDemo';
 import { authApi, ProfileUpdate, User } from '../api/authApi';
 import { StorageUsage, storageApi } from '../api/backofficeApi';
 import { accountDemo } from './accountDemo';
-import { adminApi, AdminDataset, AdminJob, AdminJobFilter, AdminJobList, AdminProject, AdminSystem, AdminUser, AdminUserFilter, AdminUserSummary, AuditEntry, Paged } from '../api/adminApi';
+import { AccessSession, AccessSummary, adminApi, AdminDataset, AdminJob, AdminJobFilter, AdminJobList, AdminProject, AdminSystem, AdminUser, AdminUserFilter, AdminUserSummary, AuditEntry, LoginEvent, LoginEventFilter, Paged } from '../api/adminApi';
 import { createAdminDemo } from './adminDemo';
 import { formatDate as i18nFormatDate, getLanguage, translate } from '../i18n';
 import type { Lang } from '../i18n';
@@ -272,8 +272,12 @@ export const admin = {
   system: (): Promise<AdminSystem> => (useMockApi ? adminDemo.system() : adminApi.system()),
   listJobs: (filter: AdminJobFilter = {}): Promise<AdminJobList> => (useMockApi ? adminDemo.listJobs(filter) : adminApi.listJobs(filter)),
   cancelJob: (job: Pick<AdminJob, 'id' | 'type'>): Promise<void> => (useMockApi ? adminDemo.cancelJob(job) : adminApi.cancelJob(job)),
+  listLogins: (filter: LoginEventFilter = {}): Promise<Paged<LoginEvent>> => (useMockApi ? adminDemo.listLogins(filter) : adminApi.listLogins(filter)),
+  listSessions: (): Promise<AccessSession[]> => (useMockApi ? adminDemo.listSessions() : adminApi.listSessions()),
+  revokeSession: (familyId: string): Promise<void> => (useMockApi ? adminDemo.revokeSession(familyId) : adminApi.revokeSession(familyId)),
+  accessSummary: (days = 7): Promise<AccessSummary> => (useMockApi ? adminDemo.accessSummary(days) : adminApi.accessSummary(days)),
 };
-export type { AdminDataset, AdminJob, AdminJobList, AdminProject, AdminSystem, AdminUser, AdminUserSummary, AuditEntry, Paged };
+export type { AccessSession, AccessSummary, LoginEvent, AdminDataset, AdminJob, AdminJobList, AdminProject, AdminSystem, AdminUser, AdminUserSummary, AuditEntry, Paged };
 
 export const isFusionJob = (job: Pick<JobSummary, 'type'>) => job.type === 'FUSION';
 export const isAiJob = (job: Pick<JobSummary, 'type'>) => job.type === 'AI_WATER';

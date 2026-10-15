@@ -48,6 +48,30 @@ export type AuditEntry = {
   targetType: string | null; targetId: string | null; detail: Record<string, unknown> | null; createdAt: string | null;
 };
 
+/** Sign-in record (MON1, MON-contract §2). `event`: LOGIN_SUCCESS · LOGIN_FAIL · LOGOUT · REFRESH_REUSE · PASSWORD_CHANGE · ADMIN_PASSWORD_RESET. */
+export type LoginEvent = {
+  id: string; userId: string | null; loginId: string | null; event: string; reason: string | null;
+  ip: string | null; country: string | null; device: string | null; os: string | null; browser: string | null; bot: boolean;
+  userAgent: string | null; createdAt: string | null;
+};
+export type LoginEventFilter = { q?: string; event?: string; from?: string; to?: string; page?: number; size?: number };
+/** A signed-in session = one refresh-token family. `current` marks the admin's own session. */
+export type AccessSession = {
+  familyId: string; userId: string | null; loginId: string | null; name: string | null; role: string | null;
+  startedAt: string | null; lastRefreshAt: string | null; expiresAt: string | null;
+  ip: string | null; country: string | null; device: string | null; os: string | null; browser: string | null; bot: boolean; current: boolean;
+};
+export type AccessSummary = {
+  days: number; zone: string | null;
+  totals: { success: number; fail: number; uniqueIps: number; uniqueUsers: number; botEvents: number; activeSessions: number };
+  daily: Array<{ date: string; success: number; fail: number; uniqueIps: number }>;
+  countries: Array<{ country: string | null; success: number; fail: number }>;
+  topFailedIps: Array<{ ip: string; country: string | null; fails: number; successes: number; lastAt: string | null }>;
+  warnings: Array<{ ip: string; country: string | null; count: number; from: string | null; to: string | null }>;
+  rule: { failCount: number; windowMinutes: number };
+  retentionDays: number | null;
+};
+
 type Raw = Record<string, any>;
 const str = (value: unknown): string | null => (value == null || value === '' ? null : String(value));
 const num = (value: unknown): number | null => {
@@ -169,6 +193,60 @@ export const toAuditEntry = (raw: Raw): AuditEntry => ({
   createdAt: str(raw.createdAt),
 });
 
+export const toLoginEvent = (raw: Raw): LoginEvent => ({
+  id: String(raw.id ?? ''),
+  userId: str(raw.userId),
+  loginId: str(raw.loginId),
+  event: String(raw.event ?? ''),
+  reason: str(raw.reason),
+  ip: str(raw.ip),
+  country: str(raw.country),
+  device: str(raw.device),
+  os: str(raw.os),
+  browser: str(raw.browser),
+  bot: bool(raw.bot) ?? false,
+  userAgent: str(raw.userAgent),
+  createdAt: str(raw.createdAt),
+});
+
+export const toAccessSession = (raw: Raw): AccessSession => ({
+  familyId: String(raw.familyId ?? ''),
+  userId: str(raw.userId),
+  loginId: str(raw.loginId),
+  name: str(raw.name),
+  role: str(raw.role),
+  startedAt: str(raw.startedAt),
+  lastRefreshAt: str(raw.lastRefreshAt),
+  expiresAt: str(raw.expiresAt),
+  ip: str(raw.ip),
+  country: str(raw.country),
+  device: str(raw.device),
+  os: str(raw.os),
+  browser: str(raw.browser),
+  bot: bool(raw.bot) ?? false,
+  current: bool(raw.current) ?? false,
+});
+
+const list = (value: unknown): Raw[] => (Array.isArray(value) ? value : []);
+export const toAccessSummary = (raw: Raw | null | undefined): AccessSummary => {
+  const body = raw ?? {};
+  const totals = (body.totals ?? {}) as Raw;
+  return {
+    days: num(body.days) ?? 7,
+    zone: str(body.zone),
+    totals: {
+      success: num(totals.success) ?? 0, fail: num(totals.fail) ?? 0, uniqueIps: num(totals.uniqueIps) ?? 0,
+      uniqueUsers: num(totals.uniqueUsers) ?? 0, botEvents: num(totals.botEvents) ?? 0, activeSessions: num(totals.activeSessions) ?? 0,
+    },
+    daily: list(body.daily).map((day) => ({ date: String(day.date ?? ''), success: num(day.success) ?? 0, fail: num(day.fail) ?? 0, uniqueIps: num(day.uniqueIps) ?? 0 })),
+    countries: list(body.countries).map((item) => ({ country: str(item.country), success: num(item.success) ?? 0, fail: num(item.fail) ?? 0 })),
+    topFailedIps: list(body.topFailedIps).map((item) => ({ ip: String(item.ip ?? ''), country: str(item.country), fails: num(item.fails) ?? 0, successes: num(item.successes) ?? 0, lastAt: str(item.lastAt) })),
+    warnings: list(body.warnings).map((item) => ({ ip: String(item.ip ?? ''), country: str(item.country), count: num(item.count) ?? 0, from: str(item.from), to: str(item.to) })),
+    rule: { failCount: num(body.rule?.failCount) ?? 20, windowMinutes: num(body.rule?.windowMinutes) ?? 10 },
+    retentionDays: num(body.retentionDays),
+  };
+};
+
 /** Service, base URL and its prefixed admin jobs path (ADM1 report §4). */
 const JOB_SERVICES: Array<[AdminJobService, string, string]> = [
   ['GENERATION', GENERATION_API_BASE_URL, '/api/v1/admin/generation/jobs'],
@@ -216,6 +294,23 @@ export const adminApi = {
     items.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
     // Paged by the larger of the two lists (each service pages its own record).
     return { items, total: Math.max(0, ...done.map(({ page: result }) => result.total)) };
+  },
+
+  // ---- Access record (auth, /api/v1/admin/access/…, MON1) ----
+  async listLogins(filter: LoginEventFilter = {}): Promise<Paged<LoginEvent>> {
+    const body = await request<unknown>(AUTH_API_BASE_URL, `/api/v1/admin/access/logins${query({ q: filter.q?.trim(), event: filter.event, from: filter.from, to: filter.to, page: filter.page ?? 0, size: filter.size ?? 50 })}`);
+    const page = readPage(body, 'events');
+    return { items: page.items.map(toLoginEvent), total: page.total };
+  },
+  async listSessions(): Promise<AccessSession[]> {
+    return readPage(await request<unknown>(AUTH_API_BASE_URL, '/api/v1/admin/access/sessions'), 'sessions').items.map(toAccessSession);
+  },
+  /** Forced sign-out: the session's refresh tokens end; its current access token runs out within 15 minutes. */
+  async revokeSession(familyId: string): Promise<void> {
+    await request<unknown>(AUTH_API_BASE_URL, `/api/v1/admin/access/sessions/${id(familyId)}/revoke`, { method: 'POST' });
+  },
+  async accessSummary(days = 7): Promise<AccessSummary> {
+    return toAccessSummary(await request<Raw>(AUTH_API_BASE_URL, `/api/v1/admin/access/summary?days=${days}`));
   },
 
   // ---- Backoffice (/api/v1/admin/…) ----
@@ -267,3 +362,10 @@ export const adminApi = {
 
 /** Grafana (ADM3) behind the same sign-in, when the deployment sets its address. */
 export const GRAFANA_URL = process.env.REACT_APP_GRAFANA_URL ?? '';
+/** Grafana's provisioned dashboard uid for external access (MON2, MON-contract §5 ④). */
+export const GRAFANA_ACCESS_DASHBOARD_UID = 'xcube-access';
+/** The external-access dashboard, or '' when Grafana is not configured (read at call time so tests can set it). */
+export function grafanaAccessUrl(base: string | undefined = process.env.REACT_APP_GRAFANA_URL) {
+  if (!base) return '';
+  return `${base.replace(/\/+$/, '')}/d/${GRAFANA_ACCESS_DASHBOARD_UID}`;
+}

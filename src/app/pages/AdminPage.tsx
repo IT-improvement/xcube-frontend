@@ -8,14 +8,15 @@ import UsersTab from './admin/UsersTab';
 import DataTab from './admin/DataTab';
 import AuditTab from './admin/AuditTab';
 import SystemTab from './admin/SystemTab';
+import AccessTab from './admin/AccessTab';
 // The management screens' text (UR-53 stage 2) loads with these pages, not with the main bundle.
 import '../../i18n/app';
 import './admin/admin.css';
 
-type Tab = 'users' | 'data' | 'system' | 'audit';
-const TABS: Tab[] = ['users', 'data', 'system', 'audit'];
+type Tab = 'users' | 'data' | 'system' | 'access' | 'audit';
+const TABS: Tab[] = ['users', 'data', 'system', 'access', 'audit'];
 
-/** S13 관리자 (UR-59): accounts, every user's data and jobs, system state and the audit record. ADMIN only. */
+/** S13 관리자 (UR-59, UR-60): accounts, every user's data and jobs, system state, the access record and the audit record. ADMIN only. */
 export default function AdminPage() {
   const { t } = useLanguage();
   useDocumentTitle(t('titles.admin'));
@@ -47,15 +48,16 @@ function AdminScreen() {
             idPrefix="admin"
             value={tab}
             // A new tab starts without the old tab's filters.
-            onChange={(next) => setTab(next, ['q', 'role', 'status', 'page', 'view', 'kind', 'owner'])}
-            items={[{ id: 'users', label: t('admin.tabs.users') }, { id: 'data', label: t('admin.tabs.data') }, { id: 'system', label: t('admin.tabs.system') }, { id: 'audit', label: t('admin.tabs.audit') }]}
+            onChange={(next) => setTab(next, ['q', 'role', 'status', 'page', 'view', 'kind', 'owner', 'event', 'from', 'to'])}
+            items={[{ id: 'users', label: t('admin.tabs.users') }, { id: 'data', label: t('admin.tabs.data') }, { id: 'system', label: t('admin.tabs.system') }, { id: 'access', label: t('admin.tabs.access') }, { id: 'audit', label: t('admin.tabs.audit') }]}
           />
         </div>
         <TabPanel idPrefix="admin" value={tab}>
           {tab === 'users' ? <UsersTab onToast={toast.show} />
             : tab === 'data' ? <DataTab directory={directory} onToast={toast.show} />
               : tab === 'system' ? <SystemTab directory={directory} />
-                : <AuditTab directory={directory} />}
+                : tab === 'access' ? <AccessTab onToast={toast.show} />
+                  : <AuditTab directory={directory} />}
         </TabPanel>
       </Card>
       {toast.node}
