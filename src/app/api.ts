@@ -13,6 +13,8 @@ import { createAiDemo } from './aiDemo';
 import { authApi, ProfileUpdate, User } from '../api/authApi';
 import { StorageUsage, storageApi } from '../api/backofficeApi';
 import { accountDemo } from './accountDemo';
+import { adminApi, AdminDataset, AdminJob, AdminJobFilter, AdminJobList, AdminProject, AdminSystem, AdminUser, AdminUserFilter, AdminUserSummary, AuditEntry, Paged } from '../api/adminApi';
+import { createAdminDemo } from './adminDemo';
 import { formatDate as i18nFormatDate, getLanguage, translate } from '../i18n';
 import type { Lang } from '../i18n';
 
@@ -252,6 +254,26 @@ export const account = {
   changePassword: (input: { currentPassword: string; newPassword: string }): Promise<void> => (useMockApi ? accountDemo.changePassword(input) : authApi.changePassword(input)),
   storageUsage: (): Promise<StorageUsage> => (useMockApi ? accountDemo.storageUsage() : storageApi.usage()),
 };
+
+/** Admin (UR-59, S13): every call needs ADMIN. Demo mode answers locally; `self` lets the demo put the signed-in account in its list. */
+const adminDemo = createAdminDemo();
+type Self = { id: string | number; email?: string; name?: string } | null | undefined;
+export const admin = {
+  listUsers: (filter: AdminUserFilter = {}, self?: Self): Promise<Paged<AdminUser>> => (useMockApi ? adminDemo.listUsers(filter, self) : adminApi.listUsers(filter)),
+  updateUser: (userId: string, patch: { role?: string; status?: 'ACTIVE' | 'BLOCKED' }): Promise<AdminUser> => (useMockApi ? adminDemo.updateUser(userId, patch) : adminApi.updateUser(userId, patch)),
+  resetPassword: (userId: string): Promise<{ temporaryPassword: string }> => (useMockApi ? adminDemo.resetPassword(userId) : adminApi.resetPassword(userId)),
+  deleteUser: (userId: string): Promise<void> => (useMockApi ? adminDemo.deleteUser(userId) : adminApi.deleteUser(userId)),
+  listAudit: (page = 0, size = 50): Promise<Paged<AuditEntry>> => (useMockApi ? adminDemo.listAudit(page, size) : adminApi.listAudit(page, size)),
+  userSummaries: (userIds: string[]): Promise<AdminUserSummary[]> => (useMockApi ? adminDemo.userSummaries(userIds) : adminApi.userSummaries(userIds)),
+  setQuota: (userId: string, quotaBytes: number | null): Promise<void> => (useMockApi ? adminDemo.setQuota(userId, quotaBytes) : adminApi.setQuota(userId, quotaBytes)),
+  listDatasets: (filter: { q?: string; ownerId?: string; kind?: string; page?: number; size?: number } = {}): Promise<Paged<AdminDataset>> => (useMockApi ? adminDemo.listDatasets(filter) : adminApi.listDatasets(filter)),
+  deleteDataset: (datasetId: string): Promise<void> => (useMockApi ? adminDemo.deleteDataset(datasetId) : adminApi.deleteDataset(datasetId)),
+  listProjects: (filter: { q?: string; page?: number; size?: number } = {}): Promise<Paged<AdminProject>> => (useMockApi ? adminDemo.listProjects(filter) : adminApi.listProjects(filter)),
+  system: (): Promise<AdminSystem> => (useMockApi ? adminDemo.system() : adminApi.system()),
+  listJobs: (filter: AdminJobFilter = {}): Promise<AdminJobList> => (useMockApi ? adminDemo.listJobs(filter) : adminApi.listJobs(filter)),
+  cancelJob: (job: Pick<AdminJob, 'id' | 'type'>): Promise<void> => (useMockApi ? adminDemo.cancelJob(job) : adminApi.cancelJob(job)),
+};
+export type { AdminDataset, AdminJob, AdminJobList, AdminProject, AdminSystem, AdminUser, AdminUserSummary, AuditEntry, Paged };
 
 export const isFusionJob = (job: Pick<JobSummary, 'type'>) => job.type === 'FUSION';
 export const isAiJob = (job: Pick<JobSummary, 'type'>) => job.type === 'AI_WATER';

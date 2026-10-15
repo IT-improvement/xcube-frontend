@@ -3,6 +3,7 @@ import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, userMessage } from '../../api/httpClient';
 import { useAuth } from '../../auth/AuthProvider';
+import { accountRoleLabel, toAccountRole } from '../../auth/roles';
 import { Alert, Button, LanguageSwitch, TextField } from '../../components/ui';
 import { Badge, PageHeader, Skeleton, useToast } from '../../components/ui/kit';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
@@ -68,6 +69,7 @@ function ProfileSection({ onSaved }: { onSaved: (text: string) => void }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [focusTick, setFocusTick] = useState(0);
   useEffect(() => { if (focusTick) formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(); }, [focusTick]);
+  const role = toAccountRole(user?.role);
   const trimmed = name.trim();
   const invalid = !trimmed ? t('settings.profile.nameRequired') : trimmed.length > NAME_MAX ? t('settings.profile.nameTooLong', { count: trimmed.length }) : undefined;
   const unchanged = trimmed === current;
@@ -103,6 +105,14 @@ function ProfileSection({ onSaved }: { onSaved: (text: string) => void }) {
           <span className="settings__label">{t('settings.profile.username')}</span>
           <span className="settings__value">{user?.email ?? '—'}</span>
           <span className="xc-hint">{t('settings.profile.usernameHelp')}</span>
+        </div>
+        {/* The account role (UR-59) is read-only here: an admin sets it on the admin page (S13). */}
+        <div className="settings__readonly" data-testid="settings-role">
+          <span className="settings__label">{t('settings.profile.role')}</span>
+          <span className="settings__value">{user?.role ? accountRoleLabel(user.role, lang) : '—'}</span>
+          <span className="xc-hint">
+            {role ? `${t(`settings.profile.roleHelp.${role}`)} ` : ''}{t('settings.profile.roleReadonly')}
+          </span>
         </div>
         <TextField
           label={t('settings.profile.name')}

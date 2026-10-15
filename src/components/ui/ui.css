@@ -161,3 +161,9 @@
 .xc-lang--block { display: flex; }
 .xc-lang--block button { flex: 1 1 0; }
 @media (pointer: coarse), (max-width: 767px) { .xc-lang button { height: 36px; padding: 0 12px; } }
+
+/* An action the account role cannot use (UR-59): the disabled button and, on pages, its reason beside it. */
+.xc-locked { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; max-width: 100%; }
+.xc-locked--block { display: grid; width: 100%; }
+.xc-locked__reason { font: var(--text-caption); color: var(--fb-ink-3); word-break: keep-all; overflow-wrap: break-word; }
+.xc-btn[aria-disabled='true']:hover { background: var(--fb-sunken); }

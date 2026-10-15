@@ -43,6 +43,7 @@ const ko = {
     addData: '데이터 추가',
     viewer: 'Viewer',
     settings: '계정 설정',
+    admin: '관리자',
   },
   notFound: {
     text: '주소를 확인하거나 홈으로 이동해 주세요.',
@@ -57,6 +58,7 @@ const ko = {
       projects: '프로젝트',
       jobs: '작업',
       fusion: '수식 융합',
+      admin: '관리자',
     },
     newTab: '(새 탭)',
     mainNav: '주 메뉴',
@@ -70,6 +72,26 @@ const ko = {
     menuItems: '메뉴 항목',
     userFallback: '사용자',
     settings: '계정 설정',
+    /** Why a disabled top-bar action is off (also its tooltip). */
+    addDataLocked: '데이터 추가 (지금 등급에서는 쓸 수 없음)',
+  },
+  /** Account roles (UR-59): names and the sentence next to anything the role cannot do. Main part: the Viewer uses it too. */
+  accountRole: {
+    name: {
+      USER: '유저',
+      PROJECT_USER: '프로젝트 유저',
+      PROJECT_MANAGER: '프로젝트 관리자',
+      ADMIN: '관리자',
+    },
+    reason: {
+      PROJECT_USER: '관리자에게 프로젝트 유저 등급을 요청하세요.',
+      PROJECT_MANAGER: '관리자에게 프로젝트 관리자 등급을 요청하세요.',
+      ADMIN: '관리자만 쓸 수 있습니다.',
+    },
+    /** S4 opened by address with a role below PROJECT_USER. */
+    addDataTitle: '지금 등급으로는 데이터를 추가할 수 없습니다',
+    addDataText: '{role} 등급은 공유받은 프로젝트와 데이터를 보기만 합니다.',
+    toData: '데이터 목록으로',
   },
   landing: {
     nav: {
@@ -233,6 +255,10 @@ const ko = {
       NOTHING_TO_UPDATE: '바꿀 내용이 없습니다.',
       INVALID_NAME: '이름은 {min}자 이상 {max}자 이하로 입력하세요.',
       INVALID_LANGUAGE: '지원하지 않는 언어입니다.',
+      // Account roles and the admin screen (UR-59, ADM contract). ROLE_FORBIDDEN is worded from params.required in userMessage.
+      ROLE_FORBIDDEN: '지금 등급에서는 할 수 없는 작업입니다. 관리자에게 등급을 요청하세요.',
+      ADMIN_SELF_CHANGE: '내 계정의 관리자 등급을 내리거나 차단·탈퇴할 수 없습니다.',
+      LAST_ADMIN: '관리자가 한 명 이상 남아 있어야 합니다.',
     },
   },
 };

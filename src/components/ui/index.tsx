@@ -31,6 +31,23 @@ export function ButtonAnchor({ variant, size, block, className, children, ...pro
   return <a className={buttonClass({ variant, size, block }, className)} {...props}>{children}</a>;
 }
 
+/**
+ * An action the account role cannot use (UR-59): shown, never hidden, but off. It stays focusable (`aria-disabled`)
+ * so keyboard and screen-reader users reach the reason, which is its description and tooltip. `showReason` also
+ * prints the reason next to it (pages); without it the reason is screen-reader text (tight bars, icon rows).
+ */
+export function LockedButton({ reason, showReason, variant, size, block, className, wrapClassName, children, label }: ButtonStyle & { reason: string; showReason?: boolean; className?: string; wrapClassName?: string; children: ReactNode; label?: string }) {
+  const id = useId();
+  return (
+    <span className={['xc-locked', showReason && 'xc-locked--shown', block && 'xc-locked--block', wrapClassName].filter(Boolean).join(' ')} title={reason}>
+      <button type="button" className={buttonClass({ variant, size, block }, className)} aria-disabled="true" aria-label={label} aria-describedby={id} onClick={(event) => event.preventDefault()}>
+        {children}
+      </button>
+      <span id={id} className={showReason ? 'xc-locked__reason' : 'sr-only'}>{reason}</span>
+    </span>
+  );
+}
+
 export type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & { label: string; help?: string; error?: string };
 
 export function TextField({ label, help, error, type = 'text', id, className, ...props }: TextFieldProps) {

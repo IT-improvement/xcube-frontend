@@ -8,6 +8,7 @@ import { Project, ZarrDataset } from "../../api/viewerAdapter";
 import { appApi, canEditProject } from "../../app/api";
 import { useLanguage } from "../../i18n";
 import "../../i18n/viewer";
+import { NEEDS, useRoleGate } from "../../auth/roles";
 
 type Mode = "menu" | "create";
 
@@ -60,8 +61,11 @@ export default function ProjectQuickMenu({
     if (mode === "create") nameRef.current?.focus();
   }, [mode]);
 
+  // UR-59: a new project needs PROJECT_MANAGER, linking PROJECT_USER (on top of the project's edit permission).
+  const gate = useRoleGate();
+  const createLocked = gate.reason(NEEDS.manageProjects);
   // Why "add to project" is unavailable, or "" when it can run.
-  const linkBlocked = !dataset
+  const linkBlocked = gate.reason(NEEDS.createData) || (!dataset
     ? t("viewer.project.needDataset")
     : !project
       ? t("viewer.project.needProject")
@@ -69,7 +73,7 @@ export default function ProjectQuickMenu({
         ? t("viewer.project.noPermission")
         : inProject
           ? t("viewer.project.already")
-          : "";
+          : "");
 
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -144,6 +148,8 @@ export default function ProjectQuickMenu({
               <li>
                 <button
                   type="button"
+                  disabled={!!createLocked}
+                  aria-describedby="vx-pmenu-create-hint"
                   onClick={() => {
                     setMode("create");
                     setError("");
@@ -152,7 +158,7 @@ export default function ProjectQuickMenu({
                   <FolderPlus size={16} aria-hidden="true" />
                   <span>
                     {t("viewer.project.create")}
-                    <small>{t("viewer.project.createHint")}</small>
+                    <small id="vx-pmenu-create-hint">{createLocked || t("viewer.project.createHint")}</small>
                   </span>
                 </button>
               </li>

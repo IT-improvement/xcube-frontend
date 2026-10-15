@@ -4,7 +4,8 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { DryRun, FormulaError, FusionBinding, FusionRequest, Normalization } from '../../api/analysisApi';
 import { blockerCode } from '../../api/analysisApi';
 import { userMessage } from '../../api/httpClient';
-import { Alert, Button, ButtonLink, TextField } from '../../components/ui';
+import { Alert, Button, ButtonLink, LockedButton, TextField } from '../../components/ui';
+import { accountRoleLabel, NEEDS, useRoleGate } from '../../auth/roles';
 import { Badge, Card, PageHeader, Skeleton, useToast } from '../../components/ui/kit';
 import { appApi, canEditProject, fusion, isOwned, ZarrDataset } from '../api';
 import { apiId, asFusionRequest, blockerText, defaultName, EXTENT_LABEL, formatBytes, GRID_LABEL, PERIOD_LABEL, AGG_LABEL, RESAMPLING_LABEL, TIME_LABEL } from '../fusion';
@@ -118,6 +119,9 @@ export default function FusionPage() {
   const fromJob = params.get('from');
   const state = (location.state as { request?: unknown } | null)?.request;
   const datasets = useLoad(() => appApi.listDatasets());
+  // UR-59: running band math needs PROJECT_USER. The steps stay usable; the run button is off with the reason.
+  const gate = useRoleGate();
+  const runLocked = gate.reason(NEEDS.createData);
   const projects = useLoad(() => appApi.listProjects());
   const [step, setStep] = useState(0);
   const [rows, setRows] = useState<BindingRow[]>([emptyRow('A'), emptyRow('B')]);
@@ -266,6 +270,7 @@ export default function FusionPage() {
     <div className="page-stack wizard fusion">
       {/* Band math is a menu of its own, so no "back to data" link; the steps read as ticks on one rule. */}
       <PageHeader title={t('titles.fusion')} description={t('fusion.description')} />
+      {runLocked && <Alert tone="info">{t('gate.fusionText', { role: accountRoleLabel(gate.role, lang) })} {runLocked}</Alert>}
       {prefillError && <Alert tone="warning" role="alert">{prefillError}</Alert>}
       <ol className="step-scale" aria-label={t('fusion.steps.label')}>
         {STEPS.map((key, index) => (
@@ -458,7 +463,7 @@ export default function FusionPage() {
           {step < STEPS.length - 1 ? (
             <Button onClick={next}>{t('fusion.next')}<ArrowRight size={16} aria-hidden /></Button>
           ) : (
-            <Button onClick={run} disabled={!canRun}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />{t('fusion.submitting')}</> : t('fusion.run')}</Button>
+            runLocked ? <LockedButton reason={runLocked}>{t('fusion.run')}</LockedButton> : <Button onClick={run} disabled={!canRun}>{submitting ? <><Loader2 size={16} className="spin" aria-hidden />{t('fusion.submitting')}</> : t('fusion.run')}</Button>
           )}
         </div>
       </Card>

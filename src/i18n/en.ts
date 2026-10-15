@@ -42,6 +42,7 @@ const en: Translation = {
     addData: 'Add data',
     viewer: 'Viewer',
     settings: 'Account settings',
+    admin: 'Admin',
   },
   notFound: {
     text: 'Check the address, or go back to the home page.',
@@ -56,6 +57,7 @@ const en: Translation = {
       projects: 'Projects',
       jobs: 'Jobs',
       fusion: 'Band math',
+      admin: 'Admin',
     },
     newTab: '(new tab)',
     mainNav: 'Main menu',
@@ -69,6 +71,23 @@ const en: Translation = {
     menuItems: 'Menu items',
     userFallback: 'User',
     settings: 'Account settings',
+    addDataLocked: 'Add data (not available for your role)',
+  },
+  accountRole: {
+    name: {
+      USER: 'User',
+      PROJECT_USER: 'Project user',
+      PROJECT_MANAGER: 'Project manager',
+      ADMIN: 'Admin',
+    },
+    reason: {
+      PROJECT_USER: 'Ask an admin for the Project user role.',
+      PROJECT_MANAGER: 'Ask an admin for the Project manager role.',
+      ADMIN: 'Only admins can use this.',
+    },
+    addDataTitle: 'Your role can’t add data',
+    addDataText: 'The {role} role can view shared projects and data only.',
+    toData: 'Back to data',
   },
   landing: {
     nav: {
@@ -224,6 +243,9 @@ const en: Translation = {
       NOTHING_TO_UPDATE: 'There’s nothing to change.',
       INVALID_NAME: 'Use {min} to {max} characters for the name.',
       INVALID_LANGUAGE: 'That language isn’t supported.',
+      ROLE_FORBIDDEN: 'Your role can’t do this. Ask an admin for a different role.',
+      ADMIN_SELF_CHANGE: 'You can’t lower, block or remove your own admin account.',
+      LAST_ADMIN: 'At least one admin must remain.',
     },
   },
 };

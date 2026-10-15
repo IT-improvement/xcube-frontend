@@ -1,7 +1,8 @@
 import { Database, ExternalLink, FolderPlus, Plus, Search, Trash2 } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Alert, Button, ButtonLink, TextField } from '../../components/ui';
+import { Alert, Button, ButtonLink, LockedButton, TextField } from '../../components/ui';
+import { NEEDS, useRoleGate } from '../../auth/roles';
 import { Badge, Card, Dialog, EmptyState, PageHeader, Segmented, Skeleton, TabPanel, Tabs, useToast } from '../../components/ui/kit';
 import { userMessage } from '../../api/httpClient';
 import { ai, aiViewerHref, appApi, canEditProject, formatDate, isOwned, periodLabel, Project, roleLabel, viewerHref, ZarrDataset } from '../api';
@@ -76,6 +77,8 @@ export default function DataLibraryPage() {
   const [deleting, setDeleting] = useState<ZarrDataset | null>(null);
   const [linking, setLinking] = useState<ZarrDataset | null>(null);
   const toast = useToast();
+  // UR-59: adding, linking and deleting need PROJECT_USER; below that they stay, off, with the reason.
+  const locked = useRoleGate().reason(NEEDS.createData);
   const items = useMemo(() => datasets.data ?? [], [datasets.data]);
   // AI results are told apart by model and threshold, which the AI service keeps (loaded only when there are any).
   const hasAi = items.some((item) => item.kind === 'AI_RESULT');
@@ -129,7 +132,7 @@ export default function DataLibraryPage() {
             <Button variant="line" size="sm" onClick={datasets.reload} className="inline-error__retry">{t('common.retry')}</Button>
           </div>
         ) : !items.length ? (
-          <EmptyState icon={<Database size={22} />} title={t('data.emptyTitle')} text={t('data.emptyText')} action={<ButtonLink to="/app/data/new"><Plus size={16} aria-hidden />{t('shell.addData')}</ButtonLink>} />
+          <EmptyState icon={<Database size={22} />} title={t('data.emptyTitle')} text={t('data.emptyText')} action={locked ? <LockedButton showReason reason={locked}><Plus size={16} aria-hidden />{t('shell.addData')}</LockedButton> : <ButtonLink to="/app/data/new"><Plus size={16} aria-hidden />{t('shell.addData')}</ButtonLink>} />
         ) : !visible.length ? (
           <EmptyState icon={<Search size={22} />} title={t('data.noResults')} text={t('data.noResultsText')} action={<Button variant="secondary" onClick={resetFilters}>{t('data.reset')}</Button>} />
         ) : (
@@ -178,8 +181,8 @@ export default function DataLibraryPage() {
                       <td className="cell-actions">
                         <div className="row-actions">
                           <a className="xc-icon-btn" href={item.kind === 'AI_RESULT' && item.sourceDatacubeId ? aiViewerHref(item.sourceDatacubeId, item.id) : viewerHref(item.id)} target="_blank" rel="noopener noreferrer" aria-label={t('app.openInViewerNamed', { name: item.name })} title={t('app.openInViewer')}><ExternalLink size={16} aria-hidden /></a>
-                          <button type="button" className="xc-icon-btn" aria-label={t('data.linkNamed', { name: item.name })} title={t('app.linkToProject')} onClick={() => setLinking(item)}><FolderPlus size={16} aria-hidden /></button>
-                          <button type="button" className="xc-icon-btn" aria-label={t('data.deleteNamed', { name: item.name })} title={isOwned(item) ? t('app.delete') : t('data.cannotDeleteShared')} disabled={!isOwned(item)} onClick={() => setDeleting(item)}><Trash2 size={16} aria-hidden /></button>
+                          <button type="button" className="xc-icon-btn" aria-label={t('data.linkNamed', { name: item.name })} title={locked ? `${t('app.linkToProject')} — ${locked}` : t('app.linkToProject')} aria-disabled={locked ? true : undefined} onClick={locked ? undefined : () => setLinking(item)}><FolderPlus size={16} aria-hidden /></button>
+                          <button type="button" className="xc-icon-btn" aria-label={t('data.deleteNamed', { name: item.name })} title={!isOwned(item) ? t('data.cannotDeleteShared') : locked ? `${t('app.delete')} — ${locked}` : t('app.delete')} disabled={!isOwned(item)} aria-disabled={isOwned(item) && locked ? true : undefined} onClick={locked ? undefined : () => setDeleting(item)}><Trash2 size={16} aria-hidden /></button>
                         </div>
                       </td>
                     </tr>
@@ -245,6 +248,8 @@ export function LinkProjectDialog({ dataset, onClose, onLinked }: { dataset: Zar
   const { lang, t } = useLanguage();
   const projects = useLoad(() => appApi.listProjects());
   const editable = (projects.data ?? []).filter(canEditProject);
+  // UR-59: a new project needs PROJECT_MANAGER; a PROJECT_USER can still link to projects they may edit.
+  const createLocked = useRoleGate().reason(NEEDS.manageProjects);
   const [projectId, setProjectId] = useState('');
   const [creatingChoice, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -252,7 +257,8 @@ export function LinkProjectDialog({ dataset, onClose, onLinked }: { dataset: Zar
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   // Without an editable project the dialog opens on "new project" directly.
-  const creating = creatingChoice || (!projects.loading && !projects.error && !editable.length);
+  const creating = !createLocked && (creatingChoice || (!projects.loading && !projects.error && !editable.length));
+  const stuck = !!createLocked && !projects.loading && !projects.error && !editable.length;
   const chosen = editable.find((item) => item.id === projectId) ?? editable[0];
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -276,12 +282,14 @@ export function LinkProjectDialog({ dataset, onClose, onLinked }: { dataset: Zar
       title={t('app.linkToProject')}
       description={t('data.linkText', { name: dataset.name })}
       onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button type="submit" form="link-project-form" disabled={busy || projects.loading || (!creating && !chosen)}>{label}</Button></>}
+      footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>{!stuck && <Button type="submit" form="link-project-form" disabled={busy || projects.loading || (!creating && !chosen)}>{label}</Button>}</>}
     >
       {projects.loading ? (
         <Skeleton lines={2} label={t('data.loadingProjects')} />
       ) : projects.error ? (
         <Alert tone="danger">{projects.error}</Alert>
+      ) : stuck ? (
+        <div className="form-stack"><p>{t('gate.noEditableProject')}</p><p className="xc-hint">{t('gate.newProjectNeeds', { reason: createLocked })}</p></div>
       ) : (
         <form id="link-project-form" className="form-stack" onSubmit={submit} noValidate>
           {creating ? (
@@ -298,7 +306,11 @@ export function LinkProjectDialog({ dataset, onClose, onLinked }: { dataset: Zar
                   {editable.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                 </select>
               </label>
-              <div><Button variant="quiet" size="sm" onClick={() => setCreating(true)}><Plus size={14} aria-hidden />{t('data.newProject')}</Button></div>
+              <div>
+                {createLocked
+                  ? <LockedButton variant="quiet" size="sm" showReason reason={createLocked}><Plus size={14} aria-hidden />{t('data.newProject')}</LockedButton>
+                  : <Button variant="quiet" size="sm" onClick={() => setCreating(true)}><Plus size={14} aria-hidden />{t('data.newProject')}</Button>}
+              </div>
             </>
           )}
         </form>
