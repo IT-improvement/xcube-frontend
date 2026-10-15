@@ -147,7 +147,10 @@ test('접속 기록(MON1): 인증 서버 /api/v1/admin/access 경로·필터, �
   expect(page.items[0]).toMatchObject({ id: '5', userId: '2', reason: 'BAD_PASSWORD', os: null, browser: null, userAgent: null, bot: false });
   const sessions = await adminApi.listSessions();
   expect(fetchMock.mock.calls[1][0]).toBe('http://localhost:8081/api/v1/admin/access/sessions');
-  expect(sessions[0]).toMatchObject({ familyId: 'f-1', userId: '2', current: true, ip: null, bot: false });
+  expect(sessions.items[0]).toMatchObject({ familyId: 'f-1', userId: '2', current: true, ip: null, bot: false, state: 'ACTIVE' });
+  // An older server without perUser: counted here.
+  expect(sessions.perUser).toEqual([{ userId: '2', loginId: 'kim', name: null, active: 1, idle: 0 }]);
+  expect(sessions.activeWindowSeconds).toBeNull();
   await adminApi.revokeSession('f-1');
   expect(fetchMock.mock.calls[2][0]).toBe('http://localhost:8081/api/v1/admin/access/sessions/f-1/revoke');
   expect((fetchMock.mock.calls[2][1] as RequestInit).method).toBe('POST');
@@ -157,6 +160,23 @@ test('접속 기록(MON1): 인증 서버 /api/v1/admin/access 경로·필터, �
   expect(summary.warnings[0]).toEqual({ ip: '198.51.100.9', country: null, count: 21, from: null, to: null });
   expect(summary.rule).toEqual({ failCount: 20, windowMinutes: 10 });
   expect(summary.countries).toEqual([]);
+});
+
+test('로그인 중(MON5): state·perUser·activeWindowSeconds를 읽고, 사용자 세션 모두 끊기는 POST …/users/{id}/sessions/revoke?exceptCurrent=true', async () => {
+  const fetchMock = jest.spyOn(global, 'fetch')
+    .mockResolvedValueOnce(json({
+      items: [{ familyId: 'a', userId: 1, loginId: 'boss', state: 'ACTIVE', current: true }, { familyId: 'b', userId: 1, loginId: 'boss', state: 'IDLE' }],
+      total: 2, perUser: [{ userId: 1, loginId: 'boss', name: '관리자', active: 1, idle: 1 }], activeWindowSeconds: 600,
+    }))
+    .mockResolvedValueOnce(json({ userId: 1, loginId: 'boss', revoked: 1, keptCurrent: true }));
+  const list = await adminApi.listSessions();
+  expect(list.items.map((item) => item.state)).toEqual(['ACTIVE', 'IDLE']);
+  expect(list.perUser).toEqual([{ userId: '1', loginId: 'boss', name: '관리자', active: 1, idle: 1 }]);
+  expect(list.activeWindowSeconds).toBe(600);
+  expect(await adminApi.revokeUserSessions('1')).toEqual({ revoked: 1, keptCurrent: true });
+  expect(fetchMock.mock.calls[1][0]).toBe('http://localhost:8081/api/v1/admin/access/users/1/sessions/revoke?exceptCurrent=true');
+  expect((fetchMock.mock.calls[1][1] as RequestInit).method).toBe('POST');
+  fetchMock.mockRestore();
 });
 
 test('Grafana 외부 접속 대시보드 주소는 기본 주소가 있을 때만 만든다', () => {

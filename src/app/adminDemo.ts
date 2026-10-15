@@ -2,7 +2,8 @@
 // summaries and quotas, every user's data, projects and jobs, system state and the audit record. Same codes as the
 // real services (ADMIN_SELF_CHANGE, LAST_ADMIN). In memory only; real mode never uses this.
 import { ApiError } from '../api/httpClient';
-import type { AccessSession, AccessSummary, AdminDataset, AdminJob, AdminJobFilter, AdminJobList, AdminProject, AdminSystem, AdminUser, AdminUserFilter, AdminUserSummary, AuditEntry, LoginEvent, LoginEventFilter, Paged, Visit, VisitFilter, VisitList, VisitSummary } from '../api/adminApi';
+import type { AccessSession, AccessSummary, RevokeAllResult, SessionList, AdminDataset, AdminJob, AdminJobFilter, AdminJobList, AdminProject, AdminSystem, AdminUser, AdminUserFilter, AdminUserSummary, AuditEntry, LoginEvent, LoginEventFilter, Paged, Visit, VisitFilter, VisitList, VisitSummary } from '../api/adminApi';
+import { sessionUsers } from '../api/adminApi';
 
 const GIB = 1024 ** 3;
 const MIB = 1024 ** 2;
@@ -108,7 +109,8 @@ export function createAdminDemo() {
   ].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
   const session = (familyId: string, who: string, ip: string, country: string | null, client: Client, started: number, refreshed: number, current = false): AccessSession => {
     const user = users.find((item) => item.loginId === who);
-    return { familyId, userId: user?.id ?? null, loginId: who, name: user?.name ?? null, role: user?.role ?? null, startedAt: minutesAgo(started), lastRefreshAt: minutesAgo(refreshed), expiresAt: minutesAgo(refreshed - 120), ip, country, ...client, current };
+    // ACTIVE = refreshed within the access-token lifetime (15 minutes), as the server decides (MON5).
+    return { familyId, userId: user?.id ?? null, loginId: who, name: user?.name ?? null, role: user?.role ?? null, startedAt: minutesAgo(started), lastRefreshAt: minutesAgo(refreshed), expiresAt: minutesAgo(refreshed - 120), ip, country, ...client, current, state: refreshed <= 15 ? 'ACTIVE' : 'IDLE' };
   };
   // Entrance log (MON4): people from KR/US/JP, KakaoTalk link previews and Googlebot. Documentation IP ranges only.
   const visit = (minutes: number, ip: string, country: string | null, path: string, client: Client, botName: string | null = null, status = 200): Visit => ({
@@ -140,7 +142,12 @@ export function createAdminDemo() {
     session('5b0c1d4e-0000-4000-8000-000000000001', 'designqa', '203.0.113.5', 'KR', MAC, 12, 2, true),
     session('5b0c1d4e-0000-4000-8000-000000000002', 'kim.water', '203.0.113.24', 'KR', PHONE, 40, 6),
     session('5b0c1d4e-0000-4000-8000-000000000003', 'lee.gis', '10.42.0.1', null, WIN, 95, 31),
+    // Signed in again on other days without signing out (older servers kept these), and an automated tool.
+    session('5b0c1d4e-0000-4000-8000-000000000004', 'designqa', '203.0.113.5', 'KR', WIN, 70, 23),
+    session('5b0c1d4e-0000-4000-8000-000000000005', 'designqa', '198.51.100.14', 'KR', PHONE, 110, 64),
+    session('5b0c1d4e-0000-4000-8000-000000000006', 'designqa', '127.0.0.1', null, { device: 'BOT', os: null, browser: 'curl', bot: true }, 30, 28),
   ];
+  const sessionOrder = (a: AccessSession, b: AccessSession) => (a.state === b.state ? (b.lastRefreshAt ?? '').localeCompare(a.lastRefreshAt ?? '') : a.state === 'ACTIVE' ? -1 : 1);
 
   return {
     async listUsers(filter: AdminUserFilter = {}, self?: Self): Promise<Paged<AdminUser>> {
@@ -256,9 +263,25 @@ export function createAdminDemo() {
         && (!events.length || events.includes(item.event))
         && new Date(item.createdAt ?? 0).getTime() >= from && new Date(item.createdAt ?? 0).getTime() < to).map((item) => ({ ...item })), filter.page, filter.size);
     },
-    async listSessions(): Promise<AccessSession[]> {
+    async listSessions(): Promise<SessionList> {
       await pause();
-      return sessions.map((item) => ({ ...item }));
+      const items = sessions.map((item) => ({ ...item })).sort(sessionOrder);
+      return { items, perUser: sessionUsers(items), activeWindowSeconds: 900 };
+    },
+    async revokeUserSessions(userId: string, exceptCurrent = true): Promise<RevokeAllResult> {
+      await pause();
+      const owner = users.find((item) => item.id === userId);
+      if (!owner) throw new ApiError(404, 'USER_NOT_FOUND', '사용자를 찾을 수 없습니다.');
+      let revoked = 0;
+      let keptCurrent = false;
+      for (let index = sessions.length - 1; index >= 0; index -= 1) {
+        if (sessions[index].userId !== userId) continue;
+        if (exceptCurrent && sessions[index].current) { keptCurrent = true; continue; }
+        sessions.splice(index, 1);
+        revoked += 1;
+      }
+      record('SESSION_REVOKE_ALL', 'USER', userId, { loginId: owner.loginId, revoked, keptCurrent });
+      return { revoked, keptCurrent };
     },
     async revokeSession(familyId: string): Promise<void> {
       await pause();

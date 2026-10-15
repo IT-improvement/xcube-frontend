@@ -12,7 +12,7 @@ const mockAdmin = {
   listUsers: jest.fn(), updateUser: jest.fn(), resetPassword: jest.fn(), deleteUser: jest.fn(), listAudit: jest.fn(),
   userSummaries: jest.fn(), setQuota: jest.fn(), listDatasets: jest.fn(), deleteDataset: jest.fn(), listProjects: jest.fn(),
   system: jest.fn(), listJobs: jest.fn(), cancelJob: jest.fn(),
-  listLogins: jest.fn(), listSessions: jest.fn(), revokeSession: jest.fn(), accessSummary: jest.fn(),
+  listLogins: jest.fn(), listSessions: jest.fn(), revokeSession: jest.fn(), revokeUserSessions: jest.fn(), accessSummary: jest.fn(),
   listVisits: jest.fn(), visitSummary: jest.fn(),
 };
 jest.mock('../api', () => ({ ...jest.requireActual('../api'), admin: mockAdmin }));
