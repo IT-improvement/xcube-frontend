@@ -1,14 +1,15 @@
 // S13 접속 기록 tab (UR-60, MON-contract §2): the last days at a glance with repeated-failure warnings, the sessions
 // signed in now with forced sign-out, and the sign-in record with filters. IPs and devices are personal data: shown
 // to administrators only, kept for the retention the server reports.
-import { ExternalLink, LogOut, RefreshCw, Search } from 'lucide-react';
+import { LogOut, RefreshCw, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Alert, Button, ButtonAnchor } from '../../../components/ui';
+import { Alert, Button } from '../../../components/ui';
 import { Badge, ConfirmDialog, EmptyState, Segmented, Skeleton } from '../../../components/ui/kit';
 import type { BadgeTone } from '../../../components/ui/kit';
 import { formatDate, formatNumber, useLanguage } from '../../../i18n';
 import type { Lang, TKey } from '../../../i18n';
 import { grafanaAccessUrl } from '../../../api/adminApi';
+import GrafanaButton from './GrafanaButton';
 import { AccessSession, AccessSummary, admin, formatDateTime, LoginEvent } from '../../api';
 import { useLoad } from '../../useLoad';
 import { NoValue } from '../DataLibraryPage';
@@ -86,9 +87,7 @@ export default function AccessTab({ onToast }: { onToast: (text: string) => void
         />
         <span className="toolbar__spacer" />
         {grafana && (
-          <ButtonAnchor variant="line" size="sm" href={grafana} target="_blank" rel="noopener noreferrer">
-            {t('admin.access.grafana')}<ExternalLink size={13} aria-hidden /><span className="sr-only">{t('shell.newTab')}</span>
-          </ButtonAnchor>
+          <GrafanaButton href={grafana} label={t('admin.access.grafana')} />
         )}
       </div>
       {view === 'summary' ? <SummaryView /> : view === 'sessions' ? <SessionsView onToast={onToast} /> : <LoginsView />}

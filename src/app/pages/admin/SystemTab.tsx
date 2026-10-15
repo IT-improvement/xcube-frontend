@@ -1,11 +1,12 @@
 // S13 시스템 tab: service readiness and restarts, map servers (personal pods), node memory and data disk as ruled
 // meters with words, the public address when one is set, and Grafana (ADM3) when its address is configured.
-import { Check, Copy, ExternalLink, RefreshCw } from 'lucide-react';
+import { Check, Copy, RefreshCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, ButtonAnchor } from '../../../components/ui';
+import { Alert, Button } from '../../../components/ui';
 import { Badge, Skeleton } from '../../../components/ui/kit';
 import { formatDate, formatNumber, useLanguage } from '../../../i18n';
 import { GRAFANA_URL } from '../../../api/adminApi';
+import GrafanaButton from './GrafanaButton';
 import { admin, AdminSystem, formatDateTime } from '../../api';
 import { formatBytes } from '../../fusion';
 import { useLoad } from '../../useLoad';
@@ -127,7 +128,7 @@ export default function SystemTab({ directory }: { directory: Directory }) {
                   <dt>{t('admin.system.monitoring')}</dt>
                   <dd>
                     {GRAFANA_URL ? (
-                      <ButtonAnchor variant="line" size="sm" href={GRAFANA_URL} target="_blank" rel="noopener noreferrer">{t('admin.system.openGrafana')}<ExternalLink size={13} aria-hidden /><span className="sr-only">{t('shell.newTab')}</span></ButtonAnchor>
+                      <GrafanaButton href={GRAFANA_URL} label={t('admin.system.openGrafana')} />
                     ) : <span className="no-value">{t('admin.system.noGrafana')}</span>}
                   </dd>
                 </dl>

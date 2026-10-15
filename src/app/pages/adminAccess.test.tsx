@@ -86,13 +86,17 @@ test('경고가 없으면 기준(10분 20회)을 말로 알린다', async () => 
   expect(screen.queryByRole('group', { name: '로그인 실패 경고' })).not.toBeInTheDocument();
 });
 
-test('REACT_APP_GRAFANA_URL이 있을 때만 외부 접속 대시보드 링크를 새 탭으로 보인다', async () => {
+test('REACT_APP_GRAFANA_URL이 있을 때만 외부 접속 대시보드 버튼을 보이고, 누르면 일회용 ticket으로 새 탭을 연다', async () => {
   process.env.REACT_APP_GRAFANA_URL = '/grafana/';
+  const tab = { opener: {}, location: { href: '' }, close: jest.fn() };
+  const open = jest.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+  const fetchMock = jest.spyOn(global, 'fetch' as never).mockResolvedValue(new Response(JSON.stringify({ ticket: 't-1', expiresIn: 60 }), { status: 200, headers: { 'Content-Type': 'application/json' } }) as never);
   renderAdmin('/app/admin?tab=access');
-  const link = await screen.findByRole('link', { name: /Grafana 외부 접속 대시보드/ });
-  expect(link).toHaveAttribute('href', '/grafana/d/xcube-access');
-  expect(link).toHaveAttribute('target', '_blank');
-  expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  const button = await screen.findByRole('button', { name: /Grafana 외부 접속 대시보드/ });
+  fireEvent.click(button);
+  await waitFor(() => expect(tab.location.href).toBe('/grafana/d/xcube-access?ticket=t-1'));
+  expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+  open.mockRestore(); fetchMock.mockRestore();
 });
 
 test('로그인 중: 세션 표(기기·IP·나라·이 기기), 확인 후 강제 로그아웃하면 목록에서 빠지고 알린다', async () => {

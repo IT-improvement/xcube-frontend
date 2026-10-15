@@ -166,3 +166,18 @@ test('Grafana 외부 접속 대시보드 주소는 기본 주소가 있을 때�
   expect(grafanaAccessUrl('/grafana/')).toBe('/grafana/d/xcube-access');
   expect(grafanaAccessUrl('https://example.org/grafana')).toBe('https://example.org/grafana/d/xcube-access');
 });
+
+test('Grafana opens through a one-time ticket (MON2)', async () => {
+  const { openGrafana, withGrafanaTicket } = jest.requireActual('./adminApi');
+  expect(withGrafanaTicket('/grafana/d/xcube-access', 'a b')).toBe('/grafana/d/xcube-access?ticket=a%20b');
+  expect(withGrafanaTicket('/grafana/?orgId=1', 't1')).toBe('/grafana/?orgId=1&ticket=t1');
+  const tab = { opener: {}, location: { href: '' }, close: jest.fn() };
+  const open = jest.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+  await openGrafana('/grafana', async () => ({ ticket: 'abc' }));
+  expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+  expect(tab.location.href).toBe('/grafana?ticket=abc');
+  expect(tab.opener).toBeNull();
+  await expect(openGrafana('/grafana', async () => ({}))).rejects.toThrow();
+  expect(tab.close).toHaveBeenCalled();
+  open.mockRestore();
+});

@@ -369,3 +369,25 @@ export function grafanaAccessUrl(base: string | undefined = process.env.REACT_AP
   if (!base) return '';
   return `${base.replace(/\/+$/, '')}/d/${GRAFANA_ACCESS_DASHBOARD_UID}`;
 }
+
+/** Adds the one-time ticket to a Grafana address (`?ticket=` or `&ticket=`). */
+export const withGrafanaTicket = (target: string, ticket: string) => `${target}${target.includes('?') ? '&' : '?'}ticket=${encodeURIComponent(ticket)}`;
+
+/**
+ * Opens Grafana in a new tab (MON2). Grafana sits behind a gateway that only knows a short-lived ticket, so the tab is
+ * opened first (inside the click, so pop-up blockers allow it), then pointed at `target?ticket=` once Backoffice has
+ * issued one; the gateway swaps it for an HttpOnly /grafana cookie.
+ */
+export async function openGrafana(target: string, fetchTicket: () => Promise<Raw | undefined> = () =>
+  request<Raw>(BACKOFFICE_API_BASE_URL, `${BACKOFFICE_ADMIN}/grafana-ticket`, { method: 'POST' })) {
+  const tab = window.open('about:blank', '_blank');
+  try {
+    const ticket = String((await fetchTicket())?.ticket ?? '');
+    if (!ticket) throw new Error('No Grafana ticket');
+    const url = withGrafanaTicket(target, ticket);
+    if (tab) { tab.opener = null; tab.location.href = url; } else window.location.assign(url);
+  } catch (cause) {
+    tab?.close();
+    throw cause;
+  }
+}

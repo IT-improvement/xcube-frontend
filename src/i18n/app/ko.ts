@@ -774,6 +774,7 @@ const koApp = {
       noPublicUrl: '설정되지 않았습니다.',
       monitoring: '모니터링',
       openGrafana: 'Grafana 열기',
+      grafanaFailed: 'Grafana를 열지 못했습니다. 잠시 뒤 다시 시도하세요.',
       noGrafana: '모니터링 대시보드가 아직 연결되지 않았습니다.',
       copyUrl: '주소 복사',
       urlCopied: '외부 주소를 클립보드에 복사했습니다.',
