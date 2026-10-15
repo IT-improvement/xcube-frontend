@@ -134,3 +134,35 @@ test('ADM1 시스템 응답: 로컬처럼 services·xcubePods·node가 null이�
     services: [], xcubePods: [], node: null, disk: { dataUsedBytes: 1, dataTotalBytes: 4 }, publicUrl: 'https://a.example',
   });
 });
+
+test('접속 기록(MON1): 인증 서버 /api/v1/admin/access 경로·필터, 세션 강제 로그아웃은 POST, 빠진 값은 null·0', async () => {
+  const fetchMock = jest.spyOn(global, 'fetch')
+    .mockResolvedValueOnce(json({ items: [{ id: 5, userId: 2, loginId: 'kim', event: 'LOGIN_FAIL', reason: 'BAD_PASSWORD', ip: '203.0.113.1', country: 'KR', device: 'MOBILE', bot: false, createdAt: '2026-10-15T00:00:00Z' }], total: 31 }))
+    .mockResolvedValueOnce(json({ items: [{ familyId: 'f-1', userId: 2, loginId: 'kim', current: true }], total: 1 }))
+    .mockResolvedValueOnce(json({ loginId: 'kim' }))
+    .mockResolvedValueOnce(json({ days: 7, totals: { success: 3 }, daily: [{ date: '2026-10-15', success: 3, fail: 0, uniqueIps: 1 }], warnings: [{ ip: '198.51.100.9', count: 21 }] }));
+  const page = await adminApi.listLogins({ q: ' kim ', event: 'LOGIN_FAIL', from: '2026-10-01', to: '2026-10-15', page: 2 });
+  expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8081/api/v1/admin/access/logins?q=kim&event=LOGIN_FAIL&from=2026-10-01&to=2026-10-15&page=2&size=50');
+  expect(page.total).toBe(31);
+  expect(page.items[0]).toMatchObject({ id: '5', userId: '2', reason: 'BAD_PASSWORD', os: null, browser: null, userAgent: null, bot: false });
+  const sessions = await adminApi.listSessions();
+  expect(fetchMock.mock.calls[1][0]).toBe('http://localhost:8081/api/v1/admin/access/sessions');
+  expect(sessions[0]).toMatchObject({ familyId: 'f-1', userId: '2', current: true, ip: null, bot: false });
+  await adminApi.revokeSession('f-1');
+  expect(fetchMock.mock.calls[2][0]).toBe('http://localhost:8081/api/v1/admin/access/sessions/f-1/revoke');
+  expect((fetchMock.mock.calls[2][1] as RequestInit).method).toBe('POST');
+  const summary = await adminApi.accessSummary(7);
+  expect(fetchMock.mock.calls[3][0]).toBe('http://localhost:8081/api/v1/admin/access/summary?days=7');
+  expect(summary.totals).toEqual({ success: 3, fail: 0, uniqueIps: 0, uniqueUsers: 0, botEvents: 0, activeSessions: 0 });
+  expect(summary.warnings[0]).toEqual({ ip: '198.51.100.9', country: null, count: 21, from: null, to: null });
+  expect(summary.rule).toEqual({ failCount: 20, windowMinutes: 10 });
+  expect(summary.countries).toEqual([]);
+});
+
+test('Grafana 외부 접속 대시보드 주소는 기본 주소가 있을 때만 만든다', () => {
+  const { grafanaAccessUrl } = jest.requireActual('./adminApi');
+  expect(grafanaAccessUrl('')).toBe('');
+  expect(grafanaAccessUrl(undefined)).toBe('');
+  expect(grafanaAccessUrl('/grafana/')).toBe('/grafana/d/xcube-access');
+  expect(grafanaAccessUrl('https://example.org/grafana')).toBe('https://example.org/grafana/d/xcube-access');
+});

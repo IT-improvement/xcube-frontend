@@ -44,6 +44,40 @@
 .admin-meter--near .admin-meter__value { color: var(--fb-warn); }
 .admin-meter--over .admin-meter__value { color: var(--fb-bad); }
 
+/* 접속 기록 (UR-60): summary sheet, two side lists, sign-in filters. Same ruled blocks as the system tab. */
+.admin-block__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.admin-warnings { display: grid; gap: var(--space-2); }
+.admin-access-totals { font: 600 14px/1.5 var(--fb-font); color: var(--fb-ink); }
+.admin-access-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid var(--fb-rule); }
+.admin-access-split .admin-block { border-bottom: 0; align-content: start; }
+.admin-access-split .admin-block + .admin-block { border-left: 1px solid var(--fb-rule); }
+.admin-access-privacy { padding-bottom: var(--space-4); }
+.admin-table--plain td, .admin-table--plain th { white-space: nowrap; }
+.admin-table--plain td:first-child { white-space: normal; }
+.admin-access-bar-cell { width: 34%; }
+.admin-access-bar { display: flex; height: 6px; min-width: 80px; background: var(--fb-sunken); border-radius: 2px; overflow: hidden; }
+.admin-access-bar__ok { background: var(--fb-ink-2); }
+.admin-access-bar__fail { background: var(--fb-warn); }
+.admin-event { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.admin-date { display: inline-flex; align-items: center; gap: 6px; font: var(--text-label); color: var(--fb-ink-2); }
+.admin-date input {
+  height: 36px; padding: 0 8px; border: 1px solid var(--fb-input-border); border-radius: var(--fb-radius);
+  background: var(--fb-surface); color: var(--fb-ink); font: 400 14px/1 var(--fb-font); font-variant-numeric: tabular-nums;
+}
+.admin-date input:hover { border-color: var(--fb-ink-2); }
+.admin-date input:focus { outline: 2px solid var(--fb-focus); outline-offset: 0; border-color: var(--fb-ink); }
+.admin-date input[aria-invalid='true'] { border-color: var(--fb-bad); }
+.admin-public-url { display: grid; gap: var(--space-1); min-width: 0; }
+.admin-public-url__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
+.admin-public-url__row a { min-width: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 767px) {
+  .admin-access-split { grid-template-columns: minmax(0, 1fr); }
+  .admin-access-split .admin-block + .admin-block { border-left: 0; border-top: 1px solid var(--fb-rule); }
+  .admin-date { flex: 1 1 calc(50% - var(--space-3)); display: grid; gap: 4px; }
+  .admin-date input { width: 100%; min-width: 0; height: 40px; font-size: 16px; }
+  .admin-table--plain td, .admin-table--plain th { white-space: normal; }
+}
 @media (max-width: 767px) {
   .admin-role { width: 100%; max-width: 220px; height: 40px; }
   .admin-table tbody > tr > td.num { text-align: left; }

@@ -1,6 +1,7 @@
 // S13 시스템 tab: service readiness and restarts, map servers (personal pods), node memory and data disk as ruled
 // meters with words, the public address when one is set, and Grafana (ADM3) when its address is configured.
-import { ExternalLink, RefreshCw } from 'lucide-react';
+import { Check, Copy, ExternalLink, RefreshCw } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, ButtonAnchor } from '../../../components/ui';
 import { Badge, Skeleton } from '../../../components/ui/kit';
 import { formatDate, formatNumber, useLanguage } from '../../../i18n';
@@ -20,6 +21,39 @@ function ReadyBadge({ ready }: { ready: boolean | null }) {
   if (ready === true) return <Badge tone="success">{t('admin.system.ready')}</Badge>;
   if (ready === false) return <Badge tone="danger">{t('admin.system.notReady')}</Badge>;
   return <Badge>{t('admin.unknown')}</Badge>;
+}
+
+/** The public address (MON-contract §4): link, copy button, and the note that a quick tunnel's address changes on restart. */
+export function PublicUrl({ url }: { url: string }) {
+  const { t } = useLanguage();
+  const [copied, setCopied] = useState<'idle' | 'done' | 'failed'>('idle');
+  const link = useRef<HTMLAnchorElement>(null);
+  useEffect(() => { if (copied !== 'done') return undefined; const timer = window.setTimeout(() => setCopied('idle'), 2400); return () => window.clearTimeout(timer); }, [copied]);
+  const copy = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard');
+      await navigator.clipboard.writeText(url);
+      setCopied('done');
+    } catch {
+      // No clipboard (permission, plain http): select the address so ⌘C / Ctrl+C copies it.
+      const selection = window.getSelection();
+      if (selection && link.current) { const range = document.createRange(); range.selectNodeContents(link.current.firstChild ?? link.current); selection.removeAllRanges(); selection.addRange(range); }
+      setCopied('failed');
+    }
+  };
+  return (
+    <div className="admin-public-url">
+      <div className="admin-public-url__row">
+        <a ref={link} href={url} target="_blank" rel="noopener noreferrer" className="admin-mono">{url}<span className="sr-only">{t('shell.newTab')}</span></a>
+        <Button variant="line" size="sm" onClick={copy} aria-describedby="admin-public-url-state">
+          {copied === 'done' ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}{copied === 'done' ? t('admin.users.copied') : t('admin.system.copyUrl')}
+        </Button>
+      </div>
+      <p id="admin-public-url-state" className="xc-hint" role="status">
+        {copied === 'done' ? t('admin.system.urlCopied') : copied === 'failed' ? t('admin.system.urlCopyFailed') : t('admin.system.urlChanges')}
+      </p>
+    </div>
+  );
 }
 
 export default function SystemTab({ directory }: { directory: Directory }) {
@@ -89,7 +123,7 @@ export default function SystemTab({ directory }: { directory: Directory }) {
                 <h3 id="admin-links" className="admin-block__title">{t('admin.system.links')}</h3>
                 <dl className="meta-list meta-list--flush">
                   <dt>{t('admin.system.publicUrl')}</dt>
-                  <dd>{data.publicUrl ? <a href={data.publicUrl} target="_blank" rel="noopener noreferrer">{data.publicUrl}<span className="sr-only">{t('shell.newTab')}</span></a> : <span className="no-value">{t('admin.system.noPublicUrl')}</span>}</dd>
+                  <dd>{data.publicUrl ? <PublicUrl url={data.publicUrl} /> : <span className="no-value">{t('admin.system.noPublicUrl')}</span>}</dd>
                   <dt>{t('admin.system.monitoring')}</dt>
                   <dd>
                     {GRAFANA_URL ? (

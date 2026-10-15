@@ -15,6 +15,7 @@ import { translate } from '../../../i18n/core';
  * anything unknown is shown as given.
  */
 const ACTION_KEY: Array<[RegExp, TKey]> = [
+  [/SESSION.*REVOKE|REVOKE.*SESSION/, 'admin.audit.actions.sessionRevoke'],
   [/ROLE/, 'admin.audit.actions.role'],
   [/UNBLOCK|ACTIVATE/, 'admin.audit.actions.unblock'],
   [/BLOCK/, 'admin.audit.actions.block'],
