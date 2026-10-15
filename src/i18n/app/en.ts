@@ -764,6 +764,7 @@ const enApp: AppTranslation = {
       noPublicUrl: 'Not set.',
       monitoring: 'Monitoring',
       openGrafana: 'Open Grafana',
+      grafanaFailed: 'Could not open Grafana. Try again in a moment.',
       noGrafana: 'The monitoring dashboard isn’t connected yet.',
       copyUrl: 'Copy address',
       urlCopied: 'Public address copied to the clipboard.',
