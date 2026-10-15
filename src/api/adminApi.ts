@@ -55,12 +55,21 @@ export type LoginEvent = {
   userAgent: string | null; createdAt: string | null;
 };
 export type LoginEventFilter = { q?: string; event?: string; from?: string; to?: string; page?: number; size?: number };
-/** A signed-in session = one refresh-token family. `current` marks the admin's own session. */
+/**
+ * A signed-in session = one refresh-token family. `current` marks the admin's own session. `state` (MON5): ACTIVE when
+ * refreshed within the access-token lifetime, IDLE otherwise (window closed or resting; it expires on its own).
+ */
+export type SessionState = 'ACTIVE' | 'IDLE';
 export type AccessSession = {
   familyId: string; userId: string | null; loginId: string | null; name: string | null; role: string | null;
   startedAt: string | null; lastRefreshAt: string | null; expiresAt: string | null;
   ip: string | null; country: string | null; device: string | null; os: string | null; browser: string | null; bot: boolean; current: boolean;
+  state: SessionState;
 };
+/** Per-user counts of the listed sessions (MON5), in the server's order (users with an active session first). */
+export type SessionUser = { userId: string | null; loginId: string | null; name: string | null; active: number; idle: number };
+export type SessionList = { items: AccessSession[]; perUser: SessionUser[]; activeWindowSeconds: number | null };
+export type RevokeAllResult = { revoked: number; keptCurrent: boolean };
 export type AccessSummary = {
   days: number; zone: string | null;
   totals: { success: number; fail: number; uniqueIps: number; uniqueUsers: number; botEvents: number; activeSessions: number };
@@ -251,7 +260,29 @@ export const toAccessSession = (raw: Raw): AccessSession => ({
   browser: str(raw.browser),
   bot: bool(raw.bot) ?? false,
   current: bool(raw.current) ?? false,
+  state: raw.state === 'IDLE' ? 'IDLE' : 'ACTIVE',
 });
+
+/** Groups sessions by user in first-seen order; used when an older server sends no `perUser`. */
+export function sessionUsers(items: AccessSession[]): SessionUser[] {
+  const byUser = new Map<string, SessionUser>();
+  for (const item of items) {
+    const key = item.userId ?? `?${item.loginId ?? ''}`;
+    const entry = byUser.get(key) ?? { userId: item.userId, loginId: item.loginId, name: item.name, active: 0, idle: 0 };
+    if (item.state === 'IDLE') entry.idle += 1; else entry.active += 1;
+    byUser.set(key, entry);
+  }
+  return Array.from(byUser.values());
+}
+
+export const toSessionList = (body: unknown): SessionList => {
+  const items = readPage(body, 'sessions').items.map(toAccessSession);
+  const raw = (Array.isArray(body) ? {} : body ?? {}) as Raw;
+  const perUser = Array.isArray(raw.perUser)
+    ? (raw.perUser as Raw[]).map((u) => ({ userId: str(u.userId), loginId: str(u.loginId), name: str(u.name), active: num(u.active) ?? 0, idle: num(u.idle) ?? 0 }))
+    : sessionUsers(items);
+  return { items, perUser, activeWindowSeconds: num(raw.activeWindowSeconds) };
+};
 
 const list = (value: unknown): Raw[] => (Array.isArray(value) ? value : []);
 export const toAccessSummary = (raw: Raw | null | undefined): AccessSummary => {
@@ -362,8 +393,13 @@ export const adminApi = {
     const page = readPage(body, 'events');
     return { items: page.items.map(toLoginEvent), total: page.total };
   },
-  async listSessions(): Promise<AccessSession[]> {
-    return readPage(await request<unknown>(AUTH_API_BASE_URL, '/api/v1/admin/access/sessions'), 'sessions').items.map(toAccessSession);
+  async listSessions(): Promise<SessionList> {
+    return toSessionList(await request<unknown>(AUTH_API_BASE_URL, '/api/v1/admin/access/sessions'));
+  },
+  /** MON5: ends every session of one user; with `exceptCurrent` the calling admin's own current session stays. */
+  async revokeUserSessions(userId: string, exceptCurrent = true): Promise<RevokeAllResult> {
+    const body = await request<Raw>(AUTH_API_BASE_URL, `/api/v1/admin/access/users/${id(userId)}/sessions/revoke?exceptCurrent=${exceptCurrent}`, { method: 'POST' });
+    return { revoked: num(body?.revoked) ?? 0, keptCurrent: bool(body?.keptCurrent) ?? false };
   },
   /** Forced sign-out: the session's refresh tokens end; its current access token runs out within 15 minutes. */
   async revokeSession(familyId: string): Promise<void> {

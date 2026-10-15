@@ -15,6 +15,7 @@ import { translate } from '../../../i18n/core';
  * anything unknown is shown as given.
  */
 const ACTION_KEY: Array<[RegExp, TKey]> = [
+  [/SESSION.*REVOKE.*ALL|REVOKE.*ALL.*SESSION/, 'admin.audit.actions.sessionRevokeAll'],
   [/SESSION.*REVOKE|REVOKE.*SESSION/, 'admin.audit.actions.sessionRevoke'],
   [/ROLE/, 'admin.audit.actions.role'],
   [/UNBLOCK|ACTIVATE/, 'admin.audit.actions.unblock'],
@@ -57,6 +58,10 @@ export function auditDetail(entry: AuditEntry, lang: Lang) {
     return parts.join(' · ');
   }
   if (detail.from != null || detail.to != null) return `${roleOrValue(detail.from ?? '—', lang)} → ${roleOrValue(detail.to ?? '—', lang)}`;
+  if (entry.action.toUpperCase() === 'SESSION_REVOKE_ALL' && 'revoked' in detail) {
+    const ended = translate(lang, 'admin.audit.sessionsEnded', { count: Number(detail.revoked) || 0 });
+    return detail.keptCurrent === true ? `${ended} · ${translate(lang, 'admin.audit.keptCurrent')}` : ended;
+  }
   if ('quotaBytes' in detail) return detail.quotaBytes == null ? translate(lang, 'admin.audit.defaultQuota') : translate(lang, 'admin.audit.quota', { quota: formatBytes(Number(detail.quotaBytes)) });
   const parts = Object.entries(detail).filter(([key, value]) => !['loginId', 'targetLoginId', 'before', 'after'].includes(key) && value != null && typeof value !== 'object').map(([key, value]) => `${key}: ${value}`);
   return parts.join(' · ');

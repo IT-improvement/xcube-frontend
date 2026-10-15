@@ -14,7 +14,7 @@ const mockAdmin = {
   listUsers: jest.fn(), updateUser: jest.fn(), resetPassword: jest.fn(), deleteUser: jest.fn(), listAudit: jest.fn(),
   userSummaries: jest.fn(), setQuota: jest.fn(), listDatasets: jest.fn(), deleteDataset: jest.fn(), listProjects: jest.fn(),
   system: jest.fn(), listJobs: jest.fn(), cancelJob: jest.fn(),
-  listLogins: jest.fn(), listSessions: jest.fn(), revokeSession: jest.fn(), accessSummary: jest.fn(),
+  listLogins: jest.fn(), listSessions: jest.fn(), revokeSession: jest.fn(), revokeUserSessions: jest.fn(), accessSummary: jest.fn(),
   listVisits: jest.fn(), visitSummary: jest.fn(),
 };
 jest.mock('../api', () => ({ ...jest.requireActual('../api'), admin: mockAdmin }));
@@ -40,9 +40,15 @@ const SUMMARY = {
   retentionDays: 90,
 };
 const SESSIONS = [
-  { familyId: 'fam-me', userId: '1', loginId: 'boss', name: '관리자', role: 'ADMIN', startedAt: '2026-10-15T01:00:00Z', lastRefreshAt: '2026-10-15T02:00:00Z', expiresAt: null, ip: '203.0.113.5', country: 'KR', device: 'DESKTOP', os: 'macOS', browser: 'Chrome', bot: false, current: true },
-  { familyId: 'fam-kim', userId: '2', loginId: 'kim', name: '김', role: 'PROJECT_USER', startedAt: '2026-10-15T00:00:00Z', lastRefreshAt: '2026-10-15T01:30:00Z', expiresAt: null, ip: '203.0.113.24', country: 'KR', device: 'MOBILE', os: 'iOS', browser: 'Safari', bot: false, current: false },
+  { familyId: 'fam-me', userId: '1', loginId: 'boss', name: '관리자', role: 'ADMIN', startedAt: '2026-10-15T01:00:00Z', lastRefreshAt: '2026-10-15T02:00:00Z', expiresAt: null, ip: '203.0.113.5', country: 'KR', device: 'DESKTOP', os: 'macOS', browser: 'Chrome', bot: false, current: true, state: 'ACTIVE' },
+  { familyId: 'fam-kim', userId: '2', loginId: 'kim', name: '김', role: 'PROJECT_USER', startedAt: '2026-10-15T00:00:00Z', lastRefreshAt: '2026-10-15T01:30:00Z', expiresAt: null, ip: '203.0.113.24', country: 'KR', device: 'MOBILE', os: 'iOS', browser: 'Safari', bot: false, current: false, state: 'IDLE' },
 ];
+const sessionList = () => ({
+  items: SESSIONS.map((item) => ({ ...item })), activeWindowSeconds: 900,
+  perUser: [{ userId: '1', loginId: 'boss', name: '관리자', active: 1, idle: 0 }, { userId: '2', loginId: 'kim', name: '김', active: 0, idle: 1 }],
+});
+/** Users start folded (MON5): open one by its header. */
+const openUser = async (loginId: string) => fireEvent.click(await screen.findByRole('button', { name: new RegExp(`^${loginId} `) }));
 const EVENTS = [
   { id: '3', userId: null, loginId: 'root', event: 'LOGIN_FAIL', reason: 'UNKNOWN_ID', ip: '198.51.100.66', country: 'RU', device: 'BOT', os: null, browser: 'curl', bot: true, userAgent: 'curl/8.7.1', createdAt: '2026-10-15T02:07:00Z' },
   { id: '2', userId: '2', loginId: 'kim', event: 'LOGIN_SUCCESS', reason: null, ip: '203.0.113.24', country: 'KR', device: 'MOBILE', os: 'iOS', browser: 'Safari', bot: false, userAgent: null, createdAt: '2026-10-15T01:00:00Z' },
@@ -56,7 +62,7 @@ beforeEach(() => {
   mockUser = { id: 1, email: 'boss', name: '관리자', role: 'ADMIN', status: 'ACTIVE' };
   mockAdmin.listUsers.mockResolvedValue({ items: [], total: 0 });
   mockAdmin.accessSummary.mockResolvedValue(SUMMARY);
-  mockAdmin.listSessions.mockResolvedValue(SESSIONS.map((item) => ({ ...item })));
+  mockAdmin.listSessions.mockResolvedValue(sessionList());
   mockAdmin.listLogins.mockResolvedValue({ items: EVENTS, total: 3 });
   mockAdmin.revokeSession.mockResolvedValue(undefined);
   mockAdmin.visitSummary.mockRejectedValue(new ApiError(503, 'LOKI_NOT_CONFIGURED', 'off'));
@@ -103,6 +109,8 @@ test('REACT_APP_GRAFANA_URL이 있을 때만 외부 접속 대시보드 버튼�
 
 test('로그인 중: 세션 표(기기·IP·나라·이 기기), 확인 후 강제 로그아웃하면 목록에서 빠지고 알린다', async () => {
   renderAdmin('/app/admin?tab=access&view=sessions');
+  await openUser('kim');
+  await openUser('boss');
   const kim = await screen.findByTestId('admin-session-fam-kim');
   expect(within(kim).getByText('모바일 · iOS · Safari')).toBeInTheDocument();
   expect(within(kim).getByText('203.0.113.24')).toBeInTheDocument();
@@ -120,6 +128,7 @@ test('로그인 중: 세션 표(기기·IP·나라·이 기기), 확인 후 강�
 test('내 세션을 끊을 때는 이 화면에서도 로그아웃된다고 알리고, 실패하면 이유를 대화상자에 보인다', async () => {
   mockAdmin.revokeSession.mockRejectedValue(new ApiError(404, 'SESSION_NOT_FOUND', '로그인 중인 세션을 찾을 수 없습니다.'));
   renderAdmin('/app/admin?tab=access&view=sessions');
+  await openUser('boss');
   const me = await screen.findByTestId('admin-session-fam-me');
   fireEvent.click(within(me).getByRole('button', { name: 'boss 강제 로그아웃' }));
   const dialog = screen.getByRole('alertdialog');

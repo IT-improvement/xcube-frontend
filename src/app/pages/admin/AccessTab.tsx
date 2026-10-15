@@ -1,8 +1,8 @@
-// S13 접속 기록 tab (UR-60, MON-contract §2·§7): the last days at a glance with repeated-failure warnings, the sessions
-// signed in now with forced sign-out, the sign-in record with filters, and the visit log (MON4: the entrance log in
+// S13 접속 기록 tab (UR-60, MON-contract §2·§7·§8): the last days at a glance with repeated-failure warnings, the sessions
+// signed in now grouped by user (active/idle, forced sign-out, sign out all of a user's other sessions; bots folded), the sign-in record with filters, and the visit log (MON4: the entrance log in
 // Loki, so link-preview bots that never run the page are counted too). IPs and devices are personal data: shown to
 // administrators only, kept for the retention the server reports.
-import { ArrowRight, LogOut, RefreshCw, Search, X } from 'lucide-react';
+import { ArrowRight, ChevronRight, LogOut, RefreshCw, Search, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button } from '../../../components/ui';
@@ -12,8 +12,8 @@ import { formatDate, formatNumber, useLanguage } from '../../../i18n';
 import type { Lang, TKey } from '../../../i18n';
 import { grafanaAccessUrl } from '../../../api/adminApi';
 import GrafanaButton from './GrafanaButton';
-import { AccessSession, AccessSummary, admin, formatDateTime, LoginEvent, Visit, VisitFilter, VisitList, VisitSummary } from '../../api';
-import { VISIT_LIMIT } from '../../../api/adminApi';
+import { AccessSession, AccessSummary, admin, SessionList, formatDateTime, LoginEvent, Visit, VisitFilter, VisitList, VisitSummary } from '../../api';
+import { sessionUsers, VISIT_LIMIT } from '../../../api/adminApi';
 import { useLoad } from '../../useLoad';
 import { NoValue } from '../DataLibraryPage';
 import { ListError } from './DataTab';
@@ -22,7 +22,7 @@ import { IconAction, PAGE_SIZE, Pager, useParam, useSearchParam } from './shared
 type View = 'summary' | 'sessions' | 'logins' | 'visits';
 const VIEWS: View[] = ['summary', 'sessions', 'logins', 'visits'];
 /** Filters of every view; switching views clears them. */
-const VIEW_PARAMS = ['q', 'page', 'event', 'from', 'to', 'range', 'ip', 'country', 'path', 'who', 'kind'];
+const VIEW_PARAMS = ['q', 'page', 'event', 'from', 'to', 'range', 'ip', 'country', 'path', 'who', 'kind', 'bots'];
 export const LOGIN_EVENTS = ['LOGIN_SUCCESS', 'LOGIN_FAIL', 'LOGOUT', 'REFRESH_REUSE', 'PASSWORD_CHANGE', 'ADMIN_PASSWORD_RESET'] as const;
 const EVENT_TONE: Record<string, BadgeTone> = { LOGIN_SUCCESS: 'success', LOGIN_FAIL: 'danger', REFRESH_REUSE: 'warning' };
 const STAMP: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
@@ -215,64 +215,170 @@ function SummaryView() {
   );
 }
 
+/** "23분 전" / "1시간 5분 전" from a past instant (whole minutes). */
+export function agoText(iso: string | null, now: number, t: (key: TKey, vars?: Record<string, string | number>) => string) {
+  const then = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(then)) return t('admin.unknown');
+  const minutes = Math.max(0, Math.floor((now - then) / 60_000));
+  if (minutes < 1) return t('admin.access.sessions.agoNow');
+  if (minutes < 60) return t('admin.access.sessions.agoMinutes', { n: minutes });
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? t('admin.access.sessions.agoHours', { h: hours, m: rest }) : t('admin.access.sessions.agoHoursFlat', { h: hours });
+}
+
+/** Sessions of one user, in the server's order (ACTIVE first, then the latest refresh). */
+type SessionGroup = { key: string; userId: string | null; loginId: string | null; name: string | null; all: AccessSession[]; shown: AccessSession[] };
+const groupKey = (item: Pick<AccessSession, 'userId' | 'loginId'>) => item.userId ?? `?${item.loginId ?? ''}`;
+
+/** Groups by user (perUser order, then any user it missed); `shown` leaves out bot sessions when they are hidden. */
+export function groupSessions(list: SessionList, hideBots: boolean): SessionGroup[] {
+  const groups = new Map<string, SessionGroup>();
+  for (const user of list.perUser) {
+    const key = user.userId ?? `?${user.loginId ?? ''}`;
+    groups.set(key, { key, userId: user.userId, loginId: user.loginId, name: user.name, all: [], shown: [] });
+  }
+  for (const item of list.items) {
+    const key = groupKey(item);
+    const group = groups.get(key) ?? { key, userId: item.userId, loginId: item.loginId, name: item.name, all: [], shown: [] };
+    group.all.push(item);
+    if (!(hideBots && item.bot)) group.shown.push(item);
+    groups.set(key, group);
+  }
+  return Array.from(groups.values()).filter((group) => group.all.length > 0);
+}
+
+function SessionStateCell({ item, now }: { item: AccessSession; now: number }) {
+  const { t } = useLanguage();
+  return item.state === 'ACTIVE'
+    ? <Badge tone="success">{t('admin.access.sessions.active')}</Badge>
+    : <span className="admin-session-idle">{t('admin.access.sessions.idleFor', { ago: agoText(item.lastRefreshAt, now, t) })}</span>;
+}
+
 function SessionsView({ onToast }: { onToast: (text: string) => void }) {
   const { lang, t } = useLanguage();
-  const sessions = useLoad<AccessSession[]>(() => admin.listSessions());
+  const sessions = useLoad<SessionList>(() => admin.listSessions());
+  const [botsParam, setBots] = useParam('bots', 'hide');
+  const hideBots = botsParam !== 'show';
   const [ending, setEnding] = useState<AccessSession | null>(null);
-  const items = sessions.data ?? [];
+  const [endingAll, setEndingAll] = useState<SessionGroup | null>(null);
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const list = sessions.data;
+  const groups = useMemo(() => (list ? groupSessions(list, hideBots) : []), [list, hideBots]);
+  const visible = groups.filter((group) => group.shown.length > 0);
+  const folded = hideBots && list ? list.items.filter((item) => item.bot).length : 0;
+  const total = list?.items.length ?? 0;
+  const minutes = Math.round((list?.activeWindowSeconds ?? 900) / 60);
+  const now = Date.now();
+  // A lone user is shown open; otherwise every user starts folded.
+  const isOpen = (group: SessionGroup) => open.has(group.key) || visible.length === 1;
+  const toggle = (key: string) => setOpen((current) => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  const drop = (keep: (item: AccessSession) => boolean) => sessions.setData((current) => {
+    if (!current) return current;
+    const items = current.items.filter(keep);
+    return { ...current, items, perUser: sessionUsers(items) };
+  });
   return (
     <>
       <div className="toolbar">
-        <span className="xc-hint">{t('admin.access.sessions.note')}</span>
+        <span className="xc-hint">{t('admin.access.sessions.note', { minutes })}</span>
         <span className="toolbar__spacer" />
-        {sessions.data && <span className="xc-hint tabular" aria-live="polite">{t('admin.access.sessions.count', { count: items.length })}</span>}
+        <label className="xc-check">
+          <input type="checkbox" checked={hideBots} onChange={(event) => setBots(event.target.checked ? 'hide' : 'show')} />
+          {t('admin.access.sessions.hideBots')}
+        </label>
+        {list && (
+          <span className="xc-hint tabular" aria-live="polite">
+            {t('admin.access.sessions.countUsers', { count: total, users: groups.length })}
+          </span>
+        )}
         <Button variant="line" size="sm" onClick={sessions.reload} disabled={sessions.loading}><RefreshCw size={14} aria-hidden />{t('admin.refresh')}</Button>
       </div>
-      {sessions.loading && !sessions.data ? <Skeleton lines={4} label={t('admin.access.sessions.loading')} />
-        : sessions.error && !sessions.data ? <ListError text={t('admin.access.sessions.failed', { error: sessions.error })} onRetry={sessions.reload} />
-          : !items.length ? <EmptyState title={t('admin.access.sessions.none')} />
+      {sessions.loading && !list ? <Skeleton lines={4} label={t('admin.access.sessions.loading')} />
+        : sessions.error && !list ? <ListError text={t('admin.access.sessions.failed', { error: sessions.error })} onRetry={sessions.reload} />
+          : !total ? <EmptyState title={t('admin.access.sessions.none')} />
             : (
               <div className="xc-stale" aria-busy={sessions.loading} data-testid="admin-sessions">
-                <div className="xc-table-wrap">
-                  <table className="xc-table xc-table--cards admin-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">{t('admin.access.user')}</th>
-                        <th scope="col">{t('admin.access.deviceCol')}</th>
-                        <th scope="col">IP</th>
-                        <th scope="col">{t('admin.access.sessions.started')}</th>
-                        <th scope="col">{t('admin.access.sessions.lastRefresh')}</th>
-                        <th scope="col"><span className="sr-only">{t('app.actions')}</span></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((session) => (
-                        <tr key={session.familyId} data-testid={`admin-session-${session.familyId}`}>
-                          <td className="cell-main">
-                            <span className="xc-cell-main">
-                              <span className="admin-who">
-                                <strong>{session.loginId ?? t('admin.userNumber', { id: session.userId ?? '—' })}</strong>
-                                {session.current && <Badge tone="primary">{t('admin.access.sessions.thisDevice')}</Badge>}
-                              </span>
-                              {session.name && <small>{session.name}</small>}
-                            </span>
-                          </td>
-                          <td data-label={t('admin.access.deviceCol')}><DeviceCell item={session} /></td>
-                          <td data-label="IP"><IpCell ip={session.ip} country={session.country} /></td>
-                          <td className="date" data-label={t('admin.access.sessions.started')}>{formatDateTime(session.startedAt, lang)}</td>
-                          <td className="date" data-label={t('admin.access.sessions.lastRefresh')}>{formatDateTime(session.lastRefreshAt, lang)}</td>
-                          <td className="cell-actions">
-                            <div className="row-actions">
-                              <IconAction label={t('admin.access.sessions.revokeNamed', { loginId: session.loginId ?? '' })} onClick={() => setEnding(session)}>
-                                <LogOut size={16} aria-hidden />
-                              </IconAction>
-                            </div>
-                          </td>
+                {visible.length > 0 && (
+                  <div className="xc-table-wrap">
+                    <table className="xc-table xc-table--cards admin-table admin-sessions">
+                      <thead>
+                        <tr>
+                          <th scope="col">{t('admin.access.sessions.state')}</th>
+                          <th scope="col">{t('admin.access.deviceCol')}</th>
+                          <th scope="col">IP</th>
+                          <th scope="col">{t('admin.access.sessions.started')}</th>
+                          <th scope="col">{t('admin.access.sessions.lastRefresh')}</th>
+                          <th scope="col"><span className="sr-only">{t('app.actions')}</span></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      {visible.map((group) => {
+                        const expanded = isOpen(group);
+                        const active = group.shown.filter((item) => item.state === 'ACTIVE').length;
+                        const idle = group.shown.length - active;
+                        const endable = group.all.filter((item) => !item.current).length;
+                        const mine = group.all.some((item) => item.current);
+                        const who = group.loginId ?? t('admin.userNumber', { id: group.userId ?? '—' });
+                        const rowsId = `admin-session-rows-${group.key}`;
+                        return (
+                          <tbody key={group.key} id={rowsId} data-testid={`admin-session-group-${group.key}`}>
+                            <tr className="admin-session-group">
+                              <th scope="rowgroup" colSpan={6}>
+                                <div className="admin-session-group__row">
+                                  <button type="button" className="admin-session-toggle" aria-expanded={expanded} aria-controls={rowsId} onClick={() => toggle(group.key)}>
+                                    <ChevronRight size={16} aria-hidden />
+                                    <strong>{who}</strong>{' '}
+                                    <span className="admin-session-counts">{t('admin.access.sessions.groupCounts', { active, idle })}</span>
+                                  </button>
+                                  {group.name && <small className="xc-hint">{group.name}</small>}
+                                  {mine && <Badge tone="primary">{t('admin.access.sessions.thisDevice')}</Badge>}
+                                  <span className="toolbar__spacer" />
+                                  {group.userId && endable > 0 && (
+                                    <Button variant="quiet" size="sm" onClick={() => setEndingAll(group)}>
+                                      <LogOut size={14} aria-hidden />
+                                      {t(mine ? 'admin.access.sessions.revokeOthers' : 'admin.access.sessions.revokeAll')}
+                                    </Button>
+                                  )}
+                                </div>
+                              </th>
+                            </tr>
+                            {expanded && group.shown.map((session) => (
+                              <tr key={session.familyId} className="admin-session-row" data-testid={`admin-session-${session.familyId}`}>
+                                <td className="cell-main">
+                                  <span className="admin-who">
+                                    <SessionStateCell item={session} now={now} />
+                                    {session.current && <Badge tone="primary">{t('admin.access.sessions.thisDevice')}</Badge>}
+                                  </span>
+                                </td>
+                                <td data-label={t('admin.access.deviceCol')}><DeviceCell item={session} /></td>
+                                <td data-label="IP"><IpCell ip={session.ip} country={session.country} /></td>
+                                <td className="date" data-label={t('admin.access.sessions.started')}>{formatDateTime(session.startedAt, lang)}</td>
+                                <td className="date" data-label={t('admin.access.sessions.lastRefresh')}>{formatDateTime(session.lastRefreshAt, lang)}</td>
+                                <td className="cell-actions">
+                                  <div className="row-actions">
+                                    <IconAction label={t('admin.access.sessions.revokeNamed', { loginId: session.loginId ?? '' })} onClick={() => setEnding(session)}>
+                                      <LogOut size={16} aria-hidden />
+                                    </IconAction>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        );
+                      })}
+                    </table>
+                  </div>
+                )}
+                {folded > 0 && (
+                  <p className="admin-session-folded" data-testid="admin-session-bots">
+                    <span>{t('admin.access.sessions.botsFolded', { count: folded })}</span>
+                    <Button variant="quiet" size="sm" onClick={() => setBots('show')}>{t('admin.access.sessions.showBots')}</Button>
+                  </p>
+                )}
               </div>
             )}
       {ending && (
@@ -280,7 +386,7 @@ function SessionsView({ onToast }: { onToast: (text: string) => void }) {
           title={t('admin.access.sessions.revokeTitle')}
           description={(
             <>
-              {t('admin.access.sessions.revokeText', { loginId: ending.loginId ?? '', device: deviceText(ending, t), ip: ending.ip ?? t('admin.unknown') })}
+              {t('admin.access.sessions.revokeText', { loginId: ending.loginId ?? '', device: deviceText(ending, t), ip: ending.ip ?? t('admin.unknown'), minutes })}
               {ending.current && <><br />{t('admin.access.sessions.revokeSelf')}</>}
             </>
           )}
@@ -289,12 +395,32 @@ function SessionsView({ onToast }: { onToast: (text: string) => void }) {
           onClose={() => setEnding(null)}
           onConfirm={async () => {
             await admin.revokeSession(ending.familyId);
-            sessions.setData((current) => current && current.filter((item) => item.familyId !== ending.familyId));
+            drop((item) => item.familyId !== ending.familyId);
             setEnding(null);
             onToast(t('admin.access.sessions.revoked', { loginId: ending.loginId ?? '' }));
           }}
         />
       )}
+      {endingAll && endingAll.userId && (() => {
+        const mine = endingAll.all.some((item) => item.current);
+        const count = endingAll.all.filter((item) => !item.current).length;
+        const loginId = endingAll.loginId ?? '';
+        return (
+          <ConfirmDialog
+            title={t(mine ? 'admin.access.sessions.revokeOthersTitle' : 'admin.access.sessions.revokeAllTitle', { loginId })}
+            description={t(mine ? 'admin.access.sessions.revokeOthersText' : 'admin.access.sessions.revokeAllText', { loginId, count, minutes })}
+            confirmLabel={t('admin.access.sessions.revokeAllConfirm', { count })}
+            busyLabel={t('admin.access.sessions.revoking')}
+            onClose={() => setEndingAll(null)}
+            onConfirm={async () => {
+              const result = await admin.revokeUserSessions(endingAll.userId as string, true);
+              drop((item) => groupKey(item) !== endingAll.key || item.current);
+              setEndingAll(null);
+              onToast(t('admin.access.sessions.revokedAll', { loginId, count: result.revoked }));
+            }}
+          />
+        );
+      })()}
     </>
   );
 }

@@ -98,6 +98,30 @@
 .admin-visit-lists { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4) var(--space-8); }
 .admin-visit-lists > div { display: grid; gap: var(--space-2); align-content: start; min-width: 0; }
 
+/* 로그인 중 (MON5): one row group per user — a ruled header with the disclosure, then that user's sessions indented. */
+.admin-session-group th {
+  position: static; height: auto; padding: 8px var(--space-4); border-bottom: 1px solid var(--fb-rule); text-align: left;
+  white-space: normal; color: var(--fb-ink); font: 400 14px/1.4 var(--fb-font); background: var(--fb-surface);
+}
+.admin-sessions tbody + tbody .admin-session-group th { border-top: 1px solid var(--fb-rule); }
+.admin-session-group__row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.admin-session-toggle {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 32px; margin-left: -6px; padding: 4px 8px 4px 4px;
+  border: 0; border-radius: 4px; background: none; color: var(--fb-ink); font: 400 14px/1.4 var(--fb-font); text-align: left; cursor: pointer;
+}
+.admin-session-toggle:hover { background: var(--fb-sunken); }
+.admin-session-toggle:focus-visible { outline: 2px solid var(--fb-focus); outline-offset: 2px; }
+.admin-session-toggle strong { font-weight: 600; overflow-wrap: anywhere; }
+.admin-session-toggle svg { flex: none; color: var(--fb-ink-2); transition: transform 140ms var(--fb-ease-out); }
+.admin-session-toggle[aria-expanded='true'] svg { transform: rotate(90deg); }
+.admin-session-counts { color: var(--fb-ink-2); font: var(--text-caption); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.admin-session-row td:first-child { padding-left: calc(var(--space-4) + 22px); }
+.admin-session-idle { color: var(--fb-ink-2); font: var(--text-caption); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.admin-session-folded {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin: 0; padding: 10px var(--space-4);
+  border-top: 1px solid var(--fb-rule); color: var(--fb-ink-2); font: var(--text-caption);
+}
+
 @media (max-width: 767px) {
   .admin-visit-lists { grid-template-columns: minmax(0, 1fr); }
   .admin-visit-search__ip, .admin-visit-search__path { max-width: none; flex-basis: 100%; }
@@ -119,7 +143,15 @@
   .admin-pager .xc-hint { flex-basis: 100%; }
   .admin-block { padding: var(--space-4); }
   .admin-block .xc-table--cards tbody > tr { padding-left: 0; padding-right: 0; }
+  .admin-sessions.xc-table--cards tbody { border-bottom: 1px solid var(--fb-rule); }
+  .admin-sessions.xc-table--cards tbody > tr.admin-session-group { padding: 0; border-bottom: 0; }
+  .admin-session-group th { display: block; flex: 1 1 100%; border: 0; padding: 10px var(--space-4) 6px; }
+  .admin-sessions tbody + tbody .admin-session-group th { border-top: 0; }
+  .admin-sessions.xc-table--cards tbody > tr.admin-session-row { margin-left: var(--space-4); padding-left: 14px; border-left: 2px solid var(--fb-rule); border-bottom: 0; }
+  .admin-session-row td:first-child { padding-left: 0; }
+  .admin-session-toggle { min-height: 40px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .admin-meter__bar span { transition: none; }
+  .admin-session-toggle svg { transition: none; }
 }
