@@ -2,7 +2,8 @@ import { ArrowLeft, Database, ExternalLink, FolderKanban, Link2, Lock, Pencil, P
 import { FormEvent, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { userMessage } from '../../api/httpClient';
-import { Alert, Button, ButtonLink, TextField } from '../../components/ui';
+import { Alert, Button, ButtonLink, LockedButton, TextField } from '../../components/ui';
+import { NEEDS, useRoleGate } from '../../auth/roles';
 import { Card, ConfirmDialog, Dialog, EmptyState, PageHeader, Segmented, Skeleton, TabPanel, Tabs, useToast } from '../../components/ui/kit';
 import { useAuth } from '../../auth/AuthProvider';
 import { appApi, canEditProject, formatDate, isOwned, memberLabel, MemberRole, Project, ProjectMember, viewerHref, ZarrDataset } from '../api';
@@ -36,13 +37,18 @@ export function ProjectsPage() {
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
   const items = useMemo(() => projects.data ?? [], [projects.data]);
+  // UR-59: projects are created from PROJECT_MANAGER up; below that "새 프로젝트" stays, off, with the reason.
+  const createLocked = useRoleGate().reason(NEEDS.manageProjects);
+  const newButton = createLocked
+    ? <LockedButton showReason reason={createLocked}><Plus size={16} aria-hidden />{t('projects.new')}</LockedButton>
+    : <Button onClick={() => setCreating(true)}><Plus size={16} aria-hidden />{t('projects.new')}</Button>;
   const needle = query.trim().toLowerCase();
   const visible = items.filter((project) =>
     (scope === 'all' || (scope === 'owned' ? project.accessRole === 'OWNER' : project.accessRole !== 'OWNER')) &&
     (!needle || [project.name, project.description].some((text) => text?.toLowerCase().includes(needle))));
   return (
     <div className="page-stack">
-      <PageHeader title={t('titles.projects')} description={t('projects.description')} actions={<Button onClick={() => setCreating(true)}><Plus size={16} aria-hidden />{t('projects.new')}</Button>} />
+      <PageHeader title={t('titles.projects')} description={t('projects.description')} actions={newButton} />
       <Card>
         <div className="toolbar">
           <label className="toolbar__search">
@@ -56,7 +62,7 @@ export function ProjectsPage() {
         ) : projects.error ? (
           <div className="inline-error"><Alert tone="danger">{t('projects.listFailed', { error: projects.error })}</Alert><Button variant="secondary" size="sm" onClick={projects.reload} className="inline-error__retry">{t('common.retry')}</Button></div>
         ) : !items.length ? (
-          <EmptyState icon={<FolderKanban size={22} />} title={t('projects.emptyTitle')} text={t('projects.emptyText')} action={<Button onClick={() => setCreating(true)}><Plus size={16} aria-hidden />{t('projects.new')}</Button>} />
+          <EmptyState icon={<FolderKanban size={22} />} title={t('projects.emptyTitle')} text={t('projects.emptyText')} action={newButton} />
         ) : !visible.length ? (
           <EmptyState icon={<Search size={22} />} title={t('projects.noResults')} action={<Button variant="secondary" onClick={() => { setQueryState(''); setParams(new URLSearchParams(), { replace: true }); }}>{t('data.reset')}</Button>} />
         ) : (
@@ -139,6 +145,7 @@ export function ProjectDetailPage() {
   const navigate = useNavigate();
   const project = useLoad(() => appApi.getProject(projectId), [projectId]);
   const { t } = useLanguage();
+  const gate = useRoleGate();
   useDocumentTitle(project.data?.name ? t('titles.projectNamed', { name: project.data.name }) : t('titles.projects'));
   // The open tab is kept in the URL (?tab=members), like the dataset detail.
   const [params, setParams] = useSearchParams();
@@ -166,6 +173,8 @@ export function ProjectDetailPage() {
   const current = project.data;
   const owner = current.accessRole === 'OWNER';
   const editable = canEditProject(current);
+  // Both must hold (UR-59): the project permission (owner / editor) and the account role.
+  const manageLocked = gate.reason(NEEDS.manageProjects);
   return (
     <div className="page-stack">
       <PageHeader
@@ -173,8 +182,12 @@ export function ProjectDetailPage() {
         title={current.name}
         description={<span className="head-tags"><RoleBadge role={current.accessRole} />{current.description && <span>{current.description}</span>}</span>}
         actions={<>
-          {editable && <Button variant="secondary" onClick={() => setEditing(true)}><Pencil size={16} aria-hidden />{t('projects.edit')}</Button>}
-          {owner && <Button variant="ghost" onClick={() => setDeleting(true)}><Trash2 size={16} aria-hidden />{t('app.delete')}</Button>}
+          {editable && (manageLocked
+            ? <LockedButton variant="secondary" reason={manageLocked}><Pencil size={16} aria-hidden />{t('projects.edit')}</LockedButton>
+            : <Button variant="secondary" onClick={() => setEditing(true)}><Pencil size={16} aria-hidden />{t('projects.edit')}</Button>)}
+          {owner && (manageLocked
+            ? <LockedButton variant="ghost" reason={manageLocked}><Trash2 size={16} aria-hidden />{t('app.delete')}</LockedButton>
+            : <Button variant="ghost" onClick={() => setDeleting(true)}><Trash2 size={16} aria-hidden />{t('app.delete')}</Button>)}
         </>}
       />
       <Card>
@@ -212,6 +225,8 @@ function ProjectData({ project, editable, onToast }: { project: Project; editabl
   const { t } = useLanguage();
   const linked = useLoad(() => appApi.projectDatasets(project.id), [project.id]);
   const [picking, setPicking] = useState(false);
+  // Linking data needs PROJECT_USER (UR-59) on top of the project's edit permission.
+  const linkLocked = useRoleGate().reason(NEEDS.createData);
   const [unlinking, setUnlinking] = useState<ZarrDataset | null>(null);
   // Errors stay in the confirmation dialog (ConfirmDialog shows them).
   const unlink = async (dataset: ZarrDataset) => {
@@ -226,7 +241,9 @@ function ProjectData({ project, editable, onToast }: { project: Project; editabl
       <div className="toolbar">
         <span className="xc-hint">{t('projects.dataHint')}</span>
         <span className="toolbar__spacer" />
-        {editable && <Button size="sm" onClick={() => setPicking(true)}><Link2 size={16} aria-hidden />{t('projects.linkData')}</Button>}
+        {editable && (linkLocked
+          ? <LockedButton size="sm" showReason reason={linkLocked}><Link2 size={16} aria-hidden />{t('projects.linkData')}</LockedButton>
+          : <Button size="sm" onClick={() => setPicking(true)}><Link2 size={16} aria-hidden />{t('projects.linkData')}</Button>)}
       </div>
       {linked.loading ? <Skeleton lines={3} label={t('projects.loadingLinked')} /> : linked.error ? (
         <div className="inline-error"><Alert tone="danger">{linked.error}</Alert></div>
@@ -244,7 +261,7 @@ function ProjectData({ project, editable, onToast }: { project: Project; editabl
                   <td className="cell-actions">
                     <div className="row-actions">
                       <a className="xc-icon-btn" href={viewerHref(dataset.id)} target="_blank" rel="noopener noreferrer" aria-label={t('app.openInViewerNamed', { name: dataset.name })} title={t('app.openInViewer')}><ExternalLink size={16} aria-hidden /></a>
-                      {editable && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => setUnlinking(dataset)} aria-label={t('projects.unlinkNamed', { name: dataset.name })}><Unlink size={14} aria-hidden />{t('projects.unlink')}</button>}
+                      {editable && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" aria-disabled={linkLocked ? true : undefined} title={linkLocked || undefined} onClick={linkLocked ? undefined : () => setUnlinking(dataset)} aria-label={t('projects.unlinkNamed', { name: dataset.name })}><Unlink size={14} aria-hidden />{t('projects.unlink')}</button>}
                     </div>
                   </td>
                 </tr>
@@ -329,6 +346,8 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
   const [fieldError, setFieldError] = useState('');
   const [savingRole, setSavingRole] = useState('');
   const [removing, setRemoving] = useState<ProjectMember | null>(null);
+  // Sharing needs PROJECT_MANAGER (UR-59) on top of owning the project.
+  const shareLocked = useRoleGate().reason(NEEDS.manageProjects);
   if (!owner) return <EmptyState icon={<Lock size={22} />} title={t('members.ownerOnlyTitle')} text={t('members.ownerOnlyText')} />;
   const add = async (event: FormEvent) => {
     event.preventDefault();
@@ -379,8 +398,11 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
             <option value="EDITOR">{t('roles.EDITOR')}</option>
           </select>
         </label>
-        <Button type="submit" disabled={busy} className="member-form__submit">{busy ? t('members.adding') : t('members.add')}</Button>
+        {shareLocked
+          ? <LockedButton className="member-form__submit" reason={shareLocked}>{t('members.add')}</LockedButton>
+          : <Button type="submit" disabled={busy} className="member-form__submit">{busy ? t('members.adding') : t('members.add')}</Button>}
       </form>
+      {shareLocked && <p className="inline-error xc-hint">{shareLocked}</p>}
       {error && <div className="inline-error"><Alert tone="danger">{error}</Alert></div>}
       {members.loading && !members.data ? <Skeleton lines={3} label={t('members.loading')} /> : members.error ? (
         <div className="inline-error"><Alert tone="danger">{members.error}</Alert></div>
@@ -393,13 +415,13 @@ function ProjectMembers({ project, owner, onToast }: { project: Project; owner: 
                 <tr key={member.userId}>
                   <td className="cell-main"><strong>{member.role === 'OWNER' && String(user?.id) === member.userId ? t('members.me', { name: user?.name ?? t('members.meFallback') }) : label(member)}</strong></td>
                   <td data-label={t('members.role')}>{member.role === 'OWNER' ? <RoleBadge role="OWNER" /> : (
-                    <select className="xc-select member-role" aria-label={t('members.roleOf', { name: label(member) })} aria-busy={savingRole === member.userId || undefined} disabled={savingRole === member.userId} value={member.role} onChange={(event) => change(member, event.target.value as MemberRole)}>
+                    <select className="xc-select member-role" aria-label={t('members.roleOf', { name: label(member) })} aria-busy={savingRole === member.userId || undefined} disabled={savingRole === member.userId || !!shareLocked} title={shareLocked || undefined} value={member.role} onChange={(event) => change(member, event.target.value as MemberRole)}>
                       <option value="VIEWER">{t('roles.VIEWER')}</option>
                       <option value="EDITOR">{t('roles.EDITOR')}</option>
                     </select>
                   )}</td>
                   <td data-label={t('members.addedOn')} className="date">{member.createdAt ? formatDate(member.createdAt, lang) : <NoValue label={t('app.noDate')} />}</td>
-                  <td className="cell-actions">{member.role !== 'OWNER' && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => setRemoving(member)} aria-label={t('members.removeNamed', { name: label(member) })}>{t('members.remove')}</button>}</td>
+                  <td className="cell-actions">{member.role !== 'OWNER' && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" aria-disabled={shareLocked ? true : undefined} title={shareLocked || undefined} onClick={shareLocked ? undefined : () => setRemoving(member)} aria-label={t('members.removeNamed', { name: label(member) })}>{t('members.remove')}</button>}</td>
                 </tr>
               ))}
               {!items.length && <tr><td colSpan={4} className="xc-hint cell-full">{t('members.none')}</td></tr>}

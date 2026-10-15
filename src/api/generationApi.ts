@@ -1,4 +1,4 @@
-import { ApiError, errorFromBody, request, session } from './httpClient';
+import { ApiError, errorFromBody, isStaleRoleAnswer, refreshForRole, request, session } from './httpClient';
 import type { TKey } from '../i18n/types';
 import type { ServerItem, ServerParams } from '../i18n/serverText';
 
@@ -156,7 +156,7 @@ function sendWithProgress(url: string, data: FormData, token: string | null, opt
   });
 }
 
-async function multipart<T>(path: string, data: FormData, fallback: TKey, accept: (status: number, body: any) => T | undefined, options: UploadOptions = {}): Promise<T> {
+async function multipart<T>(path: string, data: FormData, fallback: TKey, accept: (status: number, body: any) => T | undefined, options: UploadOptions = {}, retried = false): Promise<T> {
   const token = session.getToken();
   const url = `${GENERATION_API_BASE_URL}${path}`;
   let status: number;
@@ -170,6 +170,8 @@ async function multipart<T>(path: string, data: FormData, fallback: TKey, accept
     status = response.status;
     body = await response.json().catch(() => ({}));
   }
+  // A token from before a role change (UR-59): refresh once and send again.
+  if (!retried && isStaleRoleAnswer(status, body) && await refreshForRole(token)) return multipart(path, data, fallback, accept, options, true);
   const accepted = accept(status, body);
   if (accepted !== undefined) return accepted;
   throw uploadError(status, body, fallback);

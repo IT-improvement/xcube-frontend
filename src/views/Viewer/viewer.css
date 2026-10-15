@@ -950,3 +950,7 @@
   .vx-swipe__handle { width: var(--vx-hit); height: 56px; }
   .vx-staff { min-height: 60px; }
 }
+
+/* UR-59: an action the account role cannot use stays visible and focusable (aria-disabled), with its reason. */
+.vx-btn[aria-disabled='true'], .vx-btn[aria-disabled='true']:hover { cursor: not-allowed; color: var(--vx-ink-3); background: var(--vx-sunken); border-color: var(--vx-rule); }
+.vx-btn--quiet[aria-disabled='true'], .vx-btn--quiet[aria-disabled='true']:hover { background: transparent; border-color: transparent; }

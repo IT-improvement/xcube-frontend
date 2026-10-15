@@ -1,7 +1,8 @@
 import { ArrowLeft, ExternalLink, FolderPlus, Lock, SearchX, Trash2, Unlink } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Alert, Button, ButtonAnchor, ButtonLink } from '../../components/ui';
+import { Alert, Button, ButtonAnchor, ButtonLink, LockedButton } from '../../components/ui';
+import { NEEDS, useRoleGate } from '../../auth/roles';
 import { Badge, BadgeTone, Card, ConfirmDialog, EmptyState, PageHeader, Skeleton, TabPanel, Tabs, useToast } from '../../components/ui/kit';
 import { ai, aiViewerHref, appApi, canEditProject, formatDateTime, fusion, generation, isOwned, periodLabel, Project, viewerHref, ZarrDataset } from '../api';
 import { AiFacts, aiFactsOf, aiPeriod, shortDateTime, thresholdText } from '../aiFacts';
@@ -87,6 +88,8 @@ export default function DatasetDetailPage() {
   const navigate = useNavigate();
   const dataset = useLoad(() => appApi.getDataset(datasetId), [datasetId]);
   const { t } = useLanguage();
+  // UR-59: linking and deleting need PROJECT_USER; below that the buttons stay, off, with the reason.
+  const locked = useRoleGate().reason(NEEDS.createData);
   useDocumentTitle(dataset.data?.name ? t('titles.dataNamed', { name: dataset.data.name }) : t('titles.data'));
   // The open tab is kept in the URL (?tab=variables) so a reload or a shared link lands on it.
   const [params, setParams] = useSearchParams();
@@ -134,8 +137,12 @@ export default function DatasetDetailPage() {
         actions={
           <>
             <ButtonAnchor href={viewerLink} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} aria-hidden />{isAiResult ? t('app.compareInViewer') : t('app.openInViewer')}<span className="sr-only">{t('shell.newTab')}</span></ButtonAnchor>
-            <Button variant="secondary" onClick={() => setLinking(true)}><FolderPlus size={16} aria-hidden />{t('app.linkToProject')}</Button>
-            {owned && <Button variant="ghost" onClick={() => setDeleting(true)} aria-label={t('dataset.deleteLabel')}><Trash2 size={16} aria-hidden />{t('app.delete')}</Button>}
+            {locked
+              ? <LockedButton variant="secondary" reason={locked}><FolderPlus size={16} aria-hidden />{t('app.linkToProject')}</LockedButton>
+              : <Button variant="secondary" onClick={() => setLinking(true)}><FolderPlus size={16} aria-hidden />{t('app.linkToProject')}</Button>}
+            {owned && (locked
+              ? <LockedButton variant="ghost" reason={locked} label={t('dataset.deleteLabel')}><Trash2 size={16} aria-hidden />{t('app.delete')}</LockedButton>
+              : <Button variant="ghost" onClick={() => setDeleting(true)} aria-label={t('dataset.deleteLabel')}><Trash2 size={16} aria-hidden />{t('app.delete')}</Button>)}
           </>
         }
       />
@@ -229,6 +236,7 @@ function DatasetProjects({ dataset, reloadKey, onLink, onToast }: { dataset: Zar
     });
   }, [dataset.id, reloadKey]);
   const [unlinking, setUnlinking] = useState<LinkedProject | null>(null);
+  const locked = useRoleGate().reason(NEEDS.createData);
   const unlink = async (project: LinkedProject) => {
     await appApi.unlinkDataset(project.id, dataset.id);
     linked.setData((items) => items?.filter((item) => item.id !== project.id) ?? null);
@@ -241,7 +249,9 @@ function DatasetProjects({ dataset, reloadKey, onLink, onToast }: { dataset: Zar
       <div className="toolbar">
         <span className="xc-hint">{t('dataset.shareHint')}</span>
         <span className="toolbar__spacer" />
-        <Button size="sm" variant="secondary" onClick={onLink}><FolderPlus size={16} aria-hidden />{t('app.linkToProject')}</Button>
+        {locked
+          ? <LockedButton size="sm" variant="secondary" showReason reason={locked}><FolderPlus size={16} aria-hidden />{t('app.linkToProject')}</LockedButton>
+          : <Button size="sm" variant="secondary" onClick={onLink}><FolderPlus size={16} aria-hidden />{t('app.linkToProject')}</Button>}
       </div>
       {linked.loading && !linked.data ? <Skeleton lines={3} label={t('dataset.loadingProjects')} /> : linked.error ? (
         <div className="inline-error"><Alert tone="danger">{t('dataset.projectsFailed', { error: linked.error })}</Alert><Button variant="line" size="sm" onClick={linked.reload} className="inline-error__retry">{t('common.retry')}</Button></div>
@@ -259,7 +269,7 @@ function DatasetProjects({ dataset, reloadKey, onLink, onToast }: { dataset: Zar
                   <td data-label={t('dataset.sharedWith')} className="tabular">{project.sharedWith != null ? t('dataset.people', { count: project.sharedWith }) : <span className="xc-hint">{t('dataset.ownerSees')}</span>}</td>
                   <td className="cell-actions">
                     <div className="row-actions">
-                      {canEditProject(project) && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => setUnlinking(project)} aria-label={t('dataset.unlinkFrom', { name: project.name })}><Unlink size={14} aria-hidden />{t('projects.unlink')}</button>}
+                      {canEditProject(project) && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" aria-disabled={locked ? true : undefined} title={locked || undefined} onClick={locked ? undefined : () => setUnlinking(project)} aria-label={t('dataset.unlinkFrom', { name: project.name })}><Unlink size={14} aria-hidden />{t('projects.unlink')}</button>}
                     </div>
                   </td>
                 </tr>
@@ -317,6 +327,7 @@ function FusionHistory({ dataset }: { dataset: ZarrDataset }) {
   const job = useLoad(() => (dataset.generationJobId ? fusion.getJob(dataset.generationJobId).catch(() => null) : Promise.resolve(null)), [dataset.generationJobId]);
   const navigate = useNavigate();
   const { lang, t } = useLanguage();
+  const rerunLocked = useRoleGate().reason(NEEDS.createData);
   if (job.loading) return <Skeleton lines={4} label={t('dataset.loadingHistory')} />;
   const data = job.data;
   const request = asFusionRequest(data?.input) ?? asFusionRequest(dataset.fusion);
@@ -327,7 +338,9 @@ function FusionHistory({ dataset }: { dataset: ZarrDataset }) {
       {data && <JobSteps job={data} />}
       <FusionRequestSummary request={request} />
       <div className="btn-row">
-        <Button variant="secondary" size="sm" onClick={() => navigate('/app/analysis/fusion', { state: { request } })}>{t('dataset.rerun')}</Button>
+        {rerunLocked
+          ? <LockedButton variant="secondary" size="sm" showReason reason={rerunLocked}>{t('dataset.rerun')}</LockedButton>
+          : <Button variant="secondary" size="sm" onClick={() => navigate('/app/analysis/fusion', { state: { request } })}>{t('dataset.rerun')}</Button>}
         {data && <Link className="xc-btn xc-btn--ghost xc-btn--sm" to="/app/jobs">{t('app.inJobCenter')}</Link>}
       </div>
     </div>

@@ -63,6 +63,23 @@ export function refreshSession(): Promise<string> {
   return refreshInFlight;
 }
 
+/**
+ * After a role change (UR-59, ADM1 report) an access token issued earlier still carries the old role, so the server
+ * answers 403 ROLE_FORBIDDEN although the account may now do it. Such an answer gets one session refresh and one
+ * retry before it is shown. Only that code is retried; other 403s are final.
+ */
+export const isStaleRoleAnswer = (status: number, body: { code?: unknown } | null | undefined) => status === 403 && body?.code === 'ROLE_FORBIDDEN';
+/** Refreshes for a stale role; false when there is no session or the refresh failed (the 403 is then shown). */
+export async function refreshForRole(token: string | null): Promise<string | null> {
+  if (!token || session.getToken() !== token) return null;
+  try {
+    const refreshed = await refreshSession();
+    // The signed-in user's role on screen may be stale too; AuthProvider reads the account again.
+    window.dispatchEvent(new CustomEvent('xcube:role-refreshed'));
+    return refreshed;
+  } catch { return null; }
+}
+
 export async function request<T>(baseUrl: string, path: string, init: RequestInit = {}, authenticated = true): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
@@ -83,7 +100,17 @@ export async function request<T>(baseUrl: string, path: string, init: RequestIni
   }
   if (response.status === 204) return undefined as T;
   const contentType = response.headers.get('content-type') ?? '';
-  const body: any = contentType.includes('json') ? await response.json().catch(() => ({})) : {};
+  let body: any = contentType.includes('json') ? await response.json().catch(() => ({})) : {};
+  if (authenticated && isStaleRoleAnswer(response.status, body)) {
+    const refreshed = await refreshForRole(session.getToken());
+    if (refreshed) {
+      headers.set('Authorization', `Bearer ${refreshed}`);
+      try { response = await fetch(`${baseUrl}${path}`, { ...init, headers }); }
+      catch { throw new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다.'); }
+      if (response.status === 204) return undefined as T;
+      body = (response.headers.get('content-type') ?? '').includes('json') ? await response.json().catch(() => ({})) : {};
+    }
+  }
   if (!response.ok) {
     throw errorFromBody(response.status, body, response.statusText);
   }
@@ -120,6 +147,11 @@ export function userMessage(error: unknown, lang: Lang = getLanguage()): string 
   if (!(error instanceof ApiError)) return say('errors.unexpected');
   if (error.status === 0) return say('errors.network');
   if (error.status === 401) return say('errors.sessionExpired');
+  // A role too low (UR-59): the same sentence the disabled buttons show, from the role the server asked for.
+  if (error.code === 'ROLE_FORBIDDEN') {
+    const required = String(error.params?.required ?? '').toUpperCase();
+    if (required === 'PROJECT_USER' || required === 'PROJECT_MANAGER' || required === 'ADMIN') return say(`accountRole.reason.${required}`);
+  }
   const known = preferSentence(error.code) ? undefined : codeText(error.code, error.params, lang);
   if (known) return known;
   if (error.status === 409) return say(error.code === 'DATASET_NOT_REGISTERED' ? 'errors.syncing' : 'errors.conflict');

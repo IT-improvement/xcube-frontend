@@ -10,6 +10,7 @@ import { failureText, formatDate, formatNumber, getLanguage, serverItems, server
 import type { Lang, ServerItem, TKey, TVars } from "../../i18n";
 import "../../i18n/viewer";
 import LayerControl from "./LayerControl";
+import { NEEDS, useRoleGate } from "../../auth/roles";
 import { PLOT_INSET } from "./TimeStaff";
 
 /** One AI result of the shown dataset: an AI service job, or a Backoffice link without statistics. */
@@ -263,7 +264,9 @@ export function AiRunForm({
   });
   const busy = isRunning(run);
   const missing = check?.missing ?? [];
-  const canRun = !!model && !!check?.ready && !checking && !rangeInvalid && !busy && !starting;
+  // UR-59: running needs PROJECT_USER; below that the form can be read, and the run button says why it is off.
+  const runLocked = useRoleGate().reason(NEEDS.createData);
+  const canRun = !runLocked && !!model && !!check?.ready && !checking && !rangeInvalid && !busy && !starting;
   const submit = () => {
     if (!canRun || !model) return;
     onRun({
@@ -431,7 +434,8 @@ export function AiRunForm({
           : starting ? <><LoaderCircle size={16} className="vx-spin" aria-hidden="true" />{t("viewer.ai.form.starting")}</>
           : t("viewer.ai.form.run")}
       </button>
-      {!canRun && !busy && model && (
+      {runLocked && <p className="vx-section__hint" role="note">{runLocked}</p>}
+      {!runLocked && !canRun && !busy && model && (
         <p className="vx-section__hint">
           {checking ? t("viewer.ai.form.whyChecking") : missing.length ? t("viewer.ai.form.whyMissing") : rangeInvalid ? t("viewer.ai.form.whyRange") : checkError ? t("viewer.ai.form.whyCheckFailed") : ""}
         </p>

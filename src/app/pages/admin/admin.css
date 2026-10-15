@@ -1,0 +1,60 @@
+/* S13 관리자 (UR-59). Field-book tokens only (DESIGN.md): ruled sheet, ink selection, status trio next to words. */
+.admin-subnav { border-bottom: 1px solid var(--fb-rule); }
+.admin-table td { vertical-align: middle; }
+.admin-who { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.admin-who strong { overflow-wrap: anywhere; }
+.admin-role { width: 148px; height: 32px; }
+.admin-usage { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; white-space: nowrap; }
+.admin-mono { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.admin-warn-number { color: var(--fb-warn); font-weight: 600; }
+.admin-pod-state { display: inline-flex; align-items: center; gap: 6px; }
+.admin-detail { color: var(--fb-ink-2); overflow-wrap: anywhere; }
+.admin-note { padding: 12px var(--space-4) 0; }
+
+.admin-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); padding: 10px var(--space-4); border-top: 1px solid var(--fb-rule); }
+.admin-pager .xc-hint { margin-right: auto; }
+
+/* Temporary password: shown once in a read-only field with a copy button. */
+.admin-secret { display: grid; gap: var(--space-2); }
+.admin-secret__row { display: flex; gap: var(--space-2); }
+.admin-secret__value {
+  flex: 1 1 auto; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--fb-input-border); border-radius: var(--fb-radius);
+  background: var(--fb-sunken); color: var(--fb-ink); font: 600 15px/1 var(--fb-font); letter-spacing: 0.04em; font-variant-numeric: tabular-nums;
+}
+.admin-secret__value:focus { outline: 2px solid var(--fb-focus); outline-offset: 0; border-color: var(--fb-ink); }
+.admin-choice { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; }
+
+/* System: ruled blocks inside the one sheet, two meters side by side. */
+.admin-system__body { display: grid; }
+.admin-block { display: grid; gap: var(--space-3); padding: var(--space-5) var(--space-4); border-bottom: 1px solid var(--fb-rule); min-width: 0; }
+.admin-block:last-child { border-bottom: 0; }
+.admin-block__title { font: var(--text-label); color: var(--fb-ink-2); }
+.admin-block__empty { color: var(--fb-ink-3); font: var(--text-caption); }
+.admin-block .xc-table th:first-child, .admin-block .xc-table td:first-child { padding-left: 0; }
+.admin-block .xc-table th:last-child, .admin-block .xc-table td:last-child { padding-right: 0; }
+.admin-meters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) var(--space-8); }
+.admin-meter { display: grid; gap: var(--space-1); min-width: 0; }
+.admin-meter__label { font: var(--text-label); color: var(--fb-ink); }
+.admin-meter__value { font: 600 14px/1.4 var(--fb-font); font-variant-numeric: tabular-nums; color: var(--fb-ink); }
+.admin-meter__value--unknown { color: var(--fb-ink-3); font-weight: 400; }
+.admin-meter__bar { position: relative; height: 8px; overflow: hidden; border: 1px solid var(--fb-rule-strong); border-radius: 2px; background: var(--fb-sunken); }
+.admin-meter__bar span { position: absolute; inset: 0 auto 0 0; background: var(--fb-ink-2); transition: width 240ms var(--fb-ease-out); }
+.admin-meter--near .admin-meter__bar span { background: var(--fb-warn); }
+.admin-meter--over .admin-meter__bar span { background: var(--fb-bad); }
+.admin-meter--near .admin-meter__value { color: var(--fb-warn); }
+.admin-meter--over .admin-meter__value { color: var(--fb-bad); }
+
+@media (max-width: 767px) {
+  .admin-role { width: 100%; max-width: 220px; height: 40px; }
+  .admin-table tbody > tr > td.num { text-align: left; }
+  .admin-meters { grid-template-columns: minmax(0, 1fr); }
+  .admin-secret__row { flex-wrap: wrap; }
+  .admin-secret__value { height: 40px; font-size: 16px; }
+  .admin-pager { justify-content: space-between; }
+  .admin-pager .xc-hint { flex-basis: 100%; }
+  .admin-block { padding: var(--space-4); }
+  .admin-block .xc-table--cards tbody > tr { padding-left: 0; padding-right: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-meter__bar span { transition: none; }
+}

@@ -2,7 +2,8 @@ import { ChevronDown, ExternalLink, LogOut, Menu, Plus, Settings, X } from 'luci
 import { KeyboardEvent, RefObject, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
-import { ButtonLink, LanguageSwitch, Logo, RouteFallback } from '../components/ui';
+import { NEEDS, useRoleGate } from '../auth/roles';
+import { ButtonLink, LanguageSwitch, LockedButton, Logo, RouteFallback } from '../components/ui';
 import { TKey, useT } from '../i18n';
 import { appApi } from './api';
 import { JobsFeedProvider, useActiveJobCount } from './jobs';
@@ -43,11 +44,15 @@ function useDismiss(open: boolean, close: () => void, refs: Array<RefObject<HTML
   }, [open, close, trigger]);
 }
 
+/** S13 관리자 (UR-59): in the menu for admins only. */
+const ADMIN_NAV = { to: '/app/admin', label: 'shell.nav.admin' as TKey, end: false };
+
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
+  const { isAdmin } = useRoleGate();
   return (
     <>
-      {NAV.map(({ to, label, end }) => (
+      {(isAdmin ? [...NAV, ADMIN_NAV] : NAV).map(({ to, label, end }) => (
         <NavLink key={to} to={to} end={end} className="app-top__link" onClick={onNavigate}>{t(label)}</NavLink>
       ))}
       <a className="app-top__link" href="/app/viewer" target="_blank" rel="noopener noreferrer" onClick={onNavigate}>
@@ -69,6 +74,9 @@ function ShellFrame() {
   const name = user?.name ?? t('shell.userFallback');
   const activeJobs = useActiveJobCount();
   const location = useLocation();
+  // Data can be added from PROJECT_USER up (UR-59); below that the button stays, off, with the reason.
+  const gate = useRoleGate();
+  const addLocked = gate.reason(NEEDS.createData);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -112,7 +120,11 @@ function ShellFrame() {
         <div className="app-top__end">
           {jobsState}
           {/* The one "add data" entry on every page (decision 2): words on wide screens, the + alone on tablets. */}
-          <ButtonLink to="/app/data/new" size="sm" className="app-top__add" aria-label={t('shell.addData')}><Plus size={14} aria-hidden /><span className="app-top__add-text">{t('shell.addData')}</span></ButtonLink>
+          {addLocked ? (
+            <LockedButton size="sm" className="app-top__add" wrapClassName="app-top__add-wrap" reason={addLocked} label={t('shell.addData')}><Plus size={14} aria-hidden /><span className="app-top__add-text">{t('shell.addData')}</span></LockedButton>
+          ) : (
+            <ButtonLink to="/app/data/new" size="sm" className="app-top__add" aria-label={t('shell.addData')}><Plus size={14} aria-hidden /><span className="app-top__add-text">{t('shell.addData')}</span></ButtonLink>
+          )}
           <div className="app-account">
             <button
               ref={accountButton}
@@ -156,7 +168,9 @@ function ShellFrame() {
           <div ref={sheet} id="app-menu" className="app-sheet" role="dialog" aria-modal="true" aria-label={t('shell.menu')} onKeyDown={trapSheet}>
             <nav className="app-sheet__nav" aria-label={t('shell.menuItems')}><NavItems onNavigate={closeMenu} /></nav>
             <div className="app-sheet__actions">
-              <ButtonLink to="/app/data/new" block onClick={closeMenu}><Plus size={16} aria-hidden />{t('shell.addData')}</ButtonLink>
+              {addLocked
+                ? <LockedButton block showReason reason={addLocked}><Plus size={16} aria-hidden />{t('shell.addData')}</LockedButton>
+                : <ButtonLink to="/app/data/new" block onClick={closeMenu}><Plus size={16} aria-hidden />{t('shell.addData')}</ButtonLink>}
             </div>
             <LanguageSwitch block />
             <div className="app-sheet__account">

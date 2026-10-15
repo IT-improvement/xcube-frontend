@@ -35,6 +35,7 @@ import {
 import "./viewer.css";
 import ViewerTour, { tourDismissed } from "./ViewerTour";
 import ProjectQuickMenu from "./ProjectQuickMenu";
+import { NEEDS, useRoleGate } from "../../auth/roles";
 import { BottomGraphPanel, PixelMarker } from "./PixelGraph";
 import DatasetPicker from "./DatasetPicker";
 import LayerControl from "./LayerControl";
@@ -174,6 +175,8 @@ export default function Viewer({
 }) {
   const { theme, toggle: toggleTheme } = useTheme();
   const { lang, t } = useLanguage();
+  // UR-59: adding data and running AI need PROJECT_USER; below that they stay, off, with the reason.
+  const addLocked = useRoleGate().reason(NEEDS.createData);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
   const [datasets, setDatasets] = useState<ZarrDataset[]>([]);
@@ -1359,18 +1362,34 @@ export default function Viewer({
               {t(`viewer.status.short.${statusTone}`)}
             </span>
           </span>
-          <a
-            className="vx-btn vx-btn--quiet"
-            data-tour="add"
-            href="/app/data/new"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={t("viewer.top.addDataAria")}
-            title={t("viewer.top.addDataTitle")}
-          >
-            <Plus size={16} aria-hidden="true" />
-            <span className="vx-hide-md">{t("viewer.top.addData")}</span>
-          </a>
+          {addLocked ? (
+            <button
+              type="button"
+              className="vx-btn vx-btn--quiet"
+              data-tour="add"
+              aria-disabled="true"
+              aria-label={t("viewer.top.addData")}
+              aria-describedby="vx-add-locked"
+              title={addLocked}
+            >
+              <Plus size={16} aria-hidden="true" />
+              <span className="vx-hide-md">{t("viewer.top.addData")}</span>
+              <span id="vx-add-locked" className="vx-sr">{addLocked}</span>
+            </button>
+          ) : (
+            <a
+              className="vx-btn vx-btn--quiet"
+              data-tour="add"
+              href="/app/data/new"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={t("viewer.top.addDataAria")}
+              title={t("viewer.top.addDataTitle")}
+            >
+              <Plus size={16} aria-hidden="true" />
+              <span className="vx-hide-md">{t("viewer.top.addData")}</span>
+            </a>
+          )}
           {selected && selected.kind !== "AI_RESULT" && (
             <button
               type="button"
@@ -1745,7 +1764,15 @@ export default function Viewer({
                 <CircleAlert size={20} aria-hidden="true" />
               ) : null}
               <p>{emptyMessage}</p>
-              {!loading && !apiError && (
+              {!loading && !apiError && (addLocked ? (
+                <>
+                  <button type="button" className="vx-btn vx-btn--ink" aria-disabled="true" aria-describedby="vx-empty-add-locked">
+                    <Plus size={16} aria-hidden="true" />
+                    {t("viewer.top.addData")}
+                  </button>
+                  <small id="vx-empty-add-locked" className="vx-section__hint">{addLocked}</small>
+                </>
+              ) : (
                 <a
                   className="vx-btn vx-btn--ink"
                   href="/app/data/new"
@@ -1755,7 +1782,7 @@ export default function Viewer({
                   <Plus size={16} aria-hidden="true" />
                   {t("viewer.top.addData")}
                 </a>
-              )}
+              ))}
             </div>
           )}
           {pickHint && !tourOpen && (

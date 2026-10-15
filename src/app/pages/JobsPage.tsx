@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { userMessage } from '../../api/httpClient';
 import { JobSummary } from '../../api/generationApi';
 import { Alert, Button, ButtonLink } from '../../components/ui';
+import { NEEDS, useRoleGate } from '../../auth/roles';
 import { Card, ConfirmDialog, EmptyState, PageHeader, Segmented, Skeleton, useToast } from '../../components/ui/kit';
 import { aiViewerHref, formatDateTime, JobListResult, jobs as jobService, unavailableJobsNotice } from '../api';
 import { elapsed, isActive, jobTypeLabel, JobInputSummary, JobStatusBadge, JobSteps, POLL_ACTIVE_MS, useJobsFeed } from '../jobs';
@@ -48,6 +49,8 @@ export default function JobsPage() {
   const [error, setError] = useState('');
   const [cancelling, setCancelling] = useState<JobSummary | null>(null);
   const toast = useToast();
+  // UR-59: retrying runs the job again, so it needs PROJECT_USER (cancel stays: it only stops work).
+  const retryLocked = useRoleGate().reason(NEEDS.createData);
   // All jobs come from the shell's one poller (the top bar badge reads the same list). A type or status filter
   // asks the services for just those jobs, and follows the poller's ticks quietly.
   const feed = useJobsFeed();
@@ -178,7 +181,7 @@ export default function JobsPage() {
                               <a className="xc-btn xc-btn--ghost xc-btn--sm" href={aiViewerHref(String(job.input.datacubeId), job.id)} target="_blank" rel="noopener noreferrer" aria-label={t('app.compareInViewerNamed', { name: job.name })}>{t('app.compareShort')}</a>
                             )}
                             {isActive(job) && <Button size="sm" variant="quiet" disabled={busy === key} onClick={() => setCancelling(job)} aria-label={t('jobs.cancelNamed', { name: job.name })}><Square size={14} aria-hidden />{t('jobs.cancel')}</Button>}
-                            {(job.status === 'FAILED' || job.status === 'CANCELLED') && <Button size="sm" variant="line" disabled={busy === key} onClick={() => retry(job)} aria-label={t('jobs.retryNamed', { name: job.name })}><RotateCcw size={14} aria-hidden />{t('jobs.retry')}</Button>}
+                            {(job.status === 'FAILED' || job.status === 'CANCELLED') && <Button size="sm" variant="line" disabled={busy === key} aria-disabled={retryLocked ? true : undefined} title={retryLocked || undefined} onClick={retryLocked ? undefined : () => retry(job)} aria-label={t('jobs.retryNamed', { name: job.name })}><RotateCcw size={14} aria-hidden />{t('jobs.retry')}</Button>}
                           </div>
                         </td>
                       </tr>

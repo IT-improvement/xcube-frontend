@@ -8,6 +8,12 @@ export const IDLE_TIMEOUT = 2 * 60 * 60 * 1000;
 const REFRESH_INTERVAL = 10 * 60 * 1000;
 // Demo mode (REACT_APP_USE_MOCK_API=true) keeps the account language in memory instead of calling the auth API.
 const DEMO = process.env.REACT_APP_USE_MOCK_API === 'true';
+/**
+ * Demo only: REACT_APP_DEMO_ROLE (USER, PROJECT_USER, PROJECT_MANAGER, ADMIN) previews the screens of that account role
+ * (UR-59). The services still decide what the account may do; real mode ignores it.
+ */
+const DEMO_ROLE = DEMO ? process.env.REACT_APP_DEMO_ROLE : undefined;
+const withDemoRole = (user: User): User => (DEMO_ROLE ? { ...user, role: DEMO_ROLE } : user);
 const isLang = (value: unknown): value is 'ko' | 'en' => value === 'ko' || value === 'en';
 
 /** checking: restoring the session · ready: known (user may be null) · unavailable: auth server unreachable */
@@ -66,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!last) { session.clear(); setStatus('ready'); return; }
       if (Date.now() - last >= IDLE_TIMEOUT) { setStatus('ready'); void idleLogout(); return; }
       await authApi.refresh();
-      setUser(await authApi.me());
+      setUser(withDemoRole(await authApi.me()));
       setStatus('ready');
     } catch (error) {
       if (isAuthRejection(error)) {
@@ -116,6 +122,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('xcube:unauthorized', unauthorized);
   }, []);
 
+  // UR-59: after a refresh the account role may have changed (an admin changed it, or a token older than the change
+  // was refused with ROLE_FORBIDDEN). Read the account again so disabled buttons and the admin menu follow.
+  const reloadRole = useCallback(async () => {
+    if (DEMO_ROLE) return;
+    try {
+      const fresh = await authApi.me();
+      setUser((current) => (current && fresh && current.id === fresh.id && current.role !== fresh.role ? { ...current, role: fresh.role } : current));
+    } catch { /* keep what is shown; the server still decides */ }
+  }, []);
+  useEffect(() => {
+    const onRole = () => { void reloadRole(); };
+    window.addEventListener('xcube:role-refreshed', onRole);
+    return () => window.removeEventListener('xcube:role-refreshed', onRole);
+  }, [reloadRole]);
+
   const signedIn = user !== null;
   useEffect(() => {
     if (!signedIn) return;
@@ -154,7 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const timer = window.setInterval(async () => {
       if (checkIdle()) return;
       const token = session.getToken();
-      try { await authApi.refresh(); }
+      try { await authApi.refresh(); void reloadRole(); }
       catch (error) {
         if (isAuthRejection(error) && session.getToken() === token) {
           session.clear(); authSession.clear(); setUser(null);
@@ -170,14 +191,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.clearInterval(timer);
       window.clearTimeout(idleTimer);
     };
-  }, [signedIn, idleLogout]);
+  }, [signedIn, idleLogout, reloadRole]);
 
   const value = useMemo<AuthContextValue>(() => ({
     user,
     status,
     endReason,
     retry: () => { void restore(); },
-    signIn: (next) => { setUser(next); setStatus('ready'); setEndReason(null); },
+    signIn: (next) => { setUser(withDemoRole(next)); setStatus('ready'); setEndReason(null); },
     signOut: () => {
       // Sign out locally first; a failing logout request must not keep the user signed in.
       setUser(null);

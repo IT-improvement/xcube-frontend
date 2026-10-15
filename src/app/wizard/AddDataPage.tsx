@@ -9,7 +9,8 @@ import { Link } from 'react-router-dom';
 import { ApiError, userMessage } from '../../api/httpClient';
 import { ColorBarOption, GeeCollection, GenerationJob, InspectionField, isAbortError, JobSummary, SpatialInspection } from '../../api/generationApi';
 import { Alert, Button, ButtonLink, TextField } from '../../components/ui';
-import { Badge, Card, PageHeader, RadioGroup, Skeleton } from '../../components/ui/kit';
+import { Badge, Card, EmptyState, PageHeader, RadioGroup, Skeleton } from '../../components/ui/kit';
+import { accountRoleLabel, NEEDS, useRoleGate } from '../../auth/roles';
 import { appApi, canEditProject, generation, viewerHref } from '../api';
 import { jobSteps } from '../jobs';
 import { BBoxMap } from '../pages/DatasetDetailPage';
@@ -117,8 +118,26 @@ export function focusFirstInvalid(root: HTMLElement | null) {
 
 /** S4 data add wizard. "다른 데이터 추가" starts a fresh wizard (new state) without reloading the page. */
 export default function AddDataPage() {
-  useDocumentTitle(useT()('titles.addData'));
+  const t = useT();
+  useDocumentTitle(t('titles.addData'));
   const [run, setRun] = useState(0);
+  // UR-59: below PROJECT_USER the page (opened by address) says why, instead of a wizard that would end in 403.
+  const gate = useRoleGate();
+  const { lang } = useLanguage();
+  if (!gate.can(NEEDS.createData)) {
+    return (
+      <div className="page-stack">
+        <PageHeader back={<Link className="page-back" to="/app/data"><ArrowLeft size={16} aria-hidden />{t('wizard.back')}</Link>} title={t('titles.addData')} />
+        <Card>
+          <EmptyState
+            title={t('accountRole.addDataTitle')}
+            text={<>{t('accountRole.addDataText', { role: accountRoleLabel(gate.role, lang) })} {gate.reason(NEEDS.createData)}</>}
+            action={<ButtonLink to="/app/data" variant="line">{t('accountRole.toData')}</ButtonLink>}
+          />
+        </Card>
+      </div>
+    );
+  }
   return <AddDataWizard key={run} onRestart={() => setRun((value) => value + 1)} />;
 }
 

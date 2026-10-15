@@ -1,7 +1,8 @@
 import { ArrowRight, ExternalLink, Plus } from 'lucide-react';
 import { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Alert, Button, ButtonLink } from '../../components/ui';
+import { Alert, Button, ButtonLink, LockedButton } from '../../components/ui';
+import { NEEDS, useRoleGate } from '../../auth/roles';
 import { Badge, Skeleton } from '../../components/ui/kit';
 import { aiViewerHref, appApi, formatDateTime, isOwned, periodLabel, unavailableJobsNotice, viewerHref, ZarrDataset } from '../api';
 import { useLoad } from '../useLoad';
@@ -52,6 +53,11 @@ export default function DashboardPage() {
   const running = jobItems.filter(isActive).length;
   const empty = !datasets.loading && !datasets.error && items.length === 0;
   const latest = items[0];
+  // UR-59: a role below PROJECT_USER keeps these entries, off, with the reason in place of the description.
+  const locked = useRoleGate().reason(NEEDS.createData);
+  const addButton = (variant?: 'line') => (locked
+    ? <LockedButton size="sm" variant={variant} showReason reason={locked}><Plus size={14} aria-hidden />{t('shell.addData')}</LockedButton>
+    : <ButtonLink to="/app/data/new" size="sm" variant={variant}>{variant ? null : <Plus size={14} aria-hidden />}{t('shell.addData')}</ButtonLink>);
   const count = (loading: boolean, failed: boolean, value: number) => (loading || failed ? '—' : value);
 
   return (
@@ -73,18 +79,32 @@ export default function DashboardPage() {
         <h2 id="dash-actions-title" className="dash-section__title dash-actions__title">{t('dashboard.shortcuts')}</h2>
         <ul>
           <li>
-            <Link to="/app/data/new">
-              <span className="dash-actions__label"><Plus size={15} aria-hidden />{t('shell.addData')}</span>
-              <span className="dash-actions__desc">{t('dashboard.addDataDesc')}</span>
-              <ArrowRight size={15} aria-hidden className="dash-actions__go" />
-            </Link>
+            {locked ? (
+              <span className="dash-actions__locked" aria-disabled="true">
+                <span className="dash-actions__label"><Plus size={15} aria-hidden />{t('shell.addData')}</span>
+                <span className="dash-actions__desc">{locked}</span>
+              </span>
+            ) : (
+              <Link to="/app/data/new">
+                <span className="dash-actions__label"><Plus size={15} aria-hidden />{t('shell.addData')}</span>
+                <span className="dash-actions__desc">{t('dashboard.addDataDesc')}</span>
+                <ArrowRight size={15} aria-hidden className="dash-actions__go" />
+              </Link>
+            )}
           </li>
           <li>
-            <Link to="/app/analysis/fusion">
-              <span className="dash-actions__label">{t('titles.fusion')}</span>
-              <span className="dash-actions__desc">{t('dashboard.fusionDesc')}</span>
-              <ArrowRight size={15} aria-hidden className="dash-actions__go" />
-            </Link>
+            {locked ? (
+              <span className="dash-actions__locked" aria-disabled="true">
+                <span className="dash-actions__label">{t('titles.fusion')}</span>
+                <span className="dash-actions__desc">{locked}</span>
+              </span>
+            ) : (
+              <Link to="/app/analysis/fusion">
+                <span className="dash-actions__label">{t('titles.fusion')}</span>
+                <span className="dash-actions__desc">{t('dashboard.fusionDesc')}</span>
+                <ArrowRight size={15} aria-hidden className="dash-actions__go" />
+              </Link>
+            )}
           </li>
           <li>
             <a href={latest ? viewerLinkOf(latest) : viewerHref()} target="_blank" rel="noopener noreferrer">
@@ -109,7 +129,7 @@ export default function DashboardPage() {
           ) : empty ? (
             <div className="dash-note">
               <p>{t('dashboard.emptyNote')}</p>
-              <ButtonLink to="/app/data/new" size="sm"><Plus size={14} aria-hidden />{t('shell.addData')}</ButtonLink>
+              {addButton()}
             </div>
           ) : (
             <table className="xc-table xc-table--cards dash-table">
@@ -146,7 +166,7 @@ export default function DashboardPage() {
           ) : !jobItems.length && !partialNotice ? (
             <div className="dash-note">
               <p>{t('dashboard.noJobs')}</p>
-              <ButtonLink to="/app/data/new" size="sm" variant="line">{t('shell.addData')}</ButtonLink>
+              {addButton('line')}
             </div>
           ) : (
             <>

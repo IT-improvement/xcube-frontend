@@ -149,6 +149,9 @@ a.app-account__item { text-decoration: none; }
 .dash-actions__desc { grid-column: 1; color: var(--fb-ink-3); font: var(--text-caption); }
 .dash-actions__go { grid-column: 2; grid-row: 1 / span 2; color: var(--fb-ink-3); transition: transform 160ms var(--fb-ease-out); }
 .dash-actions a:hover .dash-actions__go { color: var(--fb-ink); transform: translateX(2px); }
+/* UR-59: an entry the role cannot use stays in the list, in ink-3, with the reason as its second line. */
+.dash-actions__locked { display: grid; gap: 2px; padding: 12px 4px; color: var(--fb-ink-3); cursor: not-allowed; }
+.dash-actions__locked .dash-actions__label { color: var(--fb-ink-3); }
 
 .dash-ledgers { grid-area: ledgers; display: grid; gap: var(--space-10); min-width: 0; }
 .dash-section__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--fb-ink); }
@@ -206,7 +209,7 @@ a.app-account__item { text-decoration: none; }
 @media (max-width: 767px) {
   .app-top { padding: 0 6px 0 12px; gap: 8px; }
   .app-top__brand { border-right: 0; padding-right: 0; }
-  .app-top__nav, .app-account, .app-top__add { display: none; }
+  .app-top__nav, .app-account, .app-top__add, .app-top__add-wrap { display: none; }
   .app-top__menu { display: inline-grid; }
   .app-main { padding: var(--space-5) var(--space-4) var(--space-10); }
   .member-form { grid-template-columns: 1fr; }

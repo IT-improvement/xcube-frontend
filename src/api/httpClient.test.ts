@@ -127,3 +127,36 @@ test('오류 body의 code·params를 오류 객체에 남긴다 (UR-53 5단계)'
   jest.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({ code: 'ZIP_TOO_MANY_ENTRIES', message: 'ZIP 파일 항목이 너무 많습니다.', params: { limit: 1000 }, traceId: 't9' }), { status: 400, headers: { 'content-type': 'application/json' } }));
   await expect(request('', '/x', {}, false)).rejects.toMatchObject({ status: 400, code: 'ZIP_TOO_MANY_ENTRIES', params: { limit: 1000 }, traceId: 't9', message: 'ZIP 파일 항목이 너무 많습니다.' });
 });
+
+describe('등급이 바뀐 뒤의 오래된 토큰 (UR-59, ADM1)', () => {
+  const jsonRes = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  test('403 ROLE_FORBIDDEN이면 세션을 한 번 갱신하고 다시 보낸다', async () => {
+    session.setToken('old');
+    const fetchMock = jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(jsonRes({ code: 'ROLE_FORBIDDEN', params: { required: 'PROJECT_USER' } }, 403))
+      .mockResolvedValueOnce(jsonRes({ accessToken: 'new' }))
+      .mockResolvedValueOnce(jsonRes({ ok: true }));
+    const onRole = jest.fn();
+    window.addEventListener('xcube:role-refreshed', onRole);
+    await expect(request('http://api', '/x', { method: 'POST' })).resolves.toEqual({ ok: true });
+    window.removeEventListener('xcube:role-refreshed', onRole);
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/api/v1/auth/refresh');
+    expect(new Headers((fetchMock.mock.calls[2][1] as RequestInit).headers).get('Authorization')).toBe('Bearer new');
+    expect(onRole).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+  });
+  test('다시 보내도 403이면 그 오류를 보이고 더 반복하지 않는다; 다른 403은 갱신하지 않는다', async () => {
+    session.setToken('old');
+    const fetchMock = jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(jsonRes({ code: 'ROLE_FORBIDDEN', params: { required: 'ADMIN' } }, 403))
+      .mockResolvedValueOnce(jsonRes({ accessToken: 'new' }))
+      .mockResolvedValueOnce(jsonRes({ code: 'ROLE_FORBIDDEN', params: { required: 'ADMIN' } }, 403));
+    await expect(request('http://api', '/admin')).rejects.toMatchObject({ status: 403, code: 'ROLE_FORBIDDEN' });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(jsonRes({ code: 'FORBIDDEN' }, 403));
+    await expect(request('http://api', '/p')).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+  });
+});
