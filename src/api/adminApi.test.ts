@@ -181,3 +181,19 @@ test('Grafana opens through a one-time ticket (MON2)', async () => {
   expect(tab.close).toHaveBeenCalled();
   open.mockRestore();
 });
+
+test('방문 기록(MON4): Backoffice 경로·필터, 빠진 필드는 null·0으로 읽는다', async () => {
+  const fetchMock = jest.spyOn(global, 'fetch')
+    .mockResolvedValueOnce(json({ items: [{ time: '2026-10-15T05:00:00Z', ip: '203.0.113.5', country: 'KR', method: 'GET', path: '/', status: 200, durationMs: 12, device: 'BOT', bot: true, botName: 'KakaoTalk preview' }], truncated: true, from: 'a', to: 'b' }))
+    .mockResolvedValueOnce(json({ days: 7, totals: { human: 3 }, bots: [{ name: 'Googlebot', count: 2 }] }));
+  const list = await adminApi.listVisits({ ip: ' 203.0.113.5 ', country: 'KR', path: '/app', kind: 'all', bot: 'human', from: '2026-10-14', to: '2026-10-15' });
+  expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8082/api/v1/admin/backoffice/access/visits?from=2026-10-14&to=2026-10-15&ip=203.0.113.5&country=KR&path=%2Fapp&kind=all&bot=human');
+  expect(list.truncated).toBe(true);
+  expect(list.items[0]).toEqual({ time: '2026-10-15T05:00:00Z', ip: '203.0.113.5', country: 'KR', method: 'GET', path: '/', status: 200, durationMs: 12, device: 'BOT', os: null, browser: null, bot: true, botName: 'KakaoTalk preview', referer: null, userAgent: null });
+  const summary = await adminApi.visitSummary(7);
+  expect(fetchMock.mock.calls[1][0]).toBe('http://localhost:8082/api/v1/admin/backoffice/access/visits/summary?days=7');
+  expect(summary.totals).toEqual({ visits: 0, human: 3, bot: 0, uniqueIps: 0, countries: 0 });
+  expect(summary.bots).toEqual([{ name: 'Googlebot', count: 2 }]);
+  expect(summary.topPages).toEqual([]);
+  expect(summary.truncated).toBe(false);
+});

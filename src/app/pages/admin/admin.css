@@ -71,7 +71,38 @@
 .admin-public-url__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
 .admin-public-url__row a { min-width: 0; overflow-wrap: anywhere; }
 
+/* 방문 기록 (MON4): two filter rows, the IP focus line, status numbers, three side lists in the summary. */
+.admin-visit-filters { border-bottom: 0; padding-bottom: 0; }
+.admin-visit-search__ip { flex: 1 1 200px; max-width: 260px; }
+.admin-visit-search__country { flex: 0 0 120px; }
+.admin-visit-search__path { flex: 1 1 200px; max-width: 280px; }
+.admin-visit-search__country input, .admin-visit-search__path input { padding-left: 10px; }
+.admin-ip-focus {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: 10px var(--space-4);
+  border-bottom: 1px solid var(--fb-rule); background: var(--fb-sunken); font: 600 14px/1.4 var(--fb-font); color: var(--fb-ink);
+}
+.admin-ip-focus__link { display: inline-flex; align-items: center; gap: 4px; font: var(--text-label); color: var(--fb-ink); text-decoration: underline; text-underline-offset: 3px; }
+.admin-ip-focus__link:hover { color: var(--fb-ink-2); }
+.admin-ip-button {
+  padding: 0; border: 0; background: none; color: var(--fb-ink); font: inherit; font-weight: 600; text-align: left; cursor: pointer;
+  text-decoration: underline; text-decoration-color: var(--fb-rule-strong); text-underline-offset: 3px;
+}
+.admin-ip-button:hover { text-decoration-color: var(--fb-ink); }
+.admin-ip-button:focus-visible { outline: 2px solid var(--fb-focus); outline-offset: 2px; }
+.admin-path { overflow-wrap: anywhere; }
+.admin-method { margin-right: 6px; font: 600 11px/1 var(--fb-font); letter-spacing: 0.04em; color: var(--fb-ink-2); }
+.admin-status { font-variant-numeric: tabular-nums; }
+.admin-status--warn { color: var(--fb-warn); font-weight: 600; }
+.admin-status--bad { color: var(--fb-bad); font-weight: 600; }
+.admin-visit-summary { border-bottom: 1px solid var(--fb-rule); }
+.admin-visit-lists { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4) var(--space-8); }
+.admin-visit-lists > div { display: grid; gap: var(--space-2); align-content: start; min-width: 0; }
+
 @media (max-width: 767px) {
+  .admin-visit-lists { grid-template-columns: minmax(0, 1fr); }
+  .admin-visit-search__ip, .admin-visit-search__path { max-width: none; flex-basis: 100%; }
+  .admin-visit-search__country { flex: 1 1 100%; }
+  .admin-visit-search input { height: 40px; font-size: 16px; }
   .admin-access-split { grid-template-columns: minmax(0, 1fr); }
   .admin-access-split .admin-block + .admin-block { border-left: 0; border-top: 1px solid var(--fb-rule); }
   .admin-date { flex: 1 1 calc(50% - var(--space-3)); display: grid; gap: 4px; }

@@ -39,6 +39,8 @@ const SERVER_CODES = {
   estimateBlockers: ['DATE_LIST_UNAVAILABLE', 'QUOTA_EXCEEDED'],
   /** S11 account settings (Backend guide "계정 설정 API"); text in the main dictionary (`errors.code`). */
   auth: ['CURRENT_PASSWORD_INCORRECT', 'INVALID_LANGUAGE', 'INVALID_NAME', 'NOTHING_TO_UPDATE', 'PASSWORD_POLICY', 'PASSWORD_UNCHANGED'],
+  /** MON4 visit log (Backoffice ↔ Loki); text in the main dictionary (`errors.code`). */
+  visits: ['LOKI_UNAVAILABLE', 'LOKI_NOT_CONFIGURED', 'INVALID_IP', 'INVALID_COUNTRY', 'INVALID_PATH', 'RANGE_TOO_LONG', 'INVALID_RANGE', 'INVALID_DATE'],
 };
 /**
  * UR-55 satellite product codes (Backend guide "위성 원본 제품 업로드"), not in the I18N5 table yet: they need text

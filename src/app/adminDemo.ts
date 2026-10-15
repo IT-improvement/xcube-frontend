@@ -2,7 +2,7 @@
 // summaries and quotas, every user's data, projects and jobs, system state and the audit record. Same codes as the
 // real services (ADMIN_SELF_CHANGE, LAST_ADMIN). In memory only; real mode never uses this.
 import { ApiError } from '../api/httpClient';
-import type { AccessSession, AccessSummary, AdminDataset, AdminJob, AdminJobFilter, AdminJobList, AdminProject, AdminSystem, AdminUser, AdminUserFilter, AdminUserSummary, AuditEntry, LoginEvent, LoginEventFilter, Paged } from '../api/adminApi';
+import type { AccessSession, AccessSummary, AdminDataset, AdminJob, AdminJobFilter, AdminJobList, AdminProject, AdminSystem, AdminUser, AdminUserFilter, AdminUserSummary, AuditEntry, LoginEvent, LoginEventFilter, Paged, Visit, VisitFilter, VisitList, VisitSummary } from '../api/adminApi';
 
 const GIB = 1024 ** 3;
 const MIB = 1024 ** 2;
@@ -110,6 +110,32 @@ export function createAdminDemo() {
     const user = users.find((item) => item.loginId === who);
     return { familyId, userId: user?.id ?? null, loginId: who, name: user?.name ?? null, role: user?.role ?? null, startedAt: minutesAgo(started), lastRefreshAt: minutesAgo(refreshed), expiresAt: minutesAgo(refreshed - 120), ip, country, ...client, current };
   };
+  // Entrance log (MON4): people from KR/US/JP, KakaoTalk link previews and Googlebot. Documentation IP ranges only.
+  const visit = (minutes: number, ip: string, country: string | null, path: string, client: Client, botName: string | null = null, status = 200): Visit => ({
+    time: minutesAgo(minutes), ip, country, method: 'GET', path, status, durationMs: 8 + (minutes % 40), ...client, botName,
+    referer: null, userAgent: botName === 'KakaoTalk preview' ? 'facebookexternalhit/1.1;kakaotalk-scrap/1.0;+https://devtalk.kakao.com/' : null,
+  });
+  const KAKAO: Client = { device: 'BOT', os: null, browser: 'KakaoTalk preview', bot: true };
+  const GOOGLE: Client = { device: 'BOT', os: null, browser: 'Googlebot', bot: true };
+  const visits: Visit[] = [
+    visit(3, '203.0.113.5', 'KR', '/app/admin', MAC),
+    visit(9, '203.0.113.24', 'KR', '/app', PHONE),
+    visit(10, '198.51.100.200', 'KR', '/', KAKAO, 'KakaoTalk preview'),
+    visit(11, '198.51.100.201', 'KR', '/', KAKAO, 'KakaoTalk preview'),
+    visit(26, '192.0.2.10', 'US', '/', MAC),
+    visit(27, '192.0.2.10', 'US', '/login', MAC),
+    visit(44, '198.51.100.30', 'JP', '/', WIN),
+    visit(80, '198.51.100.240', 'US', '/', GOOGLE, 'Googlebot'),
+    visit(81, '198.51.100.240', 'US', '/robots-missing', GOOGLE, 'Googlebot', 404),
+    visit(130, '203.0.113.24', 'KR', '/app/viewer', PHONE),
+    visit(400, '10.42.0.1', null, '/app/data', WIN),
+    visit(1600, '203.0.113.31', 'KR', '/app/projects/12', WIN),
+    visit(3100, '192.0.2.77', 'JP', '/', PHONE),
+  ];
+  const assets: Visit[] = [
+    { ...visit(3, '203.0.113.5', 'KR', '/static/js/main.js', MAC) },
+    { ...visit(3, '203.0.113.5', 'KR', '/api/v1/datacubes', MAC) },
+  ];
   const sessions: AccessSession[] = [
     session('5b0c1d4e-0000-4000-8000-000000000001', 'designqa', '203.0.113.5', 'KR', MAC, 12, 2, true),
     session('5b0c1d4e-0000-4000-8000-000000000002', 'kim.water', '203.0.113.24', 'KR', PHONE, 40, 6),
@@ -265,6 +291,48 @@ export function createAdminDemo() {
         warnings: [{ ip: '198.51.100.66', country: 'RU', count: 23, from: iso(0, 2), to: new Date(new Date(iso(0, 2)).getTime() + 7 * 60_000).toISOString() }],
         rule: { failCount: 20, windowMinutes: 10 },
         retentionDays: 90,
+      };
+    },
+    async listVisits(filter: VisitFilter = {}): Promise<VisitList> {
+      await pause();
+      const day = (value: string | undefined, end: boolean) => (value && value.length === 10 ? new Date(`${value}T00:00:00+09:00`).getTime() + (end ? 86_400_000 : 0) : value ? new Date(value).getTime() : NaN);
+      const to = Number.isFinite(day(filter.to, true)) ? day(filter.to, true) : Date.now();
+      const from = Number.isFinite(day(filter.from, false)) ? day(filter.from, false) : to - 86_400_000;
+      if (to - from > 7 * 86_400_000 + 60_000) throw new ApiError(400, 'RANGE_TOO_LONG', 'The range is at most 7 days');
+      const pool = filter.kind === 'all' ? [...visits, ...assets] : visits;
+      const items = pool.filter((item) => {
+        const at = new Date(item.time ?? 0).getTime();
+        return at >= from && at < to
+          && (!filter.ip || item.ip === filter.ip.trim())
+          && (!filter.country || (item.country ?? '--') === filter.country.trim().toUpperCase())
+          && (!filter.path || (item.path ?? '').startsWith(filter.path.trim()))
+          && (filter.bot !== 'human' || !item.bot) && (filter.bot !== 'bot' || item.bot);
+      }).sort((a, b) => (b.time ?? '').localeCompare(a.time ?? ''));
+      return { items: items.map((item) => ({ ...item })), truncated: false, from: new Date(from).toISOString(), to: new Date(to).toISOString() };
+    },
+    async visitSummary(days = 7): Promise<VisitSummary> {
+      await pause(300);
+      const today = new Date();
+      const daily = Array.from({ length: days }, (_, index) => {
+        const date = new Date(today.getTime() - (days - 1 - index) * 86_400_000);
+        const human = [14, 9, 21, 12, 7, 18, 11][index % 7];
+        return { date: date.toISOString().slice(0, 10), human, bot: [3, 1, 6, 2, 0, 4, 5][index % 7], uniqueIps: Math.max(1, Math.round(human * 0.4)) };
+      });
+      const human = daily.reduce((sum, item) => sum + item.human, 0);
+      const bot = daily.reduce((sum, item) => sum + item.bot, 0);
+      return {
+        days, zone: 'Asia/Seoul', truncated: false,
+        totals: { visits: human + bot, human, bot, uniqueIps: 23, countries: 3 },
+        daily,
+        countries: [{ country: 'KR', human: human - 20, bot: bot - 8 }, { country: 'US', human: 14, bot: 8 }, { country: 'JP', human: 6, bot: 0 }],
+        topPages: [{ path: '/', count: 38 }, { path: '/app', count: 22 }, { path: '/app/viewer', count: 17 }, { path: '/login', count: 9 }, { path: '/app/projects/{id}', count: 6 }],
+        topIps: [
+          { ip: '203.0.113.24', country: 'KR', human: 19, bot: 0, lastAt: minutesAgo(9) },
+          { ip: '198.51.100.240', country: 'US', human: 0, bot: 8, lastAt: minutesAgo(80) },
+          { ip: '192.0.2.10', country: 'US', human: 7, bot: 0, lastAt: minutesAgo(26) },
+        ],
+        bots: [{ name: 'KakaoTalk preview', count: 13 }, { name: 'Googlebot', count: 8 }],
+        retentionDays: 14,
       };
     },
     async cancelJob(job: Pick<AdminJob, 'id' | 'type'>): Promise<void> {
