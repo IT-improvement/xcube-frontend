@@ -159,3 +159,10 @@ test('쪽 수가 비정상적으로 많아도 50쪽에서 멈춘다', async () =
   expect(await backofficeAdapter.getProjects()).toHaveLength(5000);
   expect(fetchMock).toHaveBeenCalledTimes(50);
 });
+
+test('UPL3: an RGB the user picked (R=coastal) counts as RGB, though Backoffice only looks for red·green·blue names', async () => {
+  jest.spyOn(global, 'fetch').mockResolvedValue(json({ datacubeId: 94, xcubeDatasetId: 'u8-d94', ownerUserId: 8, accessType: 'OWNED', name: 'S2 raw', kind: 'ORIGINAL', integrationStatus: 'REGISTERED', availabilityStatus: 'AVAILABLE',
+    variables: [{ name: 'blue' }, { name: 'green' }, { name: 'coastal' }], rgbAvailable: false, rgbSchema: { varNames: ['coastal', 'green', 'blue'] } }));
+  const item = await backofficeAdapter.getDatasetDetail('94');
+  expect(item).toMatchObject({ rgbAvailable: true, rgbBands: ['coastal', 'green', 'blue'] });
+});

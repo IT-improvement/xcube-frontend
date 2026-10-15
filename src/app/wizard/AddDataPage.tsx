@@ -27,7 +27,7 @@ import { defaultSar, FIXED_NAMES, PRESET_GEE, PRESET_STYLE, isS2, orbitOption, p
 import { withStrong } from './strong';
 import UploadMeter, { UploadTrack } from './UploadMeter';
 import { busyProducts, doneProducts, ProductInspection, ProductSource, skippedTexts, useProductUploads } from './ProductUpload';
-import { defaultChoices, estimateBytes, estimateText, exportResolution, hasRgbNames, isExport, PRODUCT_JOB_TYPE, productBands, productFields, ProductKind, productPeriod, productsOf, RESOLUTIONS, suggestProductName, uniqueDates } from './productModel';
+import { defaultChoices, estimateBytes, productChoiceFor, estimateText, exportResolution, hasRgbNames, isExport, PRODUCT_JOB_TYPE, productBands, productFields, ProductKind, productPeriod, productsOf, RESOLUTIONS, suggestProductName, uniqueDates } from './productModel';
 import './wizard.css';
 import { failureText, formatNumber, registrationFailureText, serverText, useLanguage, useT } from '../../i18n';
 import type { Lang, TFunction, TKey } from '../../i18n';
@@ -244,7 +244,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const estimateWait = !estimateStep || ready ? '' : estimate.status === 'error' ? t('wizard.estimate.waitFailed') : estimate.status === 'loading' ? t('wizard.estimate.waiting') : t('wizard.estimate.notYet');
   const noun = method === 'shape' ? 'attribute' : 'band';
   const continuous = choices.filter((choice) => choice.kind === 'continuous');
-  const rgbPossible = (isGee || method === 'geotiff') && continuous.length >= 3;
+  const rgbPossible = (isGee || method === 'geotiff' || isProduct) && continuous.length >= 3;
   const variableErrors = validateChoices(choices, colorBars.data ?? [], lang);
   const editableProjects = (projects.data ?? []).filter(canEditProject);
   // CAS500 and Shapefile get sensor/mode defaults on the server; a generic GeoTIFF needs them from the user.
@@ -264,7 +264,12 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   useEffect(() => {
     if (!productBandsKey || productBandsKey.endsWith(':') || productDefaultsFor.current === productBandsKey) return;
     productDefaultsFor.current = productBandsKey;
-    setChoices(defaultChoices(productKind, products, colorBars.data ?? []));
+    const defaults = defaultChoices(productKind, products, colorBars.data ?? []);
+    setChoices(defaults);
+    // RGB starts on as red·green·blue (B04·B03·B02) when those are among the defaults (UPL3); the user may pick any three.
+    const sourceOf = (name: string) => defaults.find((item) => item.name === name)?.source ?? '';
+    setRgbOn(hasRgbNames(defaults));
+    setRgb(hasRgbNames(defaults) ? { red: sourceOf('red'), green: sourceOf('green'), blue: sourceOf('blue') } : { red: '', green: '', blue: '' });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productBandsKey]);
 
@@ -332,6 +337,9 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
     const named = pairing ? nextChoices.map((item) => (known.has(item.source) ? item : renameForPairing([item], true)[0])) : nextChoices;
     setChoices(named);
     if (rgbOn && named.filter((item) => item.kind === 'continuous').length < 3) setRgbOn(false);
+    // A channel whose band was taken out (or made categorical) is chosen again.
+    const kept = new Set(named.filter((item) => item.kind === 'continuous').map((item) => item.source));
+    if (RGB_CHANNELS.some(([key]) => rgb[key] && !kept.has(rgb[key]))) setRgb((value) => ({ red: kept.has(value.red) ? value.red : '', green: kept.has(value.green) ? value.green : '', blue: kept.has(value.blue) ? value.blue : '' }));
   };
 
   /** Settings checks shared by the file/Zarr "설정" step and the GEE review. */
@@ -414,11 +422,11 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
           ...selectedDatesField(dateSelection),
         }));
       } else if (isProduct) {
-        // The server builds the RGB view itself when red, green and blue are there (Zarr rules), so no rgbStyle.
+        // The RGB the user picked goes by source band (R=B01), like GeoTIFF; without it the server composes red·green·blue when all three are there.
         setJob(await generation.createFileJob({
           type: PRODUCT_JOB_TYPE[productKind], name: name.trim(),
           inputs: doneItems.flatMap((item) => item.inspection?.inputs ?? []), variables: specs,
-          params: exported ? {} : { resolution: productResolution },
+          params: { ...(exported ? {} : { resolution: productResolution }), ...(rgbStyle ? { rgbStyle } : {}) },
           ...(projectId ? { projectId } : {}),
         }));
       } else if (method === 'zarr') {
@@ -460,7 +468,6 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const invalid = (field: string) => (problem?.field === field ? true : undefined);
   const groupError = (field: string) => (errorFor(field) ? <p className="xc-field__error" id={`wizard-error-${field}`}>{errorFor(field)}</p> : null);
   const reason = blockReason();
-  const productRgb = isProduct && hasRgbNames(choices);
   const period = isProduct ? productPeriod(products) : null;
   const sizeText = isProduct ? estimateText(estimateBytes(products, choices, productResolution)) : '';
   const bandBySource = new Map(productBands(products).map((band) => [band.source, band]));
@@ -505,6 +512,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
         show={show}
         channels={channels}
         describe={isProduct ? describeBand : undefined}
+        choiceFor={isProduct ? productChoiceFor(productKind, products, colorBars.data ?? []) : undefined}
       />
     </div>
   );
@@ -527,7 +535,10 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
       {groupError('rgb')}
     </section>
   );
-  const rgbText = `R ${choiceLabel(choices.find((item) => item.source === rgb.red))} · G ${choiceLabel(choices.find((item) => item.source === rgb.green))} · B ${choiceLabel(choices.find((item) => item.source === rgb.blue))}`;
+  // Products name each channel with the band it takes (red ← B01), since a registry name such as "coastal" says little here.
+  const rgbText = isProduct
+    ? RGB_CHANNELS.map(([key]) => `${key} ← ${rgb[key]}`).join(' · ')
+    : `R ${choiceLabel(choices.find((item) => item.source === rgb.red))} · G ${choiceLabel(choices.find((item) => item.source === rgb.green))} · B ${choiceLabel(choices.find((item) => item.source === rgb.blue))}`;
   const variablesSummary = (
     <ul className="summary-vars">
       {choices.map((choice) => (
@@ -752,7 +763,6 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
               {colorBars.error && method !== 'zarr' && <Alert tone="danger">{t('wizard.settings.colorBarsFailed', { error: colorBars.error })}</Alert>}
               {variableEditor('all')}
               {rgbSection}
-              {productRgb && <p className="wizard-rule__text product-rgb" role="status">{t('wizard.product.rgbAuto')}</p>}
             </div>
           )}
 
@@ -845,7 +855,6 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
                 <dt>{t('wizard.summary.project')}</dt><dd>{editableProjects.find((item) => item.id === projectId)?.name ?? t('app.noProject')}</dd>
                 <dt>{t('wizard.summary.variables')}</dt><dd>{variablesSummary}</dd>
                 {rgbOn && rgbPossible && <><dt>RGB</dt><dd>{rgbText}</dd></>}
-                {productRgb && <><dt>RGB</dt><dd>{t('wizard.product.rgbAuto')}</dd></>}
                 {sizeText && <><dt>{t('wizard.product.size')}</dt><dd className="tabular">{t('wizard.product.sizeValue', { size: sizeText })}</dd></>}
                 {method === 'shape' && <><dt>{t('wizard.summary.resolution')}</dt><dd>{resolution}°</dd></>}
                 {genericRaster && <><dt>{t('wizard.summary.sensor')}</dt><dd>{(() => { const known = SENSORS.find((item) => item.id === sensorValue); return known ? sensorLabel(known, t) : sensorValue; })()}</dd></>}

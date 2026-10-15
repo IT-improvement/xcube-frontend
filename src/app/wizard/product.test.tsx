@@ -55,7 +55,8 @@ const add = (names: string[], text: Text = ko) => fireEvent.change(screen.getByL
 const rowOf = (name: string) => screen.getAllByRole('listitem').find((item) => item.textContent?.startsWith(name)) as HTMLElement;
 /** The band checkboxes that are on, by source name (the label reads "B02blue · 10 m"). */
 const expectPicked = (sources: string[]) => {
-  expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(sources.length);
+  // The RGB switch is a checkbox too; only the band list counts here.
+  expect(screen.getAllByRole('checkbox', { checked: true }).filter((box) => !box.closest('.rgb-box'))).toHaveLength(sources.length);
   sources.forEach((source) => expect(screen.getByRole('checkbox', { name: new RegExp(`^${source}(?![0-9A])`) })).toBeChecked());
 };
 async function uploaded(names: string[], text: Text = ko) {
@@ -177,7 +178,12 @@ describe('Sentinel-2 L2A', () => {
     const resolution = screen.getByRole('group', { name: '출력 해상도' });
     expect(within(resolution).getAllByRole('button').map((button) => button.textContent)).toEqual(['10 m', '20 m', '60 m']);
     expect(within(resolution).getByRole('button', { name: '10 m' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('red·green·blue를 모두 골라 RGB 컬러 영상도 자동으로 만듭니다.')).toBeInTheDocument();
+    // UPL3: red·green·blue among the defaults → the RGB section starts on with R=B04, G=B03, B=B02 (any three may be picked).
+    expect(screen.getByRole('checkbox', { name: /RGB 컬러 영상도 만들기/ })).toBeChecked();
+    expect(screen.getByLabelText('빨강 (R)')).toHaveValue('B04');
+    expect(screen.getByLabelText('초록 (G)')).toHaveValue('B03');
+    expect(screen.getByLabelText('파랑 (B)')).toHaveValue('B02');
+    expect(screen.queryByText(/RGB 컬러 영상도 자동으로/)).not.toBeInTheDocument();
     // Reflectance in gray with the +1000 offset; SCL categorical.
     expect(screen.getByLabelText('B02 색상표')).toHaveValue('gray');
     expect(screen.getByLabelText('B02 표시 최솟값')).toHaveValue(1000);
@@ -193,14 +199,16 @@ describe('Sentinel-2 L2A', () => {
     expect(screen.getByText('2024-08-14 ~ 2024-08-29')).toBeInTheDocument();
     expect(screen.getByText('20 m')).toBeInTheDocument();
     expect(screen.getByText(/^압축 전 최대 /)).toBeInTheDocument();
+    expect(screen.getByText('red ← B04 · green ← B03 · blue ← B02')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '생성 시작' }));
     await waitFor(() => expect(create).toHaveBeenCalled(), { timeout: T });
     const reflectance = (source: string, name: string) => ({ source, name, kind: 'continuous', style: { colorBar: 'gray', min: 1000, max: 4000 } });
+    const channel = (variable: string) => ({ variable, valueMin: 1000, valueMax: 4000 });
     expect(JSON.parse(JSON.stringify(create.mock.calls[0][0]))).toStrictEqual({
       type: 'SENTINEL2_L2A', name: '52SCG 2024-08',
       inputs: [{ kind: 'zip', uri: `file:///demo/${S2_A}` }, { kind: 'zip', uri: `file:///demo/${S2_B}` }],
       variables: [reflectance('B02', 'blue'), reflectance('B03', 'green'), reflectance('B04', 'red'), reflectance('B11', 'swir'), { source: 'SCL', name: 'scl', kind: 'categorical', style: { colorBar: 'viridis' } }],
-      params: { resolution: 20 },
+      params: { resolution: 20, rgbStyle: { red: channel('B04'), green: channel('B03'), blue: channel('B02') } },
     });
   });
 
@@ -306,6 +314,52 @@ describe('loose band files (UPL2)', () => {
     expect(body.variables.map((item: { source: string }) => item.source)).toEqual(['B02', 'B03']);
   });
 
+  test('UPL3: Raw B01·B02·B03 as RGB (R=B01, G=B03, B=B02); the range says it comes from the file', async () => {
+    const create = jest.spyOn(generation, 'createFileJob');
+    await renderWizard();
+    await toSource();
+    await uploaded([B01, B02, B03]);
+    next();
+    next();
+    // Two default bands: no RGB yet, and the off switch is not offered until a third is picked.
+    expect(screen.queryByRole('checkbox', { name: /RGB 컬러 영상도 만들기/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText('올린 파일 값의 2–98% 구간으로 정했습니다. 생성 후 Viewer에서 바꿀 수 있습니다.').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/자동 범위를 계산할 수 없어/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: /^B01/ }));
+    // A band ticked later starts like the defaults: registry name, gray and the file's range.
+    expect(screen.getByLabelText('B01 색상표')).toHaveValue('gray');
+    expect(screen.getByLabelText('B01 표시 최솟값')).toHaveValue(0.0303);
+    const rgbSwitch = screen.getByRole('checkbox', { name: /RGB 컬러 영상도 만들기/ });
+    expect(rgbSwitch).not.toBeChecked();
+    fireEvent.click(rgbSwitch);
+    fireEvent.change(screen.getByLabelText('빨강 (R)'), { target: { value: 'B01' } });
+    fireEvent.change(screen.getByLabelText('초록 (G)'), { target: { value: 'B03' } });
+    fireEvent.change(screen.getByLabelText('파랑 (B)'), { target: { value: 'B02' } });
+    next();
+    expect(screen.getByText('red ← B01 · green ← B03 · blue ← B02')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '생성 시작' }));
+    await waitFor(() => expect(create).toHaveBeenCalled(), { timeout: T });
+    const body = create.mock.calls[0][0] as Record<string, any>;
+    expect(body.variables.map((item: { source: string; name: string }) => `${item.name} ← ${item.source}`)).toEqual(['blue ← B02', 'green ← B03', 'coastal ← B01']);
+    expect(Object.keys(body.params)).toEqual(['rgbStyle']);
+    expect(Object.fromEntries(Object.entries(body.params.rgbStyle).map(([key, value]) => [key, (value as { variable: string }).variable]))).toEqual({ red: 'B01', green: 'B03', blue: 'B02' });
+    const b01 = body.variables.find((item: { source: string }) => item.source === 'B01');
+    expect(body.params.rgbStyle.red).toEqual({ variable: 'B01', valueMin: b01.style.min, valueMax: b01.style.max });
+  });
+
+  test('UPL3: with the RGB on, taking out the band of a channel empties that channel', async () => {
+    await renderWizard();
+    await toSource();
+    await uploaded([S2_A]);
+    next();
+    next();
+    expect(screen.getByLabelText('파랑 (B)')).toHaveValue('B02');
+    fireEvent.click(screen.getByRole('checkbox', { name: /^B02/ }));
+    expect(screen.getByLabelText('파랑 (B)')).toHaveValue('');
+    next();
+    expect(screen.getByText('RGB 세 채널을 모두 고르세요.')).toBeInTheDocument();
+  });
+
   test('Landsat SR band files: one product per scene, Path/Row from the name, 30 m', async () => {
     const create = jest.spyOn(generation, 'createFileJob');
     await renderWizard();
@@ -403,7 +457,8 @@ describe('in English', () => {
     next(en);
     expect(screen.getByRole('group', { name: 'Output resolution' })).toBeInTheDocument();
     expect(screen.getByText('Filled in from the tile and the period. You can change it.')).toBeInTheDocument();
-    expect(screen.getByText(/red, green and blue are all selected/)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /Also build an RGB color image/ })).toBeChecked();
+    expect(screen.getByLabelText('Red (R)')).toHaveValue('B04');
     expect(document.body).not.toHaveTextContent(HANGUL);
     next(en);
     expect(screen.getByText('Satellite product · Sentinel-2 L2A')).toBeInTheDocument();

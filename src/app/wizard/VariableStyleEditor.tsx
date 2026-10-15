@@ -17,8 +17,8 @@ export type VariableChoice = {
   colorBar: string;
   min: string;
   max: string;
-  /** Where the display values came from when not from the file statistics: the water preset (UR-41) or a satellite product's defaults (UR-55). Not sent. */
-  origin?: 'preset' | 'product';
+  /** Where the display values came from when not from the file statistics: the water preset (UR-41), a satellite product's defaults (UR-55) or the upload's sampled 2–98% (stats, UPL3). Not sent. */
+  origin?: 'preset' | 'product' | 'stats';
 };
 
 
@@ -107,6 +107,7 @@ export default function VariableStyleEditor({
   show = 'all',
   channels = {},
   describe,
+  choiceFor,
 }: {
   fields: InspectionField[];
   value: VariableChoice[];
@@ -124,14 +125,17 @@ export default function VariableStyleEditor({
   channels?: Record<string, 'R' | 'G' | 'B'>;
   /** A line under a band in the checklist instead of its type and range (satellite products: "blue · 10 m"). */
   describe?: (field: InspectionField) => string;
+  /** The choice a newly ticked field starts with (satellite products: registry name, gray and the product range). */
+  choiceFor?: (field: InspectionField) => VariableChoice;
 }) {
   const { lang, t } = useLanguage();
   const fmt = (number: number) => formatValue(number, lang);
   const [custom, setCustom] = useState('');
   const selected = new Set(value.map((item) => item.source));
   const fieldBySource = new Map(fields.map((field) => [field.name, field]));
+  const startChoice = (field: InspectionField) => (choiceFor ? choiceFor(field) : defaultChoice(field, colorBars));
   const toggle = (field: InspectionField) =>
-    onChange(selected.has(field.name) ? value.filter((item) => item.source !== field.name) : [...value, defaultChoice(field, colorBars)]);
+    onChange(selected.has(field.name) ? value.filter((item) => item.source !== field.name) : [...value, startChoice(field)]);
   const update = (source: string, patch: Partial<VariableChoice>) => onChange(value.map((item) => (item.source === source ? { ...item, ...patch } : item)));
   const allSelected = fields.length > 0 && fields.every((field) => selected.has(field.name));
   const addCustom = () => {
@@ -148,7 +152,7 @@ export default function VariableStyleEditor({
         <fieldset className="vse-pick">
           <legend className="vse-pick__legend">
             <span><strong>{t('wizard.style.pickTitle', { noun: t(noun === 'band' ? 'wizard.style.band' : 'wizard.style.attribute') })}</strong> <span className="xc-hint">{t('wizard.style.pickHint', { picked: value.length, count: fields.length })}</span></span>
-            <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => onChange(allSelected ? [] : fields.map((field) => value.find((item) => item.source === field.name) ?? defaultChoice(field, colorBars)))}>
+            <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" onClick={() => onChange(allSelected ? [] : fields.map((field) => value.find((item) => item.source === field.name) ?? startChoice(field)))}>
               {allSelected ? <><Square size={14} aria-hidden />{t('wizard.style.clearAll')}</> : <><CheckSquare size={14} aria-hidden />{t('wizard.style.selectAll')}</>}
             </button>
           </legend>
@@ -236,7 +240,7 @@ export default function VariableStyleEditor({
                           </button>
                         </>
                       ) : (
-                        <span className="xc-hint">{choice.origin === 'preset' ? t('wizard.style.presetRange', { min: fmt(Number(PRESET_STYLE.min)), max: formatNumber(Number(PRESET_STYLE.max), {}, lang) }) : choice.origin === 'product' ? t('wizard.style.productRange') : t('wizard.style.noAuto')}</span>
+                        <span className="xc-hint">{choice.origin === 'preset' ? t('wizard.style.presetRange', { min: fmt(Number(PRESET_STYLE.min)), max: formatNumber(Number(PRESET_STYLE.max), {}, lang) }) : choice.origin === 'product' ? t('wizard.style.productRange') : choice.origin === 'stats' ? t('wizard.style.statsRange') : t('wizard.style.noAuto')}</span>
                       )}
                     </div>
                   </div>
