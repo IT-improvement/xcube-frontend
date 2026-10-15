@@ -151,7 +151,6 @@ const koWizard = {
       resolutionHelpLandsat: 'Landsat Level-2는 30 m 하나입니다.',
       resolutionExport: 'Copernicus Browser 내보내기는 받은 격자(약 {value} m)를 그대로 씁니다. 값도 바꾸지 않습니다.',
       resolutionNative: '받은 격자 그대로 (약 {value} m)',
-      rgbAuto: 'red·green·blue를 모두 골라 RGB 컬러 영상도 자동으로 만듭니다.',
       nameSuggested: '타일과 기간으로 미리 채웠습니다. 바꿔도 됩니다.',
       /** "확인 및 생성" */
       count: '제품',
@@ -587,6 +586,7 @@ const koWizard = {
       noAuto: '자동 범위를 계산할 수 없어 직접 입력합니다. 생성 후 Viewer에서 바꿀 수 있습니다.',
       presetRange: '프리셋 값 {min} ~ {max} (수체 분석용)',
       productRange: '기본값: 반사도 약 0 ~ 0.3에 해당하는 원본 값. 생성 후 Viewer에서 바꿀 수 있습니다.',
+      statsRange: '올린 파일 값의 2–98% 구간으로 정했습니다. 생성 후 Viewer에서 바꿀 수 있습니다.',
       rgbBadge: 'RGB {channel}',
       categoricalHint: '값마다 색이 하나씩 지정됩니다',
       errors: {

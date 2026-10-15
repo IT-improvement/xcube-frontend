@@ -5,7 +5,7 @@
 import type { ColorBarOption, FileJobType, InspectionField, ProductBand, ProductInfo, ProductLayout, SpatialInspection } from '../../api/generationApi';
 import { formatBytes } from '../fusion';
 import { periodOf } from './nameModel';
-import { autoRange, VariableChoice } from './VariableStyleEditor';
+import { autoRange, defaultChoice, VariableChoice } from './VariableStyleEditor';
 
 export type ProductKind = 'sentinel2' | 'landsat';
 export const PRODUCT_KINDS: ProductKind[] = ['sentinel2', 'landsat'];
@@ -78,7 +78,7 @@ export function productChoice(kind: ProductKind, band: ProductBand, colorBars: C
   if (band.kind === 'categorical') return { source: band.source, name: band.name, kind: 'categorical', colorBar: pick('tab10', 'Set3', 'Paired'), min: '', max: '' };
   const range = defaultRange(kind, band, hint);
   const round = (value: number) => (Math.abs(value) >= 1000 ? Math.round(value) : Number(value.toPrecision(4)));
-  return { source: band.source, name: band.name, kind: 'continuous', colorBar: pick('gray', 'Greys_r', 'Greys'), min: String(round(range.min)), max: String(round(range.max)), origin: band.approxStats ? undefined : 'product' };
+  return { source: band.source, name: band.name, kind: 'continuous', colorBar: pick('gray', 'Greys_r', 'Greys'), min: String(round(range.min)), max: String(round(range.max)), origin: autoRange(band.approxStats) ? 'stats' : 'product' };
 }
 
 type Bounds = { west: number; south: number; east: number; north: number };
@@ -113,9 +113,19 @@ export const partialBands = (products: ProductInfo[]): string[] => {
   return Array.from(new Set(products.flatMap((product) => product.bands.map((band) => band.source)))).filter((source) => !common.has(source));
 };
 export const productFields = (bands: ProductBand[]): InspectionField[] => bands.map((band) => ({ name: band.source }));
+const hintOf = (products: ProductInfo[]): DisplayHint => ({ boaAddOffset: products.find((product) => product.boaAddOffset)?.boaAddOffset, reflectance: products.some((product) => product.valueScale === 'reflectance') });
 export function defaultChoices(kind: ProductKind, products: ProductInfo[], colorBars: ColorBarOption[]): VariableChoice[] {
-  const hint = { boaAddOffset: products.find((product) => product.boaAddOffset)?.boaAddOffset, reflectance: products.some((product) => product.valueScale === 'reflectance') };
+  const hint = hintOf(products);
   return productBands(products).filter((band) => isDefaultBand(kind, band)).map((band) => productChoice(kind, band, colorBars, hint));
+}
+/** A band ticked later (B01, B05…) starts like the defaults: registry name, gray and the product range, so it can go straight into RGB (UPL3). */
+export function productChoiceFor(kind: ProductKind, products: ProductInfo[], colorBars: ColorBarOption[]) {
+  const hint = hintOf(products);
+  const bands = new Map(productBands(products).map((band) => [band.source, band]));
+  return (field: InspectionField): VariableChoice => {
+    const band = bands.get(field.name);
+    return band ? productChoice(kind, band, colorBars, hint) : defaultChoice(field, colorBars);
+  };
 }
 /** The pixel size of a browser export (m, from the server), shown instead of a resolution choice. */
 export const exportResolution = (products: ProductInfo[]) => productBands(products)[0]?.resolution ?? null;

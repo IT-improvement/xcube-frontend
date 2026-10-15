@@ -87,7 +87,6 @@
 .product-skipped strong { color: var(--fb-ink); font-weight: 600; }
 .product-row__name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font: 500 13.5px/1.35 var(--font-sans); font-variant-numeric: tabular-nums; }
 .product-table__note { font-size: 13px; color: var(--fb-ink-2); min-width: 16ch; }
-.product-rgb { color: var(--fb-ink-2); }
 
 /* GEE "자료": the preset as the large first choice, then "직접 고르기" with the whole list (no inner scroll). */
 .catalog { gap: var(--space-5); }

@@ -141,7 +141,6 @@ const enWizard: WizardTranslation = {
       resolutionHelpLandsat: 'Landsat Level-2 comes at 30 m only.',
       resolutionExport: 'Copernicus Browser exports keep the grid they were downloaded on (about {value} m), and their values stay unchanged.',
       resolutionNative: 'Downloaded grid (about {value} m)',
-      rgbAuto: 'red, green and blue are all selected, so an RGB color image is built automatically too.',
       nameSuggested: 'Filled in from the tile and the period. You can change it.',
       count: 'Products',
       countValue: '{count} · time steps: {dates}',
@@ -578,6 +577,7 @@ const enWizard: WizardTranslation = {
       noAuto: 'No automatic range could be computed, so enter one. You can change it in the Viewer after building.',
       presetRange: 'Preset value {min} – {max} (water analysis)',
       productRange: 'Default: original values for a reflectance of about 0 – 0.3. You can change it in the Viewer after building.',
+      statsRange: 'Set to the 2–98% range of the uploaded file’s values. You can change it in the Viewer after building.',
       rgbBadge: 'RGB {channel}',
       categoricalHint: 'Each value gets its own color',
       errors: {
