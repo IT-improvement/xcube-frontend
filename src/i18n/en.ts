@@ -246,6 +246,15 @@ const en: Translation = {
       ROLE_FORBIDDEN: 'Your role can’t do this. Ask an admin for a different role.',
       ADMIN_SELF_CHANGE: 'You can’t lower, block or remove your own admin account.',
       LAST_ADMIN: 'At least one admin must remain.',
+      // Visit log (MON4, Backoffice ↔ Loki).
+      LOKI_UNAVAILABLE: 'The request log (Loki) isn’t answering. Try again shortly.',
+      LOKI_NOT_CONFIGURED: 'The request log (Loki) isn’t connected.',
+      INVALID_IP: 'That isn’t an IP address (for example 203.0.113.5).',
+      INVALID_COUNTRY: 'Enter a two-letter country code (for example KR).',
+      INVALID_PATH: 'A path may use letters, digits and / _ . ~ % - only.',
+      RANGE_TOO_LONG: 'Pick up to 7 days.',
+      INVALID_RANGE: 'The start must be before the end.',
+      INVALID_DATE: 'The date isn’t valid.',
     },
   },
 };

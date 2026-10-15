@@ -71,6 +71,32 @@ export type AccessSummary = {
   rule: { failCount: number; windowMinutes: number };
   retentionDays: number | null;
 };
+/**
+ * One request from the entrance log (MON4, MON-contract §7): Traefik's access log read through Loki by Backoffice.
+ * Query strings are never stored. `bot`/`botName` follow auth's User-Agent table ("KakaoTalk preview", "Googlebot", …).
+ */
+export type Visit = {
+  time: string | null; ip: string | null; country: string | null; method: string | null; path: string | null;
+  status: number | null; durationMs: number | null; device: string | null; os: string | null; browser: string | null;
+  bot: boolean; botName: string | null; referer: string | null; userAgent: string | null;
+};
+export type VisitKind = 'page' | 'all';
+export type VisitWho = 'any' | 'human' | 'bot';
+/** `from`/`to`: ISO time, or a date (whole day in the service zone). Default the last 24 hours, at most 7 days. */
+export type VisitFilter = { from?: string; to?: string; ip?: string; country?: string; path?: string; kind?: VisitKind; bot?: VisitWho; limit?: number };
+export type VisitList = { items: Visit[]; truncated: boolean; from: string | null; to: string | null };
+export type VisitSummary = {
+  days: number; zone: string | null; truncated: boolean;
+  totals: { visits: number; human: number; bot: number; uniqueIps: number; countries: number };
+  daily: Array<{ date: string; human: number; bot: number; uniqueIps: number }>;
+  countries: Array<{ country: string | null; human: number; bot: number }>;
+  topPages: Array<{ path: string; count: number }>;
+  topIps: Array<{ ip: string; country: string | null; human: number; bot: number; lastAt: string | null }>;
+  bots: Array<{ name: string; count: number }>;
+  retentionDays: number | null;
+};
+/** The most rows one visit query returns (Backoffice cap). */
+export const VISIT_LIMIT = 1000;
 
 type Raw = Record<string, any>;
 const str = (value: unknown): string | null => (value == null || value === '' ? null : String(value));
@@ -247,6 +273,40 @@ export const toAccessSummary = (raw: Raw | null | undefined): AccessSummary => {
   };
 };
 
+export const toVisit = (raw: Raw): Visit => ({
+  time: str(raw.time),
+  ip: str(raw.ip),
+  country: str(raw.country),
+  method: str(raw.method),
+  path: str(raw.path),
+  status: num(raw.status),
+  durationMs: num(raw.durationMs),
+  device: str(raw.device),
+  os: str(raw.os),
+  browser: str(raw.browser),
+  bot: bool(raw.bot) ?? false,
+  botName: str(raw.botName),
+  referer: str(raw.referer),
+  userAgent: str(raw.userAgent),
+});
+
+export const toVisitSummary = (raw: Raw | null | undefined): VisitSummary => {
+  const body = raw ?? {};
+  const totals = (body.totals ?? {}) as Raw;
+  return {
+    days: num(body.days) ?? 7,
+    zone: str(body.zone),
+    truncated: bool(body.truncated) ?? false,
+    totals: { visits: num(totals.visits) ?? 0, human: num(totals.human) ?? 0, bot: num(totals.bot) ?? 0, uniqueIps: num(totals.uniqueIps) ?? 0, countries: num(totals.countries) ?? 0 },
+    daily: list(body.daily).map((day) => ({ date: String(day.date ?? ''), human: num(day.human) ?? 0, bot: num(day.bot) ?? 0, uniqueIps: num(day.uniqueIps) ?? 0 })),
+    countries: list(body.countries).map((item) => ({ country: str(item.country), human: num(item.human) ?? 0, bot: num(item.bot) ?? 0 })),
+    topPages: list(body.topPages).map((item) => ({ path: String(item.path ?? ''), count: num(item.count) ?? 0 })),
+    topIps: list(body.topIps).map((item) => ({ ip: String(item.ip ?? ''), country: str(item.country), human: num(item.human) ?? 0, bot: num(item.bot) ?? 0, lastAt: str(item.lastAt) })),
+    bots: list(body.bots).map((item) => ({ name: String(item.name ?? ''), count: num(item.count) ?? 0 })),
+    retentionDays: num(body.retentionDays),
+  };
+};
+
 /** Service, base URL and its prefixed admin jobs path (ADM1 report §4). */
 const JOB_SERVICES: Array<[AdminJobService, string, string]> = [
   ['GENERATION', GENERATION_API_BASE_URL, '/api/v1/admin/generation/jobs'],
@@ -334,6 +394,17 @@ export const adminApi = {
     const body = await request<unknown>(BACKOFFICE_API_BASE_URL, `${BACKOFFICE_ADMIN}/projects${query({ q: filter.q?.trim(), page: filter.page ?? 0, size: filter.size ?? 50 })}`);
     const page = readPage(body, 'projects');
     return { items: page.items.map(toAdminProject), total: page.total };
+  },
+  /** Entrance log (MON4): 503 `LOKI_NOT_CONFIGURED` when Backoffice has no Loki, `LOKI_UNAVAILABLE` when it does not answer. */
+  async listVisits(filter: VisitFilter = {}): Promise<VisitList> {
+    const body = await request<Raw>(BACKOFFICE_API_BASE_URL, `${BACKOFFICE_ADMIN}/access/visits${query({
+      from: filter.from, to: filter.to, ip: filter.ip?.trim(), country: filter.country?.trim(), path: filter.path?.trim(),
+      kind: filter.kind, bot: filter.bot, limit: filter.limit,
+    })}`);
+    return { items: list(body?.items).map(toVisit), truncated: bool(body?.truncated) ?? false, from: str(body?.from), to: str(body?.to) };
+  },
+  async visitSummary(days = 7): Promise<VisitSummary> {
+    return toVisitSummary(await request<Raw>(BACKOFFICE_API_BASE_URL, `${BACKOFFICE_ADMIN}/access/visits/summary?days=${days}`));
   },
   async system(): Promise<AdminSystem> {
     return toAdminSystem(await request<Raw>(BACKOFFICE_API_BASE_URL, `${BACKOFFICE_ADMIN}/system`));

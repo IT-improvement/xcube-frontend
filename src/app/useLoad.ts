@@ -4,6 +4,8 @@ import { useLanguage } from '../i18n';
 
 export type Load<T> = {
   data: T | null; loading: boolean; error: string; status?: number;
+  /** The server's error code (`LOKI_UNAVAILABLE`, …) when the failure had one. */
+  code?: string;
   /** Loads again and shows it (`loading` turns on; the old data stays until the new arrives). */
   reload: () => void;
   /** Loads again in the background: `loading` stays off, and a failure keeps the data already shown. */
@@ -41,8 +43,9 @@ export function useLoad<T>(loader: () => Promise<T>, key: unknown[] = []): Load<
   const reload = useCallback(() => setTick((value) => value + 1), []);
   const refresh = useCallback(() => { quiet.current = true; setTick((value) => value + 1); }, []);
   const setData = useCallback((update: (current: T | null) => T | null) => setDataState(update), []);
-  const cause = failure?.cause as { status?: unknown } | undefined;
+  const cause = failure?.cause as { status?: unknown; code?: unknown } | undefined;
   const error = failure ? userMessage(failure.cause, screenLang) : '';
   const status = typeof cause?.status === 'number' ? cause.status : undefined;
-  return { data, loading, error, status, reload, refresh, setData };
+  const code = typeof cause?.code === 'string' ? cause.code : undefined;
+  return { data, loading, error, status, code, reload, refresh, setData };
 }

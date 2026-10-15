@@ -1,8 +1,10 @@
-// S13 접속 기록 tab (UR-60, MON-contract §2): the last days at a glance with repeated-failure warnings, the sessions
-// signed in now with forced sign-out, and the sign-in record with filters. IPs and devices are personal data: shown
-// to administrators only, kept for the retention the server reports.
-import { LogOut, RefreshCw, Search } from 'lucide-react';
+// S13 접속 기록 tab (UR-60, MON-contract §2·§7): the last days at a glance with repeated-failure warnings, the sessions
+// signed in now with forced sign-out, the sign-in record with filters, and the visit log (MON4: the entrance log in
+// Loki, so link-preview bots that never run the page are counted too). IPs and devices are personal data: shown to
+// administrators only, kept for the retention the server reports.
+import { ArrowRight, LogOut, RefreshCw, Search, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Alert, Button } from '../../../components/ui';
 import { Badge, ConfirmDialog, EmptyState, Segmented, Skeleton } from '../../../components/ui/kit';
 import type { BadgeTone } from '../../../components/ui/kit';
@@ -10,14 +12,17 @@ import { formatDate, formatNumber, useLanguage } from '../../../i18n';
 import type { Lang, TKey } from '../../../i18n';
 import { grafanaAccessUrl } from '../../../api/adminApi';
 import GrafanaButton from './GrafanaButton';
-import { AccessSession, AccessSummary, admin, formatDateTime, LoginEvent } from '../../api';
+import { AccessSession, AccessSummary, admin, formatDateTime, LoginEvent, Visit, VisitFilter, VisitList, VisitSummary } from '../../api';
+import { VISIT_LIMIT } from '../../../api/adminApi';
 import { useLoad } from '../../useLoad';
 import { NoValue } from '../DataLibraryPage';
 import { ListError } from './DataTab';
 import { IconAction, PAGE_SIZE, Pager, useParam, useSearchParam } from './shared';
 
-type View = 'summary' | 'sessions' | 'logins';
-const VIEWS: View[] = ['summary', 'sessions', 'logins'];
+type View = 'summary' | 'sessions' | 'logins' | 'visits';
+const VIEWS: View[] = ['summary', 'sessions', 'logins', 'visits'];
+/** Filters of every view; switching views clears them. */
+const VIEW_PARAMS = ['q', 'page', 'event', 'from', 'to', 'range', 'ip', 'country', 'path', 'who', 'kind'];
 export const LOGIN_EVENTS = ['LOGIN_SUCCESS', 'LOGIN_FAIL', 'LOGOUT', 'REFRESH_REUSE', 'PASSWORD_CHANGE', 'ADMIN_PASSWORD_RESET'] as const;
 const EVENT_TONE: Record<string, BadgeTone> = { LOGIN_SUCCESS: 'success', LOGIN_FAIL: 'danger', REFRESH_REUSE: 'warning' };
 const STAMP: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
@@ -82,15 +87,18 @@ export default function AccessTab({ onToast }: { onToast: (text: string) => void
         <Segmented
           label={t('admin.access.viewLabel')}
           value={view}
-          onChange={(next) => setView(next, ['q', 'page', 'event', 'from', 'to'])}
-          items={[{ id: 'summary', label: t('admin.access.views.summary') }, { id: 'sessions', label: t('admin.access.views.sessions') }, { id: 'logins', label: t('admin.access.views.logins') }]}
+          onChange={(next) => setView(next, VIEW_PARAMS)}
+          items={[
+            { id: 'summary', label: t('admin.access.views.summary') }, { id: 'sessions', label: t('admin.access.views.sessions') },
+            { id: 'logins', label: t('admin.access.views.logins') }, { id: 'visits', label: t('admin.access.views.visits') },
+          ]}
         />
         <span className="toolbar__spacer" />
         {grafana && (
           <GrafanaButton href={grafana} label={t('admin.access.grafana')} />
         )}
       </div>
-      {view === 'summary' ? <SummaryView /> : view === 'sessions' ? <SessionsView onToast={onToast} /> : <LoginsView />}
+      {view === 'summary' ? <SummaryView /> : view === 'sessions' ? <SessionsView onToast={onToast} /> : view === 'logins' ? <LoginsView /> : <VisitsView />}
     </>
   );
 }
@@ -200,6 +208,7 @@ function SummaryView() {
           )}
         </section>
       </div>
+      <VisitSummaryBlock />
       <p className="admin-note admin-access-privacy xc-hint">{t('admin.access.privacy', { days: n(data.retentionDays ?? 90) })}</p>
       {summary.error && <Alert tone="warning">{t('admin.system.stale', { error: summary.error })}</Alert>}
     </div>
@@ -362,5 +371,258 @@ function LoginsView() {
               </div>
             )}
     </>
+  );
+}
+
+// ---- 방문 기록 (MON4, MON-contract §7) ----
+
+const DAY_MS = 86_400_000;
+const WHO = ['any', 'human', 'bot'] as const;
+const KINDS = ['page', 'all'] as const;
+type Range = '24h' | '7d' | 'custom';
+const RANGES: Range[] = ['24h', '7d', 'custom'];
+const SECONDS: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' };
+
+/** Address of the visit view filtered to one IP, and of the sign-in record searched for it. */
+export const visitsForIp = (ip: string) => ({ search: `?tab=access&view=visits&ip=${encodeURIComponent(ip)}` });
+export const loginsForIp = (ip: string) => ({ search: `?tab=access&view=logins&q=${encodeURIComponent(ip)}` });
+
+/** Calendar days from `from` to `to` (yyyy-mm-dd), both included. */
+export const daySpan = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS) + 1;
+
+/** "카카오톡 미리보기" for the server's "KakaoTalk preview"; unknown names as sent. */
+export function botLabel(name: string | null, t: (key: TKey) => string) {
+  const key = `admin.access.visits.botNames.${name ?? 'Bot'}` as TKey;
+  const text = t(key);
+  return text === key ? (name ?? t('admin.access.visits.botNames.Bot' as TKey)) : text;
+}
+
+function VisitDevice({ item }: { item: Visit }) {
+  const { t } = useLanguage();
+  if (!item.bot) return <span title={item.userAgent ?? undefined}>{deviceText(item, t)}</span>;
+  return <span title={item.userAgent ?? undefined}><Badge tone="warning">{t('admin.access.visits.botTag', { name: botLabel(item.botName, t) })}</Badge></span>;
+}
+
+function StatusText({ status }: { status: number | null }) {
+  if (status == null) return <span>—</span>;
+  const tone = status >= 500 ? 'admin-status admin-status--bad' : status >= 400 ? 'admin-status admin-status--warn' : 'admin-status';
+  return <span className={tone}>{status}</span>;
+}
+
+function VisitsView() {
+  const { lang, t } = useLanguage();
+  const [rangeParam, setRange] = useParam('range', '24h');
+  const range = (RANGES.includes(rangeParam as Range) ? rangeParam : '24h') as Range;
+  const [from, setFrom] = useParam('from');
+  const [to, setTo] = useParam('to');
+  const [ipText, setIpText, ip] = useSearchParam('ip');
+  const [, commitIp] = useParam('ip');
+  const [countryText, setCountryText, country] = useSearchParam('country');
+  const [pathText, setPathText, path] = useSearchParam('path');
+  const [whoParam, setWho] = useParam('who', 'any');
+  const who = ((WHO as readonly string[]).includes(whoParam) ? whoParam : 'any') as VisitFilter['bot'];
+  const [kindParam, setKind] = useParam('kind', 'page');
+  const kind = ((KINDS as readonly string[]).includes(kindParam) ? kindParam : 'page') as VisitFilter['kind'];
+  const [pageParam, setPage] = useParam('page');
+  const page = Math.max(0, Number(pageParam) || 0);
+  const rangeError = range !== 'custom' || !from || !to ? ''
+    : from > to ? t('admin.access.visits.rangeError') : daySpan(from, to) > 7 ? t('admin.access.visits.rangeTooLong') : '';
+  const list = useLoad<VisitList | null>(() => {
+    if (rangeError) return Promise.resolve(null);
+    const filter: VisitFilter = { ip, country, path, bot: who, kind };
+    if (range === '7d') {
+      const end = new Date();
+      filter.to = end.toISOString();
+      filter.from = new Date(end.getTime() - 7 * DAY_MS).toISOString();
+    } else if (range === 'custom') {
+      filter.from = from || undefined;
+      filter.to = to || undefined;
+    }
+    return admin.listVisits(filter);
+  }, [range, from, to, ip, country, path, who, kind, rangeError]);
+  const items = list.data?.items ?? [];
+  const shown = items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const filtered = !!(ip || country || path || who !== 'any' || kind !== 'page');
+  const focusIp = (value: string) => { setIpText(value); commitIp(value, ['page']); };
+  const clearIp = () => { setIpText(''); commitIp('', ['page']); };
+  const notConfigured = list.code === 'LOKI_NOT_CONFIGURED';
+  return (
+    <>
+      <div className="toolbar admin-access-filters admin-visit-filters">
+        <Segmented
+          label={t('admin.access.visits.range')}
+          value={range}
+          onChange={(next) => setRange(next, ['page', 'from', 'to'])}
+          items={[{ id: '24h', label: t('admin.access.visits.range24h') }, { id: '7d', label: t('admin.access.visits.range7d') }, { id: 'custom', label: t('admin.access.visits.rangeCustom') }]}
+        />
+        {range === 'custom' && (
+          <>
+            <label className="admin-date">
+              <span>{t('admin.access.visits.from')}</span>
+              <input type="date" value={from} max={to || undefined} onChange={(change) => setFrom(change.target.value, ['page'])} aria-invalid={rangeError ? true : undefined} />
+            </label>
+            <label className="admin-date">
+              <span>{t('admin.access.visits.to')}</span>
+              <input type="date" value={to} min={from || undefined} onChange={(change) => setTo(change.target.value, ['page'])} aria-invalid={rangeError ? true : undefined} />
+            </label>
+          </>
+        )}
+        <label>
+          <span className="sr-only">{t('admin.access.visits.who')}</span>
+          <select className="xc-select" aria-label={t('admin.access.visits.who')} value={who} onChange={(change) => setWho(change.target.value, ['page'])}>
+            <option value="any">{t('admin.access.visits.whoAny')}</option>
+            <option value="human">{t('admin.access.visits.whoHuman')}</option>
+            <option value="bot">{t('admin.access.visits.whoBot')}</option>
+          </select>
+        </label>
+        <label>
+          <span className="sr-only">{t('admin.access.visits.kind')}</span>
+          <select className="xc-select" aria-label={t('admin.access.visits.kind')} value={kind} onChange={(change) => setKind(change.target.value, ['page'])}>
+            <option value="page">{t('admin.access.visits.kindPage')}</option>
+            <option value="all">{t('admin.access.visits.kindAll')}</option>
+          </select>
+        </label>
+      </div>
+      <div className="toolbar admin-visit-search">
+        <label className="toolbar__search admin-visit-search__ip">
+          <Search size={16} aria-hidden />
+          <input type="search" value={ipText} onChange={(change) => setIpText(change.target.value)} placeholder={t('admin.access.visits.ipPlaceholder')} aria-label={t('admin.access.visits.ip')} autoComplete="off" spellCheck={false} maxLength={45} inputMode="decimal" />
+        </label>
+        <label className="toolbar__search admin-visit-search__country">
+          <input type="search" value={countryText} onChange={(change) => setCountryText(change.target.value.toUpperCase())} placeholder={t('admin.access.visits.countryPlaceholder')} aria-label={t('admin.access.visits.country')} autoComplete="off" spellCheck={false} maxLength={2} />
+        </label>
+        <label className="toolbar__search admin-visit-search__path">
+          <input type="search" value={pathText} onChange={(change) => setPathText(change.target.value)} placeholder={t('admin.access.visits.pathPlaceholder')} aria-label={t('admin.access.visits.path')} autoComplete="off" spellCheck={false} maxLength={200} />
+        </label>
+        <span className="toolbar__spacer" />
+        {list.data && <span className="xc-hint tabular" aria-live="polite">{t('admin.access.visits.count', { count: formatNumber(items.length, {}, lang) })}</span>}
+        <Button variant="line" size="sm" onClick={list.reload} disabled={list.loading || !!rangeError}><RefreshCw size={14} aria-hidden />{t('admin.refresh')}</Button>
+      </div>
+      {ip && (
+        <div className="admin-ip-focus" role="status">
+          <span>{t('admin.access.visits.ipFilter', { ip })}</span>
+          <Link className="admin-ip-focus__link" to={loginsForIp(ip)}>{t('admin.access.visits.loginsForIp')}<ArrowRight size={14} aria-hidden /></Link>
+          <Button variant="line" size="sm" onClick={clearIp}><X size={14} aria-hidden />{t('admin.access.visits.clearIp')}</Button>
+        </div>
+      )}
+      {rangeError && <div className="inline-error"><Alert tone="warning">{rangeError}</Alert></div>}
+      {list.data?.truncated && <div className="inline-error"><Alert tone="info">{t('admin.access.visits.truncated', { limit: formatNumber(VISIT_LIMIT, {}, lang) })}</Alert></div>}
+      {rangeError ? null
+        : list.loading && !list.data ? <Skeleton lines={6} label={t('admin.access.visits.loading')} />
+          : notConfigured ? <EmptyState title={t('admin.access.visits.notConfiguredTitle')} text={t('admin.access.visits.notConfigured')} />
+            : list.error ? <ListError text={t('admin.access.visits.failed', { error: list.error })} onRetry={list.reload} />
+              : !items.length ? <EmptyState title={filtered ? t('admin.access.visits.noMatch') : t('admin.access.visits.none')} />
+                : (
+                  <div className="xc-stale" aria-busy={list.loading} data-testid="admin-visits">
+                    {list.loading && <span className="xc-busy-line" aria-hidden />}
+                    <div className="xc-table-wrap">
+                      <table className="xc-table xc-table--cards admin-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">{t('admin.access.visits.when')}</th>
+                            <th scope="col">IP</th>
+                            <th scope="col">{t('admin.access.deviceCol')}</th>
+                            <th scope="col">{t('admin.access.visits.pathCol')}</th>
+                            <th scope="col" className="num">{t('admin.access.visits.status')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {shown.map((item, index) => (
+                            <tr key={`${item.time}-${item.ip}-${item.path}-${index}`}>
+                              <td className="date cell-main" data-label={t('admin.access.visits.when')}>{item.time ? formatDate(item.time, SECONDS, lang) : '—'}</td>
+                              <td data-label="IP">
+                                {item.ip && item.ip !== ip ? (
+                                  <span className="xc-cell-main">
+                                    <button type="button" className="admin-ip-button admin-mono" onClick={() => focusIp(item.ip!)} aria-label={t('admin.access.visits.showIp', { ip: item.ip })}>{item.ip}</button>
+                                    <small>{countryLabel(item.country, lang, t('admin.access.noCountry'))}</small>
+                                  </span>
+                                ) : <IpCell ip={item.ip} country={item.country} />}
+                              </td>
+                              <td data-label={t('admin.access.deviceCol')}><VisitDevice item={item} /></td>
+                              <td data-label={t('admin.access.visits.pathCol')}>
+                                <span className="admin-mono admin-path" title={item.referer ?? undefined}>
+                                  {item.method && item.method !== 'GET' && <small className="admin-method">{item.method}</small>}
+                                  {item.path ?? '—'}
+                                </span>
+                              </td>
+                              <td className="num" data-label={t('admin.access.visits.status')}><StatusText status={item.status} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Pager page={page} total={items.length} onPage={(next) => setPage(next ? String(next) : '')} />
+                  </div>
+                )}
+      {!notConfigured && <p className="admin-note admin-access-privacy xc-hint">{t('admin.access.visits.privacy', { days: formatNumber(14, {}, lang) })}</p>}
+    </>
+  );
+}
+
+/** Visit lines in the summary view: totals, most viewed pages, busiest IPs (to the visit view) and bots by name. */
+function VisitSummaryBlock() {
+  const { lang, t } = useLanguage();
+  const summary = useLoad<VisitSummary>(() => admin.visitSummary(7));
+  const data = summary.data;
+  const n = (value: number) => formatNumber(value, {}, lang);
+  return (
+    <section className="admin-block admin-visit-summary" aria-labelledby="admin-visit-summary" data-testid="admin-visit-summary">
+      <div className="admin-block__head">
+        <h3 id="admin-visit-summary" className="admin-block__title">{t('admin.access.visits.summary.title', { days: data?.days ?? 7 })}</h3>
+        {data && <Link className="admin-ip-focus__link" to={{ search: '?tab=access&view=visits' }}>{t('admin.access.visits.summary.open')}<ArrowRight size={14} aria-hidden /></Link>}
+      </div>
+      {summary.loading && !data ? <Skeleton lines={2} label={t('admin.access.visits.summary.loading')} />
+        : summary.code === 'LOKI_NOT_CONFIGURED' ? <p className="admin-block__empty">{t('admin.access.visits.summary.notConfigured')}</p>
+          : summary.error && !data ? <ListError text={t('admin.access.visits.summary.failed', { error: summary.error })} onRetry={summary.reload} />
+            : data && (
+              <>
+                <p className="admin-access-totals tabular">
+                  {t('admin.access.visits.summary.totals', { visits: n(data.totals.visits), human: n(data.totals.human), bot: n(data.totals.bot), ips: n(data.totals.uniqueIps) })}
+                </p>
+                {data.truncated && <p className="xc-hint">{t('admin.access.visits.summary.truncated')}</p>}
+                <div className="admin-visit-lists">
+                  <div>
+                    <h4 className="admin-block__title">{t('admin.access.visits.summary.topPages')}</h4>
+                    {!data.topPages.length ? <p className="admin-block__empty">{t('admin.access.visits.summary.none')}</p> : (
+                      <table className="xc-table admin-table admin-table--plain">
+                        <thead><tr><th scope="col">{t('admin.access.visits.pathCol')}</th><th scope="col" className="num">{t('admin.access.visits.summary.visits')}</th></tr></thead>
+                        <tbody>{data.topPages.map((item) => <tr key={item.path}><td><span className="admin-mono admin-path">{item.path}</span></td><td className="num">{n(item.count)}</td></tr>)}</tbody>
+                      </table>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="admin-block__title">{t('admin.access.visits.summary.topIps')}</h4>
+                    {!data.topIps.length ? <p className="admin-block__empty">{t('admin.access.visits.summary.none')}</p> : (
+                      <table className="xc-table admin-table admin-table--plain">
+                        <thead><tr><th scope="col">IP</th><th scope="col" className="num">{t('admin.access.visits.summary.visits')}</th></tr></thead>
+                        <tbody>
+                          {data.topIps.map((item) => (
+                            <tr key={item.ip}>
+                              <td>
+                                <span className="xc-cell-main">
+                                  <Link className="admin-mono" to={visitsForIp(item.ip)} aria-label={t('admin.access.visits.showIp', { ip: item.ip })}>{item.ip}</Link>
+                                  <small>{countryLabel(item.country, lang, t('admin.access.noCountry'))}{item.bot > 0 && item.human === 0 ? ` · ${t('admin.access.bot')}` : ''}</small>
+                                </span>
+                              </td>
+                              <td className="num">{n(item.human + item.bot)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="admin-block__title">{t('admin.access.visits.summary.bots')}</h4>
+                    {!data.bots.length ? <p className="admin-block__empty">{t('admin.access.visits.summary.none')}</p> : (
+                      <table className="xc-table admin-table admin-table--plain">
+                        <thead><tr><th scope="col">{t('admin.access.visits.summary.bots')}</th><th scope="col" className="num">{t('admin.access.visits.summary.visits')}</th></tr></thead>
+                        <tbody>{data.bots.map((item) => <tr key={item.name}><td>{botLabel(item.name, t)}</td><td className="num">{n(item.count)}</td></tr>)}</tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+    </section>
   );
 }

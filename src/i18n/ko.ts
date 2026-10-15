@@ -259,6 +259,15 @@ const ko = {
       ROLE_FORBIDDEN: '지금 등급에서는 할 수 없는 작업입니다. 관리자에게 등급을 요청하세요.',
       ADMIN_SELF_CHANGE: '내 계정의 관리자 등급을 내리거나 차단·탈퇴할 수 없습니다.',
       LAST_ADMIN: '관리자가 한 명 이상 남아 있어야 합니다.',
+      // Visit log (MON4, Backoffice ↔ Loki).
+      LOKI_UNAVAILABLE: '요청 기록 저장소(Loki)가 응답하지 않습니다. 잠시 뒤 다시 시도하세요.',
+      LOKI_NOT_CONFIGURED: '요청 기록 저장소(Loki)가 연결되어 있지 않습니다.',
+      INVALID_IP: 'IP 주소 형식이 아닙니다(예: 203.0.113.5).',
+      INVALID_COUNTRY: '나라는 두 글자 코드로 입력하세요(예: KR).',
+      INVALID_PATH: '경로에는 영문·숫자와 / _ . ~ % - 만 쓸 수 있습니다.',
+      RANGE_TOO_LONG: '기간은 7일까지 고를 수 있습니다.',
+      INVALID_RANGE: '시작이 끝보다 앞서야 합니다.',
+      INVALID_DATE: '날짜 형식이 올바르지 않습니다.',
     },
   },
 };
