@@ -185,6 +185,11 @@ const koViewer = {
       noProject: '프로젝트 없음',
       emptyProject: '이 프로젝트에 등록된 데이터가 없습니다.',
       noMatch: '검색 결과가 없습니다.',
+      /** Group heads in the list (RD1). */
+      groupMine: '내 데이터',
+      groupShared: '공유받음',
+      groupProject: '프로젝트: {name}',
+      groupCount: '{count}개',
     },
     layer: {
       opacity: '불투명도',

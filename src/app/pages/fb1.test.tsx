@@ -44,6 +44,7 @@ function renderAt(path: string) {
 
 beforeEach(() => {
   try { localStorage.clear(); } catch { /* storage unavailable */ }
+  localStorage.setItem('xcube.data.view', 'list'); // table checks; cards: rd1.test
   adapter.getDatasets.mockResolvedValue([series, single]);
   adapter.getProjects.mockResolvedValue([{ id: '4', name: '점검 폴더', accessRole: 'OWNER', datasetCount: 2, memberCount: 3 }]);
   backoffice.getProject.mockResolvedValue({ id: '4', name: '점검 폴더', accessRole: 'OWNER' });

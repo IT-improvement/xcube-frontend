@@ -322,3 +322,50 @@ a.app-account__item { text-decoration: none; }
   .only-sm { display: inline; }
   .cell-sub .data-times { color: var(--fb-ink-2); font-variant-numeric: tabular-nums; }
 }
+
+/* RD1 S3: picture cards (default) — 1px rule plates in a wrapped grid, actions under each card. */
+.data-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 12px;
+  margin: 0; padding: var(--space-4); list-style: none;
+}
+.data-card {
+  display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 8px 8px 6px;
+  border: 1px solid var(--fb-rule); border-radius: var(--fb-radius); background: var(--fb-surface);
+}
+.data-card__pic { position: relative; display: block; }
+.data-card__thumb.thumb { display: grid; width: 100%; height: 160px; }
+.data-card__kind {
+  position: absolute; top: 6px; left: 6px; padding: 1px 6px; border-radius: var(--fb-radius-mark);
+  background: var(--fb-surface); box-shadow: 0 0 0 1px var(--fb-rule); color: var(--fb-ink-2); font: 600 12px/1.4 var(--fb-font);
+}
+.data-card__kind--fusion { background: var(--fb-water-soft); color: var(--fb-water); }
+.data-card__kind--ai { background: color-mix(in srgb, var(--fb-result) 12%, var(--fb-surface)); color: var(--fb-result); }
+.data-card__text { display: grid; gap: 4px; min-width: 0; padding: 0 4px; }
+.data-card__name {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  color: var(--fb-ink); font: 600 15px/1.4 var(--fb-font); text-decoration: none; overflow-wrap: anywhere; word-break: keep-all;
+}
+.data-card__name:hover { text-decoration: underline; }
+.data-card__facts, .data-card__sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; color: var(--fb-ink-2); font: 400 13px/1.45 var(--fb-font); }
+.data-card__facts > span { white-space: nowrap; }
+.data-card__facts > span:not(:last-child)::after { content: '·'; padding: 0 6px; }
+.data-card__sub { gap: 4px 8px; }
+.data-card__sub:empty { display: none; }
+.data-card__sub > span { overflow-wrap: anywhere; }
+.data-card__foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding: 6px 0 0 4px;
+  border-top: 1px solid var(--fb-rule);
+}
+.data-card__date { color: var(--fb-ink-2); font: 400 13px/1.4 var(--fb-font); }
+
+/* RD1 S3 list: picture 64, name 15, the line under it 13 in ink-2. */
+.data-table .xc-cell-main > a { font-size: 15px; line-height: 1.4; }
+.data-table .cell-sub a { color: var(--fb-ink); font-weight: 500; }
+.data-table .xc-cell-main small, .data-table .cell-sub { color: var(--fb-ink-2); font-size: 13px; }
+.data-table td { font-size: 13.5px; }
+.data-table .data-name { gap: 14px; }
+
+@media (max-width: 767px) {
+  .data-grid { grid-template-columns: 1fr; padding: var(--space-3); }
+  .data-card__thumb.thumb { height: 180px; }
+}

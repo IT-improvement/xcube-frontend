@@ -140,7 +140,7 @@ export default function DashboardPage() {
                   <tr key={item.id}>
                     <td className="cell-main">
                       <span className="data-name">
-                        <DatasetThumb dataset={item} size={40} />
+                        <DatasetThumb dataset={item} size={56} />
                         <span className="dash-name">
                           <Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link>
                           {!isOwned(item) && <Badge tone="water">{t('app.shared')}</Badge>}

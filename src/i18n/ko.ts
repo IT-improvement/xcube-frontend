@@ -39,6 +39,12 @@ const ko = {
       series: '시계열',
       single: '단일 시점',
     },
+    /** Picture cards or rows (RD1): the Viewer picker and the data list. */
+    view: {
+      label: '보기 방식',
+      grid: '그림 보기',
+      list: '목록 보기',
+    },
   },
   route: {
     loading: '화면을 불러오고 있습니다…',

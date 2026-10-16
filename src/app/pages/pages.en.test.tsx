@@ -55,6 +55,8 @@ function renderAt(path: string) {
 }
 
 beforeEach(() => {
+  // These checks read the data table; the picture cards (RD1 default) have their own tests in rd1.test.
+  localStorage.setItem('xcube.data.view', 'list');
   adapter.getProjects.mockResolvedValue([{ id: '4', name: 'Lakes', accessRole: 'OWNER' }]);
   adapter.getDatasets.mockResolvedValue([owned, shared, fused, water]);
   adapter.getJobs.mockResolvedValue([]);

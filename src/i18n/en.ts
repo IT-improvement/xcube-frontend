@@ -37,6 +37,11 @@ const en: Translation = {
       series: 'Time series',
       single: 'Single date',
     },
+    view: {
+      label: 'View',
+      grid: 'Pictures',
+      list: 'List',
+    },
   },
   route: {
     loading: 'Loading…',

@@ -53,6 +53,8 @@ const rowOf = (name: string) => screen.getAllByRole('row').find((row) => within(
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; };
 
 beforeEach(() => {
+  // These checks read the data table; the picture cards (RD1 default) have their own tests in rd1.test.
+  localStorage.setItem('xcube.data.view', 'list');
   jest.useRealTimers();
   adapter.getProjects.mockResolvedValue([]);
   adapter.getDatasets.mockResolvedValue([original, fused, water]);

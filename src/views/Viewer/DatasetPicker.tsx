@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { Check, ChevronDown, LayoutGrid, List, Search } from "lucide-react";
 import { ZarrDataset } from "../../api/viewerAdapter";
 import { kindIdOf, shortPeriod, TimeKind, timeKindOf } from "../../api/datasetFacts";
 import DatasetThumb from "../../components/thumb/DatasetThumb";
+import { useViewMode, VIEW_KEYS, ViewMode } from "../../hooks/useViewMode";
 import { useT } from "../../i18n";
 import "../../i18n/viewer";
 
@@ -15,7 +16,36 @@ const coarsePointer = () =>
  * widens it to all data again. Each row shows its preview picture and one line of facts
  * (kind · single date or time series · period · bands), and a filter keeps only series or
  * single dates (FB1 §3).
+ *
+ * RD1: the list is shown as picture cards (default) or as large rows, remembered per browser. It is split into
+ * groups (my data, shared with me, or the chosen project), and the arrow keys move through cards by rows:
+ * ↑/↓ to the card above or below, ←/→ to the previous or next one (while the search field is empty).
  */
+
+/** Index of the card straight above or below `from` in a wrapped grid, by the cards' positions on screen. */
+function verticalNeighbour(nodes: Array<HTMLElement | null>, from: number, step: 1 | -1): number {
+  const boxes = nodes.map((node) => node?.getBoundingClientRect());
+  const here = boxes[from];
+  const fallback = Math.max(0, Math.min(nodes.length - 1, from + step));
+  // Without layout (tests) or with one column every card is its own row.
+  if (!here || boxes.every((box) => !box || box.top === here.top)) return fallback;
+  const centre = here.left + here.width / 2;
+  let best = -1;
+  let bestRow = Infinity;
+  let bestDistance = Infinity;
+  boxes.forEach((box, index) => {
+    if (!box || index === from) return;
+    const rowGap = step === 1 ? box.top - here.top : here.top - box.top;
+    if (rowGap <= 2) return;
+    const distance = Math.abs(box.left + box.width / 2 - centre);
+    if (rowGap < bestRow - 2 || (Math.abs(rowGap - bestRow) <= 2 && distance < bestDistance)) {
+      best = index;
+      bestRow = rowGap;
+      bestDistance = distance;
+    }
+  });
+  return best >= 0 ? best : from;
+}
 export default function DatasetPicker({
   datasets,
   value,
@@ -42,6 +72,7 @@ export default function DatasetPicker({
   const [active, setActive] = useState(0);
   const [allScope, setAllScope] = useState(false);
   const [timeFilter, setTimeFilter] = useState<TimeKind | "">("");
+  const [view, setView] = useViewMode(VIEW_KEYS.picker);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -117,17 +148,21 @@ export default function DatasetPicker({
       return;
     }
     if (!open) return;
+    const step = (by: number) => (current: number) => Math.max(0, Math.min(filtered.length - 1, current + by));
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
+      const by = event.key === "ArrowDown" ? 1 : -1;
       setActive((current) =>
-        Math.max(
-          0,
-          Math.min(
-            filtered.length - 1,
-            current + (event.key === "ArrowDown" ? 1 : -1),
-          ),
-        ),
+        view === "grid" ? verticalNeighbour(itemRefs.current.slice(0, filtered.length), current, by) : step(by)(current),
       );
+    } else if (
+      view === "grid" &&
+      (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+      // In the search field the side arrows move the caret once something is typed.
+      !(target instanceof HTMLInputElement && target.value)
+    ) {
+      event.preventDefault();
+      setActive(step(event.key === "ArrowRight" ? 1 : -1));
     } else if (event.key === "Enter" && filtered[active]) {
       event.preventDefault();
       choose(filtered[active]);
@@ -142,6 +177,82 @@ export default function DatasetPicker({
     { id: "series", label: t("datasetFacts.filter.series"), count: timeCounts.series },
     { id: "single", label: t("datasetFacts.filter.single"), count: timeCounts.single },
   ];
+  const viewItems: Array<{ id: ViewMode; label: string; icon: React.ReactNode }> = [
+    { id: "grid", label: t("datasetFacts.view.grid"), icon: <LayoutGrid size={14} aria-hidden="true" /> },
+    { id: "list", label: t("datasetFacts.view.list"), icon: <List size={14} aria-hidden="true" /> },
+  ];
+  // Groups in list order (filtered already puts my data before shared data); each keeps its flat index.
+  const indexed = filtered.map((item, index) => ({ item, index }));
+  const groups: Array<{ id: string; title: string; items: typeof indexed }> = projectScope
+    ? [{ id: "project", title: t("viewer.picker.groupProject", { name: project!.name }), items: indexed }]
+    : [
+        { id: "mine", title: t("viewer.picker.groupMine"), items: indexed.filter(({ item }) => item.accessType !== "SHARED") },
+        { id: "shared", title: t("viewer.picker.groupShared"), items: indexed.filter(({ item }) => item.accessType === "SHARED") },
+      ].filter((group) => group.items.length > 0);
+  const facts = (item: ZarrDataset) => (
+    <small className="dataset-facts">
+      {view === "list" && <span className={`dataset-kind dataset-kind--${kindIdOf(item)}`}>{t(`datasetFacts.kinds.${kindIdOf(item)}`)}</span>}
+      <span>{timeText(item)}</span>
+      {shortPeriod(item) && <span className="dataset-facts__num">{shortPeriod(item)}</span>}
+      {item.variables.length > 0 && <span>{t("datasetFacts.bands", { count: item.variables.length })}</span>}
+    </small>
+  );
+  // The third line names the project only where it adds something: outside a project scope, for linked data.
+  // Inside the project group, shared data still says so.
+  const where = (item: ZarrDataset) => {
+    const text = projectScope
+      ? item.accessType === "SHARED" ? ownership(item) : ""
+      : item.projectName || "";
+    return text ? <small className="dataset-where"><span>{text}</span></small> : null;
+  };
+  const option = (item: ZarrDataset, index: number) => {
+    const chosen = item.id === value;
+    return (
+      <button
+        type="button"
+        role="option"
+        id={`zarr-option-${index}`}
+        tabIndex={-1}
+        aria-selected={chosen}
+        key={item.id}
+        ref={(node) => {
+          itemRefs.current[index] = node;
+        }}
+        className={`dataset-option dataset-option--${view} ${index === active ? "active-option" : ""}`}
+        onMouseEnter={() => setActive(index)}
+        onClick={() => choose(item)}
+      >
+        {view === "grid" ? (
+          <>
+            <span className="dataset-card__pic">
+              <DatasetThumb dataset={item} size={140} request={256} className="dataset-card__thumb" />
+              <span className={`dataset-kind dataset-kind--${kindIdOf(item)}`}>{t(`datasetFacts.kinds.${kindIdOf(item)}`)}</span>
+              {chosen && (
+                <span className="dataset-card__check">
+                  <Check size={14} aria-hidden="true" />
+                </span>
+              )}
+            </span>
+            <span className="dataset-option__text">
+              <strong>{item.name}</strong>
+              {facts(item)}
+              {where(item)}
+            </span>
+          </>
+        ) : (
+          <>
+            <DatasetThumb dataset={item} size={88} request={256} />
+            <span className="dataset-option__text">
+              <strong>{item.name}</strong>
+              {facts(item)}
+              {where(item)}
+            </span>
+            {chosen && <Check size={18} aria-hidden="true" />}
+          </>
+        )}
+      </button>
+    );
+  };
   // "{name}의 데이터" / "Data in {name}" with the project name in bold.
   const [scopeBefore, scopeAfter = ""] = t("viewer.picker.projectData").split("{name}");
   return (
@@ -212,61 +323,55 @@ export default function DatasetPicker({
               </button>
             </div>
           )}
-          <div className="dataset-filter" role="group" aria-label={t("datasetFacts.filter.label")}>
-            {filterItems.map((item) => (
-              <button
-                key={item.id || "all"}
-                type="button"
-                aria-pressed={timeFilter === item.id}
-                onClick={() => {
-                  setTimeFilter(item.id);
-                  setActive(0);
-                }}
-              >
-                {item.label} <span className="dataset-filter__count">{item.count}</span>
-              </button>
-            ))}
+          <div className="dataset-tools">
+            <div className="dataset-filter" role="group" aria-label={t("datasetFacts.filter.label")}>
+              {filterItems.map((item) => (
+                <button
+                  key={item.id || "all"}
+                  type="button"
+                  aria-pressed={timeFilter === item.id}
+                  onClick={() => {
+                    setTimeFilter(item.id);
+                    setActive(0);
+                  }}
+                >
+                  {item.label} <span className="dataset-filter__count">{item.count}</span>
+                </button>
+              ))}
+            </div>
+            <div className="dataset-filter dataset-view" role="group" aria-label={t("datasetFacts.view.label")}>
+              {viewItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-pressed={view === item.id}
+                  aria-label={item.label}
+                  title={item.label}
+                  onClick={() => setView(item.id)}
+                >
+                  {item.icon}
+                  <span className="dataset-view__word" aria-hidden="true">{item.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
           <div
             id="zarr-listbox"
-            className="dataset-list"
+            className={`dataset-list dataset-list--${view}`}
             role="listbox"
             aria-label={projectScope ? t("viewer.picker.projectData", { name: project!.name }) : t("viewer.picker.list")}
           >
             {filtered.length ? (
-              filtered.map((item, index) => (
-                <button
-                  type="button"
-                  role="option"
-                  id={`zarr-option-${index}`}
-                  tabIndex={-1}
-                  aria-selected={item.id === value}
-                  key={item.id}
-                  ref={(node) => {
-                    itemRefs.current[index] = node;
-                  }}
-                  className={index === active ? "active-option" : ""}
-                  onMouseEnter={() => setActive(index)}
-                  onClick={() => choose(item)}
-                >
-                  <DatasetThumb dataset={item} size={64} />
-                  <span className="dataset-option__text">
-                    <strong>{item.name}</strong>
-                    <small className="dataset-facts">
-                      <span className={`dataset-kind dataset-kind--${kindIdOf(item)}`}>{t(`datasetFacts.kinds.${kindIdOf(item)}`)}</span>
-                      <span>{timeText(item)}</span>
-                      {shortPeriod(item) && <span className="dataset-facts__num">{shortPeriod(item)}</span>}
-                      {item.variables.length > 0 && <span>{t("datasetFacts.bands", { count: item.variables.length })}</span>}
-                    </small>
-                    <small>
-                      <span>{ownership(item)}</span>
-                      {!projectScope && <span>{item.projectName || t("viewer.picker.noProject")}</span>}
-                    </small>
-                  </span>
-                  {item.id === value && (
-                    <Check size={16} aria-hidden="true" />
-                  )}
-                </button>
+              groups.map((group) => (
+                <div key={group.id} role="group" aria-labelledby={`zarr-group-${group.id}`} className="dataset-group">
+                  <div id={`zarr-group-${group.id}`} className="dataset-group__head">
+                    <span>{group.title}</span>
+                    <span className="dataset-group__count">{t("viewer.picker.groupCount", { count: group.items.length })}</span>
+                  </div>
+                  <div className="dataset-group__items">
+                    {group.items.map(({ item, index }) => option(item, index))}
+                  </div>
+                </div>
               ))
             ) : (
               <p className="dataset-empty">
