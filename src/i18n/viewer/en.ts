@@ -180,6 +180,10 @@ const enViewer: ViewerTranslation = {
       noProject: 'No project',
       emptyProject: 'This project has no data yet.',
       noMatch: 'No matches.',
+      groupMine: 'My data',
+      groupShared: 'Shared with me',
+      groupProject: 'Project: {name}',
+      groupCount: { one: '{count} item', other: '{count} items' },
     },
     layer: {
       opacity: 'Opacity',

@@ -1,4 +1,4 @@
-import { Database, ExternalLink, FolderPlus, Plus, Search, Trash2 } from 'lucide-react';
+import { Database, ExternalLink, FolderPlus, LayoutGrid, List, Plus, Search, Trash2 } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Alert, Button, ButtonLink, LockedButton, TextField } from '../../components/ui';
@@ -8,7 +8,8 @@ import { userMessage } from '../../api/httpClient';
 import { ai, aiViewerHref, appApi, canEditProject, formatDate, isOwned, periodLabel, Project, roleLabel, viewerHref, ZarrDataset } from '../api';
 import { aiFactsByResult, aiSubtitle } from '../aiFacts';
 import { useLoad } from '../useLoad';
-import { parseTimeKind, TimeKind, timeKindOf } from '../../api/datasetFacts';
+import { kindIdOf, parseTimeKind, shortPeriod, TimeKind, timeKindOf } from '../../api/datasetFacts';
+import { useViewMode, VIEW_KEYS } from '../../hooks/useViewMode';
 import DatasetThumb from '../../components/thumb/DatasetThumb';
 import { useLanguage, useT } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
@@ -79,6 +80,8 @@ export default function DataLibraryPage() {
     setQueryState('');
     setParams((current) => { const next = new URLSearchParams(current); ['q', 'scope', 'kind', 'time'].forEach((key) => next.delete(key)); return next; }, { replace: true });
   };
+  // RD1: picture cards (default) or the table, remembered per browser.
+  const [view, setView] = useViewMode(VIEW_KEYS.data);
   const [deleting, setDeleting] = useState<ZarrDataset | null>(null);
   const [linking, setLinking] = useState<ZarrDataset | null>(null);
   const toast = useToast();
@@ -102,6 +105,26 @@ export default function DataLibraryPage() {
     return filtered;
   }, [inScope, kind, time, query, sort, lang]);
 
+  const sourceNameOf = (item: ZarrDataset) => item.sourceDatacubeId ? items.find((source) => source.id === item.sourceDatacubeId)?.name ?? `#${item.sourceDatacubeId}` : '';
+  /** What tells the item apart after its tags: model and source for AI results, else the dataset id. */
+  const detail = (item: ZarrDataset) => {
+    const facts = item.kind === 'AI_RESULT' ? aiFacts.get(item.id) : undefined;
+    return item.kind === 'AI_RESULT' ? (
+      <span>
+        {facts && aiSubtitle(facts, lang) ? `${aiSubtitle(facts, lang)} · ` : ''}
+        {item.sourceDatacubeId && <>{t('data.source')} <Link to={`/app/data/${encodeURIComponent(item.sourceDatacubeId)}`}>{sourceNameOf(item)}</Link></>}
+      </span>
+    ) : <span>{item.xcubeDatasetId}</span>;
+  };
+  const actions = (item: ZarrDataset) => (
+    <div className="row-actions">
+      <a className="xc-icon-btn" href={item.kind === 'AI_RESULT' && item.sourceDatacubeId ? aiViewerHref(item.sourceDatacubeId, item.id) : viewerHref(item.id)} target="_blank" rel="noopener noreferrer" aria-label={t('app.openInViewerNamed', { name: item.name })} title={t('app.openInViewer')}><ExternalLink size={16} aria-hidden /></a>
+      <button type="button" className="xc-icon-btn" aria-label={t('data.linkNamed', { name: item.name })} title={locked ? `${t('app.linkToProject')} — ${locked}` : t('app.linkToProject')} aria-disabled={locked ? true : undefined} onClick={locked ? undefined : () => setLinking(item)}><FolderPlus size={16} aria-hidden /></button>
+      <button type="button" className="xc-icon-btn" aria-label={t('data.deleteNamed', { name: item.name })} title={!isOwned(item) ? t('data.cannotDeleteShared') : locked ? `${t('app.delete')} — ${locked}` : t('app.delete')} disabled={!isOwned(item)} aria-disabled={isOwned(item) && locked ? true : undefined} onClick={locked ? undefined : () => setDeleting(item)}><Trash2 size={16} aria-hidden /></button>
+    </div>
+  );
+  const timeText = (item: ZarrDataset) => timeKindOf(item) === 'series' ? t('datasetFacts.series', { count: item.times.length }) : t('datasetFacts.single');
+
   return (
     <div className="page-stack">
       {/* "데이터 추가" lives in the top bar on every page (decision 2), so the header has no button of its own. */}
@@ -123,6 +146,10 @@ export default function DataLibraryPage() {
             { id: '', label: t('datasetFacts.filter.all') }, { id: 'series', label: t('datasetFacts.filter.series') }, { id: 'single', label: t('datasetFacts.filter.single') },
           ]} />
           <span className="toolbar__spacer" />
+          <Segmented label={t('datasetFacts.view.label')} value={view} onChange={setView} items={[
+            { id: 'grid', label: <><LayoutGrid size={14} aria-hidden />{t('datasetFacts.view.grid')}</> },
+            { id: 'list', label: <><List size={14} aria-hidden />{t('datasetFacts.view.list')}</> },
+          ]} />
           {datasets.data && <span className="xc-hint tabular" aria-live="polite">{visible.length === inScope.length ? t('data.countAll', { count: inScope.length }) : t('data.countOf', { count: visible.length, total: inScope.length })}</span>}
           <label className="xc-check">
             <span className="sr-only">{t('data.sort')}</span>
@@ -144,9 +171,37 @@ export default function DataLibraryPage() {
           <EmptyState icon={<Database size={22} />} title={t('data.emptyTitle')} text={t('data.emptyText')} action={locked ? <LockedButton showReason reason={locked}><Plus size={16} aria-hidden />{t('shell.addData')}</LockedButton> : <ButtonLink to="/app/data/new"><Plus size={16} aria-hidden />{t('shell.addData')}</ButtonLink>} />
         ) : !visible.length ? (
           <EmptyState icon={<Search size={22} />} title={t('data.noResults')} text={t('data.noResultsText')} action={<Button variant="secondary" onClick={resetFilters}>{t('data.reset')}</Button>} />
+        ) : view === 'grid' ? (
+          <ul className="data-grid" aria-label={t('titles.data')}>
+            {visible.map((item) => (
+              <li key={item.id} className="data-card">
+                <span className="data-card__pic">
+                  <DatasetThumb dataset={item} size={160} request={256} className="data-card__thumb" />
+                  <span className={`data-card__kind data-card__kind--${kindIdOf(item)}`}>{t(`datasetFacts.kinds.${kindIdOf(item)}`)}</span>
+                </span>
+                <span className="data-card__text">
+                  <Link className="data-card__name" to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link>
+                  <span className="data-card__facts tabular">
+                    <span>{timeText(item)}</span>
+                    {shortPeriod(item) && <span>{shortPeriod(item)}</span>}
+                    {item.variables.length > 0 && <span>{t('datasetFacts.bands', { count: item.variables.length })}</span>}
+                  </span>
+                  <span className="data-card__sub">
+                    {!isOwned(item) && <Badge tone="water">{t('app.shared')}</Badge>}
+                    <DatasetStatus dataset={item} quiet />
+                    {item.kind === 'AI_RESULT' ? detail(item) : item.projectName ? <span>{item.projectName}</span> : null}
+                  </span>
+                </span>
+                <span className="data-card__foot">
+                  <span className="data-card__date tabular">{item.updatedAt ? `${t('app.updated')} ${formatDate(item.updatedAt, lang)}` : <NoValue label={t('app.noDate')} />}</span>
+                  {actions(item)}
+                </span>
+              </li>
+            ))}
+          </ul>
         ) : (
           <div className="xc-table-wrap">
-            <table className="xc-table xc-table--cards">
+            <table className="xc-table xc-table--cards data-table">
               <thead>
                 <tr>
                   <th scope="col">{t('app.name')}</th>
@@ -159,14 +214,11 @@ export default function DataLibraryPage() {
                 </tr>
               </thead>
               <tbody>
-                {visible.map((item) => {
-                  const facts = item.kind === 'AI_RESULT' ? aiFacts.get(item.id) : undefined;
-                  const sourceName = item.sourceDatacubeId ? items.find((source) => source.id === item.sourceDatacubeId)?.name ?? `#${item.sourceDatacubeId}` : '';
-                  return (
+                {visible.map((item) => (
                     <tr key={item.id}>
                       <td className="cell-main">
                         <span className="data-name">
-                        <DatasetThumb dataset={item} size={48} />
+                        <DatasetThumb dataset={item} size={64} />
                         <span className="xc-cell-main">
                           <Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link>
                           {/* Tags first (shared, kind, an exception status), then what tells the row apart. */}
@@ -176,13 +228,8 @@ export default function DataLibraryPage() {
                             {item.kind === 'AI_RESULT' && <Badge tone="result">{t('kinds.ai')}</Badge>}
                             <DatasetStatus dataset={item} quiet />
                             {/* ≤767px the 시점 column is hidden: single date or series stays readable under the name (FB1). */}
-                            <span className="only-sm data-times">{timeKindOf(item) === 'series' ? t('datasetFacts.series', { count: item.times.length }) : t('datasetFacts.single')}</span>
-                            {item.kind === 'AI_RESULT' ? (
-                              <span>
-                                {facts && aiSubtitle(facts, lang) ? `${aiSubtitle(facts, lang)} · ` : ''}
-                                {item.sourceDatacubeId && <>{t('data.source')} <Link to={`/app/data/${encodeURIComponent(item.sourceDatacubeId)}`}>{sourceName}</Link></>}
-                              </span>
-                            ) : <span>{item.xcubeDatasetId}</span>}
+                            <span className="only-sm data-times">{timeText(item)}</span>
+                            {detail(item)}
                           </small>
                         </span>
                         </span>
@@ -192,16 +239,9 @@ export default function DataLibraryPage() {
                       <td className="num hide-sm">{item.variables.length}</td>
                       <td className="hide-sm">{item.projectName || <NoValue label={t('app.noProject')} />}</td>
                       <td className="date" data-label={t('app.updated')}>{item.updatedAt ? formatDate(item.updatedAt, lang) : <NoValue label={t('app.noDate')} />}</td>
-                      <td className="cell-actions">
-                        <div className="row-actions">
-                          <a className="xc-icon-btn" href={item.kind === 'AI_RESULT' && item.sourceDatacubeId ? aiViewerHref(item.sourceDatacubeId, item.id) : viewerHref(item.id)} target="_blank" rel="noopener noreferrer" aria-label={t('app.openInViewerNamed', { name: item.name })} title={t('app.openInViewer')}><ExternalLink size={16} aria-hidden /></a>
-                          <button type="button" className="xc-icon-btn" aria-label={t('data.linkNamed', { name: item.name })} title={locked ? `${t('app.linkToProject')} — ${locked}` : t('app.linkToProject')} aria-disabled={locked ? true : undefined} onClick={locked ? undefined : () => setLinking(item)}><FolderPlus size={16} aria-hidden /></button>
-                          <button type="button" className="xc-icon-btn" aria-label={t('data.deleteNamed', { name: item.name })} title={!isOwned(item) ? t('data.cannotDeleteShared') : locked ? `${t('app.delete')} — ${locked}` : t('app.delete')} disabled={!isOwned(item)} aria-disabled={isOwned(item) && locked ? true : undefined} onClick={locked ? undefined : () => setDeleting(item)}><Trash2 size={16} aria-hidden /></button>
-                        </div>
-                      </td>
+                      <td className="cell-actions">{actions(item)}</td>
                     </tr>
-                  );
-                })}
+                ))}
               </tbody>
             </table>
           </div>

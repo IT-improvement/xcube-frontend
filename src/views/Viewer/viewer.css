@@ -170,7 +170,8 @@
 .vx .dataset-trigger__tag { flex: none; padding: 2px 6px; border: 1px solid var(--vx-rule-strong); border-radius: 4px; color: var(--vx-ink-2); font: 500 11px/1.3 var(--vx-font); }
 .vx .dataset-trigger > svg { color: var(--vx-ink-3); }
 .vx .dataset-popover {
-  position: absolute; z-index: 60; left: 0; top: 40px; width: min(480px, calc(100vw - 24px)); max-height: min(560px, 76vh);
+  position: absolute; z-index: 60; left: 0; top: 40px;
+  width: min(760px, max(460px, 60vw), calc(100vw - 24px)); max-height: min(80vh, calc(100dvh - 60px));
   display: flex; flex-direction: column; overflow: hidden;
   border: 1px solid var(--vx-rule); border-radius: var(--vx-radius-lg); background: var(--vx-surface); box-shadow: var(--vx-lift-high);
 }
@@ -191,46 +192,71 @@
   background: var(--vx-surface); font: 500 12px/1 var(--vx-font); cursor: pointer;
 }
 .vx .dataset-scope button:hover { background: var(--vx-sunken); }
-.vx .dataset-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; scrollbar-width: thin; }
-.vx .dataset-list [role='option'] {
-  width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 8px 10px; border: 0; border-radius: var(--vx-radius); background: transparent; color: var(--vx-ink);
-  text-align: left; cursor: pointer;
+.vx .dataset-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 12px 12px; scrollbar-width: thin; }
+.vx .dataset-empty { margin: 0; padding: 28px 16px; text-align: center; color: var(--vx-ink-2); font-size: 14px; }
+/* RD1: groups (my data, shared, the project) under a 13px ink-2 head with the count; no uppercase eyebrow. */
+.vx .dataset-group + .dataset-group { margin-top: 8px; }
+.vx .dataset-group__head {
+  display: flex; align-items: baseline; gap: 8px; padding: 12px 2px 8px; border-bottom: 1px solid var(--vx-rule); margin-bottom: 8px;
+  color: var(--vx-ink-2); font: 600 13px/1.4 var(--vx-font);
 }
-.vx .dataset-list [role='option'] > span { display: grid; gap: 3px; min-width: 0; }
-.vx .dataset-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 13.5px/1.35 var(--vx-font); }
-.vx .dataset-list small { display: flex; gap: 10px; min-width: 0; color: var(--vx-ink-3); font: 400 12px/1.3 var(--vx-font); }
-.vx .dataset-list small span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vx .dataset-list .active-option { background: var(--vx-sunken); }
-.vx .dataset-list [aria-selected='true'] strong { color: var(--vx-ink); }
-.vx .dataset-list [role='option'] > svg { color: var(--vx-ink); }
-.vx .dataset-empty { margin: 0; padding: 24px 16px; text-align: center; color: var(--vx-ink-3); font-size: 13px; }
-/* FB1: preview picture on the left, then name, facts (kind · dates · period · bands) and ownership. */
-.vx .dataset-list [role='option'] { justify-content: flex-start; gap: 12px; }
-.vx .dataset-list [role='option'] > .dataset-option__text { flex: 1 1 auto; }
-.vx .dataset-list [role='option'] > svg { flex: none; margin-left: auto; }
-.vx .dataset-list .dataset-facts { gap: 0; color: var(--vx-ink-2); font-variant-numeric: tabular-nums; }
-.vx .dataset-list .dataset-facts > span + span::before { content: '·'; padding: 0 6px; color: var(--vx-ink-3); }
-.vx .dataset-list .dataset-facts > .dataset-kind + span::before { content: none; }
-.vx .dataset-list .dataset-facts > .dataset-kind { margin-right: 6px; }
+.vx .dataset-group__count { color: var(--vx-ink-2); font-weight: 400; font-variant-numeric: tabular-nums; }
+.vx .dataset-option {
+  position: relative; width: 100%; min-width: 0; border: 1px solid transparent; border-radius: var(--vx-radius);
+  background: transparent; color: var(--vx-ink); text-align: left; cursor: pointer; font-family: var(--vx-font);
+}
+.vx .dataset-option.active-option { background: var(--vx-sunken); }
+.vx .dataset-option__text { display: grid; gap: 4px; min-width: 0; }
+.vx .dataset-option strong {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  font: 600 15px/1.4 var(--vx-font); color: var(--vx-ink); overflow-wrap: anywhere; word-break: keep-all;
+}
+.vx .dataset-option small { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; color: var(--vx-ink-2); font: 400 13px/1.45 var(--vx-font); }
+.vx .dataset-facts { font-variant-numeric: tabular-nums; }
+.vx .dataset-facts > span { white-space: nowrap; }
+.vx .dataset-facts > span:not(.dataset-kind):not(:last-child)::after { content: '·'; padding: 0 6px; color: var(--vx-ink-2); }
+.vx .dataset-facts > .dataset-kind { margin-right: 8px; }
+.vx .dataset-where span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vx .dataset-kind {
-  flex: none; padding: 1px 5px; border-radius: 4px; font: 600 11px/1.35 var(--vx-font);
-  background: var(--vx-sunken); color: var(--vx-ink-2);
+  flex: none; padding: 1px 6px; border-radius: 4px; font: 600 12px/1.4 var(--vx-font);
+  background: var(--vx-surface); color: var(--vx-ink-2); box-shadow: inset 0 0 0 1px var(--vx-rule-strong);
 }
-.vx .dataset-kind--fusion { background: var(--fb-water-soft); color: var(--fb-water); }
-.vx .dataset-kind--ai { background: color-mix(in srgb, var(--fb-result) 12%, var(--vx-surface)); color: var(--fb-result); }
+.vx .dataset-kind--fusion { background: var(--fb-water-soft); color: var(--fb-water); box-shadow: none; }
+.vx .dataset-kind--ai { background: color-mix(in srgb, var(--fb-result) 12%, var(--vx-surface)); color: var(--fb-result); box-shadow: none; }
+/* Picture cards: 1px rule plates in a wrapped grid (3 columns at 760px, 2 on tablets, 1 on phones). */
+.vx .dataset-list--grid .dataset-group__items { display: grid; grid-template-columns: repeat(auto-fill, minmax(208px, 1fr)); gap: 10px; }
+.vx .dataset-option--grid { display: flex; flex-direction: column; gap: 10px; padding: 8px 8px 12px; border-color: var(--vx-rule); }
+.vx .dataset-option--grid .dataset-option__text { padding: 0 4px; }
+.vx .dataset-card__pic { position: relative; display: block; }
+.vx .dataset-card__thumb.thumb { display: grid; width: 100%; height: 140px; }
+.vx .dataset-card__pic > .dataset-kind { position: absolute; top: 6px; left: 6px; }
+.vx .dataset-card__check {
+  position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 22px; height: 22px;
+  border-radius: 4px; background: var(--vx-ink); color: var(--vx-on-ink);
+}
+/* The chosen data: a 2px ink frame (the inset ring keeps the card from shifting). */
+.vx .dataset-option--grid[aria-selected='true'] { border-color: var(--vx-ink); box-shadow: inset 0 0 0 1px var(--vx-ink); }
+.vx .dataset-option--grid:hover:not(.active-option) { border-color: var(--vx-rule-strong); }
+/* Rows: picture 88, name 15, facts 13. */
+.vx .dataset-list--list .dataset-group__items { display: grid; gap: 2px; }
+.vx .dataset-option--list { display: flex; align-items: center; gap: 14px; padding: 10px; }
+.vx .dataset-option--list > .dataset-option__text { flex: 1 1 auto; }
+.vx .dataset-option--list > svg { flex: none; margin-left: auto; color: var(--vx-ink); }
+.vx .dataset-option--list[aria-selected='true'] { border-color: var(--vx-ink); }
+.vx .dataset-tools { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid var(--vx-rule); }
 .vx .dataset-filter {
-  flex: none; display: flex; gap: 2px; margin: 8px 12px 4px; padding: 2px; align-self: flex-start;
+  flex: none; display: flex; gap: 2px; padding: 2px;
   border: 1px solid var(--vx-rule-strong); border-radius: var(--vx-radius);
 }
 .vx .dataset-filter button {
-  height: 26px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--vx-ink-2);
-  font: 600 12.5px/1 var(--vx-font); white-space: nowrap; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--vx-ink-2);
+  font: 600 13px/1 var(--vx-font); white-space: nowrap; cursor: pointer;
 }
 .vx .dataset-filter button:hover:not([aria-pressed='true']) { background: var(--vx-sunken); color: var(--vx-ink); }
 .vx .dataset-filter button[aria-pressed='true'] { background: var(--vx-ink); color: var(--vx-on-ink); }
 .vx .dataset-filter button:focus-visible { outline-offset: -2px; }
-.vx .dataset-filter__count { font-weight: 500; font-variant-numeric: tabular-nums; opacity: 0.8; }
+.vx .dataset-filter__count { font-weight: 500; font-variant-numeric: tabular-nums; opacity: 0.85; }
 
 /* Project popover (folder button left of the project crumb) */
 .vx-pmenu { position: relative; flex: none; }
@@ -837,7 +863,10 @@
   .vx-crumb select { max-width: 120px; }
   .vx .dataset-picker { flex: 1; }
   .vx .dataset-trigger { max-width: none; }
-  .vx .dataset-popover { position: fixed; left: 8px; right: 8px; top: 92px; width: auto; }
+  .vx .dataset-popover { position: fixed; left: 8px; right: 8px; top: 92px; width: auto; max-height: calc(100dvh - 100px); }
+  .vx .dataset-list--grid .dataset-group__items { grid-template-columns: 1fr; }
+  .vx .dataset-view__word { display: none; }
+  .vx .dataset-list { padding: 4px 8px 8px; }
   .vx-pmenu__panel, .vx-menu { position: fixed; left: 8px; right: 8px; top: 92px; width: auto; }
   .vx-menu { top: 48px; }
   .vx-panel { left: 8px; right: 8px; top: 8px; width: auto; max-height: calc(100% - 8px - max(8px, var(--vx-legend-space, 0px) + 6px)); }
@@ -971,7 +1000,7 @@
   .vx-popt__check label, .vx-tour__check { min-height: var(--vx-hit); }
   .vx-model, .vx-result, .vx-job { min-height: var(--vx-hit); }
   .vx-menu [role^='menuitem'], .vx-pmenu__list :where(button, a) { min-height: var(--vx-hit); }
-  .vx .dataset-list [role='option'] { min-height: 52px; }
+  .vx .dataset-option--list { min-height: 52px; }
   .vx-link { min-height: var(--vx-hit); padding: 0 4px; }
   .vx-toast__close { width: var(--vx-hit); height: var(--vx-hit); margin: -12px -14px -12px 0; }
   .vx-swipe__handle { width: var(--vx-hit); height: 56px; }
