@@ -4,7 +4,7 @@ import { useLanguage } from '../i18n';
 
 export type Load<T> = {
   data: T | null; loading: boolean; error: string; status?: number;
-  /** The server's error code (`LOKI_UNAVAILABLE`, …) when the failure had one. */
+  /** The server's error code (`QUOTA_EXCEEDED`, …) when the failure had one. */
   code?: string;
   /** Loads again and shows it (`loading` turns on; the old data stays until the new arrives). */
   reload: () => void;

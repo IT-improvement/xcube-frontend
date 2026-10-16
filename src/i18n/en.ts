@@ -65,7 +65,6 @@ const en: Translation = {
     addData: 'Add data',
     viewer: 'Viewer',
     settings: 'Account settings',
-    admin: 'Admin',
   },
   notFound: {
     text: 'Check the address, or go back to the home page.',
@@ -187,7 +186,7 @@ const en: Translation = {
       location: { title: 'Where data lives', text: 'For now XCube runs inside your organization’s internal network. Access security for map tiles is planned for the next stage; until then, customer data is not exposed to the internet.' },
       format: { title: 'Formats', text: 'Data is stored as Zarr and shown on the map with the open-source xcube server. What you build is not tied to any proprietary format.' },
       account: { title: 'Accounts', text: 'Passwords are stored in a form that cannot be reversed, and you are signed out after 2 hours of inactivity. Data belongs to the person who made it, and only the accounts they share it with can see it.' },
-      pending: { title: 'In progress', text: 'An installation package for your own servers and an admin console are still in progress.' },
+      pending: { title: 'In progress', text: 'An installation package for your own servers is still in progress.' },
     },
     footer: {
       credit: 'Satellite data shown: Copernicus Sentinel-1/2 · Reference water: JRC Global Surface Water · Basemap © OpenStreetMap contributors',
@@ -267,17 +266,6 @@ const en: Translation = {
       INVALID_NAME: 'Use {min} to {max} characters for the name.',
       INVALID_LANGUAGE: 'That language isn’t supported.',
       ROLE_FORBIDDEN: 'Your role can’t do this. Ask an admin for a different role.',
-      ADMIN_SELF_CHANGE: 'You can’t lower, block or remove your own admin account.',
-      LAST_ADMIN: 'At least one admin must remain.',
-      // Visit log (MON4, Backoffice ↔ Loki).
-      LOKI_UNAVAILABLE: 'The request log (Loki) isn’t answering. Try again shortly.',
-      LOKI_NOT_CONFIGURED: 'The request log (Loki) isn’t connected.',
-      INVALID_IP: 'That isn’t an IP address (for example 203.0.113.5).',
-      INVALID_COUNTRY: 'Enter a two-letter country code (for example KR).',
-      INVALID_PATH: 'A path may use letters, digits and / _ . ~ % - only.',
-      RANGE_TOO_LONG: 'Pick up to 7 days.',
-      INVALID_RANGE: 'The start must be before the end.',
-      INVALID_DATE: 'The date isn’t valid.',
     },
   },
 };

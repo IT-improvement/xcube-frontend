@@ -1,10 +1,11 @@
-import { ChevronDown, ExternalLink, LogOut, Menu, Plus, Settings, X } from 'lucide-react';
+import { ChevronDown, ExternalLink, LogOut, Menu, Plus, Settings, ShieldCheck, X } from 'lucide-react';
 import { KeyboardEvent, RefObject, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { NEEDS, useRoleGate } from '../auth/roles';
 import { ButtonLink, LanguageSwitch, LockedButton, Logo, RouteFallback } from '../components/ui';
 import { TKey, useT } from '../i18n';
+import { adminConsoleUrl } from './adminConsole';
 import { appApi } from './api';
 import { JobsFeedProvider, useActiveJobCount } from './jobs';
 import './app.css';
@@ -44,17 +45,16 @@ function useDismiss(open: boolean, close: () => void, refs: Array<RefObject<HTML
   }, [open, close, trigger]);
 }
 
-/** S13 관리자 (UR-59): in the menu for admins only. */
-const ADMIN_NAV = { to: '/app/admin', label: 'shell.nav.admin' as TKey, end: false };
-
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
   const { isAdmin } = useRoleGate();
   return (
     <>
-      {(isAdmin ? [...NAV, ADMIN_NAV] : NAV).map(({ to, label, end }) => (
+      {NAV.map(({ to, label, end }) => (
         <NavLink key={to} to={to} end={end} className="app-top__link" onClick={onNavigate}>{t(label)}</NavLink>
       ))}
+      {/* 관리자 (UR-62): admins only, to the separate admin console in the same tab (a full page load, not a route here). */}
+      {isAdmin && <a className="app-top__link" href={adminConsoleUrl()} onClick={onNavigate}>{t('shell.nav.admin')}</a>}
       <a className="app-top__link" href="/app/viewer" target="_blank" rel="noopener noreferrer" onClick={onNavigate}>
         Viewer<ExternalLink size={13} aria-hidden className="app-top__ext" /><span className="sr-only">{t('shell.newTab')}</span>
       </a>
@@ -144,6 +144,7 @@ function ShellFrame() {
                 <p className="app-account__who"><strong>{name}</strong>{appApi.demo && <small>{t('shell.demo')}</small>}</p>
                 <div className="app-account__lang"><LanguageSwitch block /></div>
                 <Link className="app-account__item" to="/app/settings" aria-current={location.pathname === '/app/settings' ? 'page' : undefined}><Settings size={15} aria-hidden />{t('shell.settings')}</Link>
+                {gate.isAdmin && <a className="app-account__item" href={adminConsoleUrl()}><ShieldCheck size={15} aria-hidden />{t('shell.nav.admin')}</a>}
                 <button type="button" className="app-account__item" onClick={signOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
               </div>
             )}

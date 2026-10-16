@@ -13,10 +13,10 @@ const AddDataPage = lazy(() => import('./wizard/AddDataPage'));
 const JobsPage = lazy(() => import('./pages/JobsPage'));
 const FusionPage = lazy(() => import('./pages/FusionPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
-const AdminPage = lazy(() => import('./pages/AdminPage'));
+const AdminRedirectPage = lazy(() => import('./pages/AdminRedirectPage'));
 const AppNotFoundPage = lazy(() => import('./pages/AppNotFoundPage'));
 
-/** Routes under /app (except the full-screen Viewer), drawn inside the app shell (S2–S6, S10–S13). */
+/** Routes under /app (except the full-screen Viewer), drawn inside the app shell (S2–S6, S10–S12). */
 export default function AppSection() {
   return (
     <Routes>
@@ -30,8 +30,8 @@ export default function AppSection() {
         <Route path="jobs" element={<JobsPage />} />
         <Route path="analysis/fusion" element={<FusionPage />} />
         <Route path="settings" element={<SettingsPage />} />
-        {/* S13 (UR-59): the page itself says so when the account is not an admin. */}
-        <Route path="admin" element={<AdminPage />} />
+        {/* The old S13 address: admins go on to the admin console (UR-62, /admin); others get the 404 below. */}
+        <Route path="admin/*" element={<AdminRedirectPage />} />
         {/* Unknown /app/* paths stay inside the shell (top bar visible). */}
         <Route path="*" element={<AppNotFoundPage />} />
       </Route>

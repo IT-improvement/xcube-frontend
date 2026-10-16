@@ -30,6 +30,4 @@ test('서버 403 ROLE_FORBIDDEN은 params.required에 맞는 같은 문장, requ
   expect(userMessage(new ApiError(403, 'ROLE_FORBIDDEN', 'forbidden', undefined, { required: 'PROJECT_USER' }), 'ko')).toBe('관리자에게 프로젝트 유저 등급을 요청하세요.');
   expect(userMessage(new ApiError(403, 'ROLE_FORBIDDEN', 'forbidden', undefined, { required: 'PROJECT_MANAGER' }), 'en')).toBe('Ask an admin for the Project manager role.');
   expect(userMessage(new ApiError(403, 'ROLE_FORBIDDEN', 'forbidden'), 'ko')).toBe('지금 등급에서는 할 수 없는 작업입니다. 관리자에게 등급을 요청하세요.');
-  expect(userMessage(new ApiError(409, 'LAST_ADMIN', 'x'), 'ko')).toBe('관리자가 한 명 이상 남아 있어야 합니다.');
-  expect(userMessage(new ApiError(400, 'ADMIN_SELF_CHANGE', 'x'), 'en')).toBe('You can’t lower, block or remove your own admin account.');
 });

@@ -8,7 +8,7 @@
 .xc-icon-btn:hover:not(:disabled) { background: var(--fb-sunken); color: var(--fb-ink); }
 .xc-icon-btn:active:not(:disabled) { transform: scale(0.94); }
 .xc-icon-btn:disabled { color: var(--fb-rule-strong); cursor: not-allowed; }
-/* Off for a reason the user should be able to reach (UR-59 role, admin self row): focusable, aria-disabled. */
+/* Off for a reason the user should be able to reach (UR-59 role): focusable, aria-disabled. */
 .xc-icon-btn[aria-disabled='true'], .xc-icon-btn[aria-disabled='true']:hover { background: transparent; color: var(--fb-rule-strong); cursor: not-allowed; }
 
 /* Tag (was a pill badge): 4px corners, words + tone. */
