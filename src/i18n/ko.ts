@@ -68,7 +68,6 @@ const ko = {
     addData: '데이터 추가',
     viewer: 'Viewer',
     settings: '계정 설정',
-    admin: '관리자',
   },
   notFound: {
     text: '주소를 확인하거나 홈으로 이동해 주세요.',
@@ -193,7 +192,7 @@ const ko = {
       location: { title: '데이터 위치', text: '지금은 기관 내부 네트워크 안에서 운영합니다. 지도 타일에 접근 보안을 거는 작업은 다음 단계로 예정되어 있고, 그 전까지는 고객 데이터를 외부망에 공개하지 않습니다.' },
       format: { title: '형식', text: '저장은 Zarr, 지도 표시는 공개 소프트웨어인 xcube 서버를 씁니다. 만든 데이터가 특정 상용 형식에 묶이지 않습니다.' },
       account: { title: '계정', text: '비밀번호는 되돌릴 수 없는 방식으로 저장하고, 2시간 동안 활동이 없으면 자동으로 로그아웃합니다. 데이터는 만든 사람이 소유하고, 그 사람이 공유한 계정만 볼 수 있습니다.' },
-      pending: { title: '준비 중', text: '기관 서버에 직접 설치하는 배포 묶음과 관리자용 운영 화면은 아직 준비 중입니다.' },
+      pending: { title: '준비 중', text: '기관 서버에 직접 설치하는 배포 묶음은 아직 준비 중입니다.' },
     },
     footer: {
       credit: '화면 속 위성 자료: Copernicus Sentinel-1·2 · 참조 수면: JRC Global Surface Water · 배경지도 © OpenStreetMap 기여자',
@@ -280,19 +279,8 @@ const ko = {
       NOTHING_TO_UPDATE: '바꿀 내용이 없습니다.',
       INVALID_NAME: '이름은 {min}자 이상 {max}자 이하로 입력하세요.',
       INVALID_LANGUAGE: '지원하지 않는 언어입니다.',
-      // Account roles and the admin screen (UR-59, ADM contract). ROLE_FORBIDDEN is worded from params.required in userMessage.
+      // Account roles (UR-59, ADM contract). ROLE_FORBIDDEN is worded from params.required in userMessage.
       ROLE_FORBIDDEN: '지금 등급에서는 할 수 없는 작업입니다. 관리자에게 등급을 요청하세요.',
-      ADMIN_SELF_CHANGE: '내 계정의 관리자 등급을 내리거나 차단·탈퇴할 수 없습니다.',
-      LAST_ADMIN: '관리자가 한 명 이상 남아 있어야 합니다.',
-      // Visit log (MON4, Backoffice ↔ Loki).
-      LOKI_UNAVAILABLE: '요청 기록 저장소(Loki)가 응답하지 않습니다. 잠시 뒤 다시 시도하세요.',
-      LOKI_NOT_CONFIGURED: '요청 기록 저장소(Loki)가 연결되어 있지 않습니다.',
-      INVALID_IP: 'IP 주소 형식이 아닙니다(예: 203.0.113.5).',
-      INVALID_COUNTRY: '나라는 두 글자 코드로 입력하세요(예: KR).',
-      INVALID_PATH: '경로에는 영문·숫자와 / _ . ~ % - 만 쓸 수 있습니다.',
-      RANGE_TOO_LONG: '기간은 7일까지 고를 수 있습니다.',
-      INVALID_RANGE: '시작이 끝보다 앞서야 합니다.',
-      INVALID_DATE: '날짜 형식이 올바르지 않습니다.',
     },
   },
 };

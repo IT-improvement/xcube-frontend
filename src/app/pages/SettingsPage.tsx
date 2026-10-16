@@ -106,7 +106,7 @@ function ProfileSection({ onSaved }: { onSaved: (text: string) => void }) {
           <span className="settings__value">{user?.email ?? '—'}</span>
           <span className="xc-hint">{t('settings.profile.usernameHelp')}</span>
         </div>
-        {/* The account role (UR-59) is read-only here: an admin sets it on the admin page (S13). */}
+        {/* The account role (UR-59) is read-only here: an admin sets it in the admin console (/admin, UR-62). */}
         <div className="settings__readonly" data-testid="settings-role">
           <span className="settings__label">{t('settings.profile.role')}</span>
           <span className="settings__value">{user?.role ? accountRoleLabel(user.role, lang) : '—'}</span>

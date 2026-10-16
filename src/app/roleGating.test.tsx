@@ -1,5 +1,5 @@
 /* UR-59 role gating on the existing screens: nothing is hidden; what the role cannot do is off, with the reason.
-   USER: add data, band math, AI, projects off · PROJECT_USER: only new project off · ADMIN: admin menu. */
+   USER: add data, band math, AI, projects off · PROJECT_USER: only new project off · ADMIN: admin menu (link to the admin console, UR-62). */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { ReactElement } from 'react';
@@ -66,6 +66,20 @@ test('프로젝트 유저: 데이터 추가는 링크, 관리자: 메뉴 끝에 
   renderAt('/app', <h1>본문</h1>);
   const links = within(screen.getByRole('navigation', { name: '주 메뉴' })).getAllByRole('link').map((link) => link.textContent);
   expect(links).toEqual(['대시보드', '데이터', '프로젝트', '작업', '수식 융합', '관리자', 'Viewer(새 탭)']);
+  // UR-62: 관리자 goes to the separate admin console in the same tab (dev default: port 3010 on this host).
+  const adminLink = within(screen.getByRole('navigation', { name: '주 메뉴' })).getByRole('link', { name: '관리자' });
+  expect(adminLink).toHaveAttribute('href', 'http://localhost:3010/admin');
+  expect(adminLink).not.toHaveAttribute('target');
+  fireEvent.click(screen.getByRole('button', { name: /계정 메뉴/ }));
+  expect(within(document.getElementById('app-account-panel')!).getByRole('link', { name: '관리자' })).toHaveAttribute('href', 'http://localhost:3010/admin');
+});
+
+test('관리자가 아니면 계정 메뉴에도 관리자가 없다', () => {
+  mockRole = 'PROJECT_MANAGER';
+  renderAt('/app', <h1>본문</h1>);
+  fireEvent.click(screen.getByRole('button', { name: /계정 메뉴/ }));
+  expect(within(document.getElementById('app-account-panel')!).queryByRole('link', { name: '관리자' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: '관리자' })).not.toBeInTheDocument();
 });
 
 test('유저: 대시보드 바로 가기의 데이터 추가·수식 융합은 링크가 아니고 이유를 설명 자리에 보인다', async () => {
