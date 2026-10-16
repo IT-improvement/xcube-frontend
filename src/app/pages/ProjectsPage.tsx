@@ -1,4 +1,4 @@
-import { ArrowLeft, Database, ExternalLink, FolderKanban, Link2, Lock, Pencil, Plus, Search, SearchX, Trash2, Unlink } from 'lucide-react';
+import { ArrowLeft, Database, ExternalLink, HelpCircle, LayoutGrid, Link2, List, Lock, Pencil, Plus, Search, SearchX, Trash2, Unlink } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { userMessage } from '../../api/httpClient';
@@ -7,7 +7,10 @@ import { NEEDS, useRoleGate } from '../../auth/roles';
 import { Card, ConfirmDialog, Dialog, EmptyState, PageHeader, Segmented, Skeleton, TabPanel, Tabs, useToast } from '../../components/ui/kit';
 import { useAuth } from '../../auth/AuthProvider';
 import { appApi, canEditProject, formatDate, isOwned, memberLabel, MemberRole, Project, ProjectMember, viewerHref, ZarrDataset } from '../api';
-import { useLoad } from '../useLoad';
+import { Load, useLoad } from '../useLoad';
+import DatasetThumb, { ThumbStack } from '../../components/thumb/DatasetThumb';
+import { kindIdOf, shortPeriod, timeKindOf } from '../../api/datasetFacts';
+import { ProjectExtents, ProjectIntro } from './projectParts';
 import { DatasetStatus, NoValue, RoleBadge } from './DataLibraryPage';
 import { useLanguage } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
@@ -16,12 +19,63 @@ import '../../i18n/app';
 
 type Scope = 'all' | 'owned' | 'shared';
 const SCOPES: Scope[] = ['all', 'owned', 'shared'];
+/** The "what is a project" explanation is shown on a first visit until it is folded away (kept per browser). */
+const INTRO_KEY = 'xcube.projects.introHidden';
+const readIntroHidden = () => { try { return localStorage.getItem(INTRO_KEY) === '1'; } catch { return false; } };
+const writeIntroHidden = (hidden: boolean) => { try { if (hidden) localStorage.setItem(INTRO_KEY, '1'); else localStorage.removeItem(INTRO_KEY); } catch { /* storage unavailable */ } };
 
-/** S6 list: a ruled ledger of projects (name, role, owner, updated) with search and an owned/shared filter, both kept in the URL. */
-export function ProjectsPage() {
+/** Catalog entries by id: project lists carry only names and ids, the catalog has extents, times and bands. */
+function useCatalog() {
+  const catalog = useLoad(() => appApi.listDatasets().catch(() => [] as ZarrDataset[]));
+  return useMemo(() => new Map((catalog.data ?? []).map((item) => [item.id, item])), [catalog.data]);
+}
+const withCatalog = (items: ZarrDataset[], byId: Map<string, ZarrDataset>) => items.map((item) => (byId.has(item.id) ? { ...item, ...byId.get(item.id)!, projectId: item.projectId } : item));
+
+/** "데이터 3개 · 멤버 2명": the numbers the server gives, or the data count read from the project's list. */
+export function ProjectCounts({ datasets, members }: { datasets?: number; members?: number }) {
+  const { t } = useLanguage();
+  const parts = [datasets != null ? t('projects.countData', { count: datasets }) : '', members != null ? t('projects.countMembers', { count: members }) : ''].filter(Boolean);
+  return parts.length ? <small className="project-counts tabular">{parts.join(' · ')}</small> : null;
+}
+
+/** One project row: up to three pictures of its data overlapped, the name, the counts and the description. */
+function ProjectRow({ project, byId }: { project: Project; byId: Map<string, ZarrDataset> }) {
   const { lang, t } = useLanguage();
+  // Without a count from the server, or with data in it, the project's list gives the pictures (and the count).
+  const empty = project.datasetCount === 0;
+  const linked = useLoad(() => (empty ? Promise.resolve([] as ZarrDataset[]) : appApi.projectDatasets(project.id).catch(() => null)), [project.id, empty]);
+  const items = withCatalog(linked.data ?? [], byId);
+  const datasetCount = project.datasetCount ?? (linked.data ? linked.data.length : undefined);
+  return (
+    <tr>
+      <td className="cell-main">
+        <span className="project-name">
+          <ThumbStack datasets={items} size={36} />
+          <span className="xc-cell-main">
+            <Link to={`/app/projects/${encodeURIComponent(project.id)}`}>{project.name}</Link>
+            <ProjectCounts datasets={datasetCount} members={project.memberCount} />
+            {/* No description, no line: "설명 없음" on every row said nothing. */}
+            {project.description && <small className="clamp-1">{project.description}</small>}
+          </span>
+        </span>
+      </td>
+      <td data-label={t('projects.role')}><RoleBadge role={project.accessRole} /></td>
+      <td data-label={t('projects.ownerColumn')}>{project.accessRole === 'OWNER' ? t('projects.ownerMe') : project.ownerUsername || <NoValue label={t('app.noValue')} />}</td>
+      <td data-label={t('app.updated')} className="date">{formatDate(project.updatedAt ?? project.createdAt, lang)}</td>
+    </tr>
+  );
+}
+
+/**
+ * S6 list: a ruled ledger of projects (pictures of their data, name, counts, role, owner, updated) with search and
+ * an owned/shared filter, both kept in the URL. A project is "a folder that gathers data to see it with others"
+ * (FB1): with no project, and on a first visit, three ruled steps say how it is used.
+ */
+export function ProjectsPage() {
+  const { t } = useLanguage();
   useDocumentTitle(t('titles.projects'));
   const projects = useLoad(() => appApi.listProjects());
+  const byId = useCatalog();
   // ?scope=owned&q=… so a reload or a shared link keeps the view.
   const [params, setParams] = useSearchParams();
   const scope = (SCOPES.includes(params.get('scope') as Scope) ? params.get('scope') : 'all') as Scope;
@@ -35,6 +89,8 @@ export function ProjectsPage() {
   const setScope = (value: Scope) => setParam('scope', value, 'all');
   const setQuery = (value: string) => { setQueryState(value); setParam('q', value.trim() ? value : '', ''); };
   const [creating, setCreating] = useState(false);
+  const [introHidden, setIntroHidden] = useState(readIntroHidden);
+  const hideIntro = (hidden: boolean) => { writeIntroHidden(hidden); setIntroHidden(hidden); };
   const navigate = useNavigate();
   const items = useMemo(() => projects.data ?? [], [projects.data]);
   // UR-59: projects are created from PROJECT_MANAGER up; below that "새 프로젝트" stays, off, with the reason.
@@ -46,10 +102,23 @@ export function ProjectsPage() {
   const visible = items.filter((project) =>
     (scope === 'all' || (scope === 'owned' ? project.accessRole === 'OWNER' : project.accessRole !== 'OWNER')) &&
     (!needle || [project.name, project.description].some((text) => text?.toLowerCase().includes(needle))));
+  const samples = useMemo(() => Array.from(byId.values()), [byId]);
+  const hasProjects = !!projects.data && items.length > 0;
   return (
     <div className="page-stack">
-      <PageHeader title={t('titles.projects')} description={t('projects.description')} actions={newButton} />
+      <PageHeader
+        title={t('titles.projects')}
+        description={t('projects.description')}
+        actions={<>{hasProjects && introHidden && <Button variant="quiet" onClick={() => hideIntro(false)}><HelpCircle size={16} aria-hidden />{t('projects.intro.show')}</Button>}{newButton}</>}
+      />
+      {projects.data && !items.length && !projects.error ? (
+        <Card>
+          <p className="project-intro__status">{t('projects.emptyTitle')}</p>
+          <ProjectIntro datasets={samples} action={newButton} />
+        </Card>
+      ) : (
       <Card>
+        {hasProjects && !introHidden && <ProjectIntro datasets={samples} action={newButton} onHide={() => hideIntro(true)} />}
         <div className="toolbar">
           <label className="toolbar__search">
             <Search size={16} aria-hidden />
@@ -61,8 +130,6 @@ export function ProjectsPage() {
           <Skeleton lines={4} label={t('projects.loading')} />
         ) : projects.error ? (
           <div className="inline-error"><Alert tone="danger">{t('projects.listFailed', { error: projects.error })}</Alert><Button variant="secondary" size="sm" onClick={projects.reload} className="inline-error__retry">{t('common.retry')}</Button></div>
-        ) : !items.length ? (
-          <EmptyState icon={<FolderKanban size={22} />} title={t('projects.emptyTitle')} text={t('projects.emptyText')} action={newButton} />
         ) : !visible.length ? (
           <EmptyState icon={<Search size={22} />} title={t('projects.noResults')} action={<Button variant="secondary" onClick={() => { setQueryState(''); setParams(new URLSearchParams(), { replace: true }); }}>{t('data.reset')}</Button>} />
         ) : (
@@ -77,25 +144,13 @@ export function ProjectsPage() {
                 </tr>
               </thead>
               <tbody>
-                {visible.map((project) => (
-                  <tr key={project.id}>
-                    <td className="cell-main">
-                      <span className="xc-cell-main">
-                        <Link to={`/app/projects/${encodeURIComponent(project.id)}`}>{project.name}</Link>
-                        {/* No description, no line: "설명 없음" on every row said nothing. */}
-                        {project.description && <small className="clamp-1">{project.description}</small>}
-                      </span>
-                    </td>
-                    <td data-label={t('projects.role')}><RoleBadge role={project.accessRole} /></td>
-                    <td data-label={t('projects.ownerColumn')}>{project.accessRole === 'OWNER' ? t('projects.ownerMe') : project.ownerUsername || <NoValue label={t('app.noValue')} />}</td>
-                    <td data-label={t('app.updated')} className="date">{formatDate(project.updatedAt ?? project.createdAt, lang)}</td>
-                  </tr>
-                ))}
+                {visible.map((project) => <ProjectRow key={project.id} project={project} byId={byId} />)}
               </tbody>
             </table>
           </div>
         )}
       </Card>
+      )}
       {creating && <ProjectFormDialog onClose={() => setCreating(false)} onSaved={(project) => navigate(`/app/projects/${encodeURIComponent(project.id)}`)} />}
     </div>
   );
@@ -123,7 +178,7 @@ function ProjectFormDialog({ project, onClose, onSaved }: { project?: Project; o
     }
   };
   return (
-    <Dialog title={project ? t('projects.editTitle') : t('projects.new')} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button type="submit" form="project-form" disabled={busy}>{busy ? t('projects.saving') : project ? t('projects.save') : t('projects.create')}</Button></>}>
+    <Dialog title={project ? t('projects.editTitle') : t('projects.new')} description={project ? undefined : t('projects.formHint')} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button type="submit" form="project-form" disabled={busy}>{busy ? t('projects.saving') : project ? t('projects.save') : t('projects.create')}</Button></>}>
       <form id="project-form" className="form-stack" onSubmit={submit} noValidate>
         <TextField label={t('projects.name')} value={name} maxLength={150} required autoComplete="off" error={nameError} onChange={(event) => { setName(event.target.value); setNameError(''); }} />
         <label className="xc-field">
@@ -158,6 +213,11 @@ export function ProjectDetailPage() {
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const toast = useToast();
+  // Data and members load here, once, for the header sentence and both tabs.
+  const linked = useLoad(() => appApi.projectDatasets(projectId), [projectId]);
+  const byId = useCatalog();
+  const isOwner = project.data?.accessRole === 'OWNER';
+  const members = useLoad<ProjectMember[]>(() => (isOwner ? appApi.members(projectId) : Promise.resolve([])), [projectId, isOwner]);
   const back = <Link className="page-back" to="/app/projects"><ArrowLeft size={16} aria-hidden />{t('titles.projects')}</Link>;
   if (project.loading && !project.data) return <div className="page-stack">{back}<Card><Skeleton lines={5} label={t('projects.loading')} /></Card></div>;
   if (project.error || !project.data) {
@@ -180,7 +240,7 @@ export function ProjectDetailPage() {
       <PageHeader
         back={back}
         title={current.name}
-        description={<span className="head-tags"><RoleBadge role={current.accessRole} />{current.description && <span>{current.description}</span>}</span>}
+        description={<><span className="head-tags"><RoleBadge role={current.accessRole} />{current.description && <span>{current.description}</span>}</span><ProjectSentence datasets={linked.data?.length ?? current.datasetCount} members={owner ? (members.data && !members.loading ? members.data.length : undefined) : current.memberCount} /></>}
         actions={<>
           {editable && (manageLocked
             ? <LockedButton variant="secondary" reason={manageLocked}><Pencil size={16} aria-hidden />{t('projects.edit')}</LockedButton>
@@ -195,7 +255,7 @@ export function ProjectDetailPage() {
           <Tabs label={t('projects.tabsLabel')} idPrefix="project-detail" value={tab} onChange={setTab} items={[{ id: 'data', label: t('projects.tabData') }, { id: 'members', label: t('projects.tabMembers') }]} />
         </div>
         <TabPanel idPrefix="project-detail" value={tab}>
-          {tab === 'data' ? <ProjectData project={current} editable={editable} onToast={toast.show} /> : <ProjectMembers project={current} owner={owner} onToast={toast.show} />}
+          {tab === 'data' ? <ProjectData project={current} editable={editable} linked={linked} byId={byId} onToast={toast.show} /> : <ProjectMembers project={current} owner={owner} members={members} onToast={toast.show} />}
         </TabPanel>
       </Card>
       {editing && <ProjectFormDialog project={current} onClose={() => setEditing(false)} onSaved={(saved) => { project.setData(() => ({ ...current, ...saved })); setEditing(false); toast.show(t('projects.saved')); }} />}
@@ -221,9 +281,31 @@ function DeleteProjectDialog({ project, onClose, onDeleted }: { project: Project
   );
 }
 
-function ProjectData({ project, editable, onToast }: { project: Project; editable: boolean; onToast: (text: string) => void }) {
+/**
+ * Header sentence (FB1): "이 프로젝트의 데이터 4개를 3명이 함께 봅니다." Members count everyone in the project, the
+ * owner too; only the owner can list them, so others read the server's count or a sentence without it.
+ */
+function ProjectSentence({ datasets, members }: { datasets?: number; members?: number }) {
   const { t } = useLanguage();
-  const linked = useLoad(() => appApi.projectDatasets(project.id), [project.id]);
+  if (datasets == null) return null;
+  const text = members == null ? t('projects.sentenceMembers', { count: datasets })
+    : members <= 1 ? t('projects.sentenceAlone', { count: datasets })
+    : t('projects.sentence', { data: t('projects.countData', { count: datasets }), people: t('projects.people', { count: members }) });
+  return <span className="project-sentence">{text}</span>;
+}
+
+type DataView = 'grid' | 'table';
+
+function ProjectData({ project, editable, linked, byId, onToast }: { project: Project; editable: boolean; linked: Load<ZarrDataset[]>; byId: Map<string, ZarrDataset>; onToast: (text: string) => void }) {
+  const { lang, t } = useLanguage();
+  // Pictures by default; the table stays one press away and is kept in the URL (?view=table).
+  const [params, setParams] = useSearchParams();
+  const view: DataView = params.get('view') === 'table' ? 'table' : 'grid';
+  const setView = (value: DataView) => setParams((current) => {
+    const next = new URLSearchParams(current);
+    if (value === 'grid') next.delete('view'); else next.set('view', value);
+    return next;
+  }, { replace: true });
   const [picking, setPicking] = useState(false);
   // Linking data needs PROJECT_USER (UR-59) on top of the project's edit permission.
   const linkLocked = useRoleGate().reason(NEEDS.createData);
@@ -235,20 +317,54 @@ function ProjectData({ project, editable, onToast }: { project: Project; editabl
     setUnlinking(null);
     onToast(t('projects.unlinked'));
   };
-  const items = linked.data ?? [];
+  const items = withCatalog(linked.data ?? [], byId);
+  const unlinkButton = (dataset: ZarrDataset) => editable && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" aria-disabled={linkLocked ? true : undefined} title={linkLocked || undefined} onClick={linkLocked ? undefined : () => setUnlinking(dataset)} aria-label={t('projects.unlinkNamed', { name: dataset.name })}><Unlink size={14} aria-hidden />{t('projects.unlink')}</button>;
+  const facts = (dataset: ZarrDataset) => [
+    t(`datasetFacts.kinds.${kindIdOf(dataset)}`),
+    timeKindOf(dataset) === 'series' ? t('datasetFacts.series', { count: dataset.times.length }) : t('datasetFacts.single'),
+    shortPeriod(dataset),
+  ].filter(Boolean).join(' · ');
   return (
     <>
       <div className="toolbar">
         <span className="xc-hint">{t('projects.dataHint')}</span>
         <span className="toolbar__spacer" />
+        {items.length > 0 && (
+          <Segmented label={t('projects.viewLabel')} value={view} onChange={setView} items={[
+            { id: 'grid', label: <><LayoutGrid size={14} aria-hidden />{t('projects.viewGrid')}</> },
+            { id: 'table', label: <><List size={14} aria-hidden />{t('projects.viewTable')}</> },
+          ]} />
+        )}
         {editable && (linkLocked
           ? <LockedButton size="sm" showReason reason={linkLocked}><Link2 size={16} aria-hidden />{t('projects.linkData')}</LockedButton>
           : <Button size="sm" onClick={() => setPicking(true)}><Link2 size={16} aria-hidden />{t('projects.linkData')}</Button>)}
       </div>
-      {linked.loading ? <Skeleton lines={3} label={t('projects.loadingLinked')} /> : linked.error ? (
+      {linked.loading && !linked.data ? <Skeleton lines={3} label={t('projects.loadingLinked')} /> : linked.error ? (
         <div className="inline-error"><Alert tone="danger">{linked.error}</Alert></div>
       ) : !items.length ? (
         <EmptyState icon={<Database size={22} />} title={t('projects.noLinkedTitle')} text={editable ? t('projects.noLinkedEditable') : t('projects.noLinkedReadonly')} />
+      ) : view === 'grid' ? (
+        <>
+          <ProjectExtents datasets={items} />
+          <ul className="project-grid" aria-label={t('projects.tabData')}>
+            {items.map((dataset) => (
+              <li key={dataset.id} className="project-grid__item">
+                <DatasetThumb dataset={dataset} size={160} request={256} className="project-grid__thumb" />
+                <span className="xc-cell-main">
+                  <Link to={`/app/data/${encodeURIComponent(dataset.id)}`}>{dataset.name}</Link>
+                  <small className="tabular">{facts(dataset)}</small>
+                  {dataset.updatedAt && <small className="tabular">{t('app.updated')} {formatDate(dataset.updatedAt, lang)}</small>}
+                </span>
+                <span className="project-grid__actions">
+                  <DatasetStatus dataset={dataset} quiet />
+                  <span className="toolbar__spacer" />
+                  <a className="xc-icon-btn" href={viewerHref(dataset.id)} target="_blank" rel="noopener noreferrer" aria-label={t('app.openInViewerNamed', { name: dataset.name })} title={t('app.openInViewer')}><ExternalLink size={16} aria-hidden /></a>
+                  {unlinkButton(dataset)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
       ) : (
         <div className="xc-table-wrap">
           <table className="xc-table xc-table--cards">
@@ -256,12 +372,12 @@ function ProjectData({ project, editable, onToast }: { project: Project; editabl
             <tbody>
               {items.map((dataset) => (
                 <tr key={dataset.id}>
-                  <td className="cell-main"><span className="xc-cell-main"><Link to={`/app/data/${encodeURIComponent(dataset.id)}`}>{dataset.name}</Link><small>{dataset.xcubeDatasetId}</small></span></td>
+                  <td className="cell-main"><span className="data-name"><DatasetThumb dataset={dataset} size={40} /><span className="xc-cell-main"><Link to={`/app/data/${encodeURIComponent(dataset.id)}`}>{dataset.name}</Link><small className="tabular">{facts(dataset)}</small></span></span></td>
                   <td data-label={t('app.status')}><DatasetStatus dataset={dataset} /></td>
                   <td className="cell-actions">
                     <div className="row-actions">
                       <a className="xc-icon-btn" href={viewerHref(dataset.id)} target="_blank" rel="noopener noreferrer" aria-label={t('app.openInViewerNamed', { name: dataset.name })} title={t('app.openInViewer')}><ExternalLink size={16} aria-hidden /></a>
-                      {editable && <button type="button" className="xc-btn xc-btn--ghost xc-btn--sm" aria-disabled={linkLocked ? true : undefined} title={linkLocked || undefined} onClick={linkLocked ? undefined : () => setUnlinking(dataset)} aria-label={t('projects.unlinkNamed', { name: dataset.name })}><Unlink size={14} aria-hidden />{t('projects.unlink')}</button>}
+                      {unlinkButton(dataset)}
                     </div>
                   </td>
                 </tr>
@@ -333,8 +449,7 @@ function LinkDatasetDialog({ linkedIds, onClose, onLink }: { linkedIds: string[]
   );
 }
 
-function ProjectMembers({ project, owner, onToast }: { project: Project; owner: boolean; onToast: (text: string) => void }) {
-  const members = useLoad<ProjectMember[]>(() => (owner ? appApi.members(project.id) : Promise.resolve([])), [project.id, owner]);
+function ProjectMembers({ project, owner, members, onToast }: { project: Project; owner: boolean; members: Load<ProjectMember[]>; onToast: (text: string) => void }) {
   const { user } = useAuth();
   const { lang, t } = useLanguage();
   const label = (member: ProjectMember) => memberLabel(member, lang);

@@ -8,6 +8,8 @@ import { userMessage } from '../../api/httpClient';
 import { ai, aiViewerHref, appApi, canEditProject, formatDate, isOwned, periodLabel, Project, roleLabel, viewerHref, ZarrDataset } from '../api';
 import { aiFactsByResult, aiSubtitle } from '../aiFacts';
 import { useLoad } from '../useLoad';
+import { parseTimeKind, TimeKind, timeKindOf } from '../../api/datasetFacts';
+import DatasetThumb from '../../components/thumb/DatasetThumb';
 import { useLanguage, useT } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 // The management screens' text (UR-53 stage 2) loads with these pages, not with the main bundle.
@@ -58,6 +60,8 @@ export default function DataLibraryPage() {
   const scope = pick(params.get('scope'), SCOPES, 'all');
   const kind = pick(params.get('kind'), KINDS, '');
   const sort = pick(params.get('sort'), SORTS, 'recent');
+  // One time or a time series (FB1): ?time=series|single.
+  const time = parseTimeKind(params.get('time'));
   // The search box keeps its own state (typing stays immediate) and mirrors it into the URL.
   const [query, setQueryState] = useState(() => params.get('q') ?? '');
   const setParam = (key: string, value: string, fallback: string) =>
@@ -68,11 +72,12 @@ export default function DataLibraryPage() {
     }, { replace: true });
   const setScope = (value: Scope) => setParam('scope', value, 'all');
   const setKind = (value: Kind) => setParam('kind', value, '');
+  const setTime = (value: TimeKind | '') => setParam('time', value, '');
   const setQuery = (value: string) => { setQueryState(value); setParam('q', value.trim() ? value : '', ''); };
   const setSort = (value: Sort) => setParam('sort', value, 'recent');
   const resetFilters = () => {
     setQueryState('');
-    setParams((current) => { const next = new URLSearchParams(current); ['q', 'scope', 'kind'].forEach((key) => next.delete(key)); return next; }, { replace: true });
+    setParams((current) => { const next = new URLSearchParams(current); ['q', 'scope', 'kind', 'time'].forEach((key) => next.delete(key)); return next; }, { replace: true });
   };
   const [deleting, setDeleting] = useState<ZarrDataset | null>(null);
   const [linking, setLinking] = useState<ZarrDataset | null>(null);
@@ -90,11 +95,12 @@ export default function DataLibraryPage() {
     const needle = query.trim().toLowerCase();
     const filtered = inScope.filter((item) =>
       (!kind || kindOf(item) === kind) &&
+      (!time || timeKindOf(item) === time) &&
       (!needle || [item.name, item.xcubeDatasetId, item.projectName].some((text) => text?.toLowerCase().includes(needle))));
     if (sort === 'name') return [...filtered].sort((a, b) => a.name.localeCompare(b.name, lang));
     if (sort === 'period') return [...filtered].sort((a, b) => (b.times.at(-1)?.iso ?? '').localeCompare(a.times.at(-1)?.iso ?? ''));
     return filtered;
-  }, [inScope, kind, query, sort, lang]);
+  }, [inScope, kind, time, query, sort, lang]);
 
   return (
     <div className="page-stack">
@@ -112,6 +118,9 @@ export default function DataLibraryPage() {
           </label>
           <Segmented label={t('data.kindLabel')} value={kind} onChange={setKind} items={[
             { id: '', label: t('app.all') }, { id: 'original', label: t('kinds.original') }, { id: 'fusion', label: t('kinds.fusion') }, { id: 'ai', label: t('kinds.ai') },
+          ]} />
+          <Segmented label={t('datasetFacts.filter.label')} value={time} onChange={setTime} items={[
+            { id: '', label: t('datasetFacts.filter.all') }, { id: 'series', label: t('datasetFacts.filter.series') }, { id: 'single', label: t('datasetFacts.filter.single') },
           ]} />
           <span className="toolbar__spacer" />
           {datasets.data && <span className="xc-hint tabular" aria-live="polite">{visible.length === inScope.length ? t('data.countAll', { count: inScope.length }) : t('data.countOf', { count: visible.length, total: inScope.length })}</span>}
@@ -156,6 +165,8 @@ export default function DataLibraryPage() {
                   return (
                     <tr key={item.id}>
                       <td className="cell-main">
+                        <span className="data-name">
+                        <DatasetThumb dataset={item} size={48} />
                         <span className="xc-cell-main">
                           <Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link>
                           {/* Tags first (shared, kind, an exception status), then what tells the row apart. */}
@@ -164,6 +175,8 @@ export default function DataLibraryPage() {
                             {item.kind === 'FUSION' && <Badge tone="water">{t('kinds.fusion')}</Badge>}
                             {item.kind === 'AI_RESULT' && <Badge tone="result">{t('kinds.ai')}</Badge>}
                             <DatasetStatus dataset={item} quiet />
+                            {/* ≤767px the 시점 column is hidden: single date or series stays readable under the name (FB1). */}
+                            <span className="only-sm data-times">{timeKindOf(item) === 'series' ? t('datasetFacts.series', { count: item.times.length }) : t('datasetFacts.single')}</span>
                             {item.kind === 'AI_RESULT' ? (
                               <span>
                                 {facts && aiSubtitle(facts, lang) ? `${aiSubtitle(facts, lang)} · ` : ''}
@@ -172,9 +185,10 @@ export default function DataLibraryPage() {
                             ) : <span>{item.xcubeDatasetId}</span>}
                           </small>
                         </span>
+                        </span>
                       </td>
                       <td className="hide-sm tabular">{periodLabel(item, lang)}</td>
-                      <td className="num hide-sm">{item.times.length}</td>
+                      <td className="num hide-sm">{timeKindOf(item) === 'series' ? t('datasetFacts.seriesShort', { count: item.times.length }) : t('datasetFacts.singleShort')}</td>
                       <td className="num hide-sm">{item.variables.length}</td>
                       <td className="hide-sm">{item.projectName || <NoValue label={t('app.noProject')} />}</td>
                       <td className="date" data-label={t('app.updated')}>{item.updatedAt ? formatDate(item.updatedAt, lang) : <NoValue label={t('app.noDate')} />}</td>
@@ -295,17 +309,19 @@ export function LinkProjectDialog({ dataset, onClose, onLinked }: { dataset: Zar
           {creating ? (
             <>
               {!editable.length && <p className="xc-hint">{t('data.noEditableProject')}</p>}
+              <p className="xc-hint">{t('projects.linkHelp')}</p>
               <TextField label={t('data.newProjectName')} value={newName} maxLength={150} autoComplete="off" error={nameError} onChange={(event) => { setNewName(event.target.value); setNameError(''); }} autoFocus />
               {editable.length > 0 && <div><Button variant="quiet" size="sm" onClick={() => { setCreating(false); setNameError(''); }}>{t('data.pickExisting')}</Button></div>}
             </>
           ) : (
             <>
-              <label className="xc-field">
-                <span className="xc-label">{t('data.project')}</span>
-                <select className="xc-select" value={chosen?.id ?? ''} onChange={(event) => setProjectId(event.target.value)}>
+              <div className="xc-field">
+                <label className="xc-label" htmlFor="link-project-select">{t('data.project')}</label>
+                <select id="link-project-select" className="xc-select" value={chosen?.id ?? ''} onChange={(event) => setProjectId(event.target.value)} aria-describedby="link-project-help">
                   {editable.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                 </select>
-              </label>
+                <span id="link-project-help" className="xc-hint">{t('projects.linkHelp')}</span>
+              </div>
               <div>
                 {createLocked
                   ? <LockedButton variant="quiet" size="sm" showReason reason={createLocked}><Plus size={14} aria-hidden />{t('data.newProject')}</LockedButton>

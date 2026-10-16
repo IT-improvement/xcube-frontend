@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { ZarrDataset } from "../../api/viewerAdapter";
+import { kindIdOf, shortPeriod, TimeKind, timeKindOf } from "../../api/datasetFacts";
+import DatasetThumb from "../../components/thumb/DatasetThumb";
 import { useT } from "../../i18n";
 import "../../i18n/viewer";
 
@@ -10,7 +12,9 @@ const coarsePointer = () =>
 /**
  * Searchable combobox for choosing the Zarr shown on the map (owned first, then shared).
  * With a project selected the list is narrowed to that project's data, and one button
- * widens it to all data again.
+ * widens it to all data again. Each row shows its preview picture and one line of facts
+ * (kind · single date or time series · period · bands), and a filter keeps only series or
+ * single dates (FB1 §3).
  */
 export default function DatasetPicker({
   datasets,
@@ -37,28 +41,36 @@ export default function DatasetPicker({
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [allScope, setAllScope] = useState(false);
+  const [timeFilter, setTimeFilter] = useState<TimeKind | "">("");
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const selected = datasets.find((item) => item.id === value);
   const projectScope = !!project && !allScope;
   const source = projectScope ? project!.items : datasets;
-  const filtered = useMemo(() => {
+  const searched = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return source
-      .filter(
-        (item) =>
-          !needle ||
-          [item.name, item.xcubeDatasetId, item.projectName].some((text) =>
-            text?.toLowerCase().includes(needle),
-          ),
-      )
+    return source.filter(
+      (item) =>
+        !needle ||
+        [item.name, item.xcubeDatasetId, item.projectName].some((text) =>
+          text?.toLowerCase().includes(needle),
+        ),
+    );
+  }, [source, query]);
+  const timeCounts = useMemo(
+    () => ({ series: searched.filter((item) => timeKindOf(item) === "series").length, single: searched.filter((item) => timeKindOf(item) === "single").length }),
+    [searched],
+  );
+  const filtered = useMemo(() => {
+    return searched
+      .filter((item) => !timeFilter || timeKindOf(item) === timeFilter)
       .sort(
         (a, b) =>
           (a.accessType === "SHARED" ? 1 : 0) -
           (b.accessType === "SHARED" ? 1 : 0),
       );
-  }, [source, query]);
+  }, [searched, timeFilter]);
   useEffect(() => {
     setAllScope(false);
   }, [project?.name]);
@@ -88,6 +100,9 @@ export default function DatasetPicker({
     onChange(item.id);
   };
   const onKeyDown = (event: React.KeyboardEvent) => {
+    // Buttons inside the list (scope, filter) keep Enter and Space for themselves.
+    const target = event.target as HTMLElement;
+    if (open && target.tagName === "BUTTON" && target !== triggerRef.current && target.getAttribute("role") !== "option" && (event.key === "Enter" || event.key === " ")) return;
     if (event.key === "Escape") {
       if (open) {
         event.stopPropagation();
@@ -120,6 +135,13 @@ export default function DatasetPicker({
   };
   const ownership = (item: ZarrDataset) =>
     t(item.accessType === "SHARED" ? "viewer.picker.shared" : "viewer.picker.mine");
+  const timeText = (item: ZarrDataset) =>
+    timeKindOf(item) === "series" ? t("datasetFacts.series", { count: item.times.length }) : t("datasetFacts.single");
+  const filterItems: Array<{ id: TimeKind | ""; label: string; count: number }> = [
+    { id: "", label: t("datasetFacts.filter.all"), count: searched.length },
+    { id: "series", label: t("datasetFacts.filter.series"), count: timeCounts.series },
+    { id: "single", label: t("datasetFacts.filter.single"), count: timeCounts.single },
+  ];
   // "{name}의 데이터" / "Data in {name}" with the project name in bold.
   const [scopeBefore, scopeAfter = ""] = t("viewer.picker.projectData").split("{name}");
   return (
@@ -190,6 +212,21 @@ export default function DatasetPicker({
               </button>
             </div>
           )}
+          <div className="dataset-filter" role="group" aria-label={t("datasetFacts.filter.label")}>
+            {filterItems.map((item) => (
+              <button
+                key={item.id || "all"}
+                type="button"
+                aria-pressed={timeFilter === item.id}
+                onClick={() => {
+                  setTimeFilter(item.id);
+                  setActive(0);
+                }}
+              >
+                {item.label} <span className="dataset-filter__count">{item.count}</span>
+              </button>
+            ))}
+          </div>
           <div
             id="zarr-listbox"
             className="dataset-list"
@@ -212,8 +249,15 @@ export default function DatasetPicker({
                   onMouseEnter={() => setActive(index)}
                   onClick={() => choose(item)}
                 >
-                  <span>
+                  <DatasetThumb dataset={item} size={64} />
+                  <span className="dataset-option__text">
                     <strong>{item.name}</strong>
+                    <small className="dataset-facts">
+                      <span className={`dataset-kind dataset-kind--${kindIdOf(item)}`}>{t(`datasetFacts.kinds.${kindIdOf(item)}`)}</span>
+                      <span>{timeText(item)}</span>
+                      {shortPeriod(item) && <span className="dataset-facts__num">{shortPeriod(item)}</span>}
+                      {item.variables.length > 0 && <span>{t("datasetFacts.bands", { count: item.variables.length })}</span>}
+                    </small>
                     <small>
                       <span>{ownership(item)}</span>
                       {!projectScope && <span>{item.projectName || t("viewer.picker.noProject")}</span>}

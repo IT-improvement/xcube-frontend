@@ -505,13 +505,14 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
         help={(isGee || isProduct) && !nameEdited && name && name === suggestedName ? t(isProduct ? 'wizard.product.nameSuggested' : 'wizard.settings.nameSuggested') : undefined}
         error={errorFor('name') || (showErrors && !name.trim() ? t('wizard.settings.nameRequired') : undefined)}
       />
-      <label className="xc-field">
-        <span className="xc-label">{t('wizard.settings.project')} <span className="xc-hint">{t('wizard.settings.optional')}</span></span>
-        <select className="xc-select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+      <div className="xc-field">
+        <label className="xc-label" htmlFor="wizard-project">{t('wizard.settings.project')} <span className="xc-hint">{t('wizard.settings.optional')}</span></label>
+        <select id="wizard-project" className="xc-select" value={projectId} onChange={(event) => setProjectId(event.target.value)} aria-describedby="wizard-project-help">
           <option value="">{t('app.noProject')}</option>
           {editableProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
         </select>
-      </label>
+        <span id="wizard-project-help" className="xc-hint">{t('projects.linkHelp')}</span>
+      </div>
     </div>
   );
   const variableEditor = (show: 'all' | 'style') => (

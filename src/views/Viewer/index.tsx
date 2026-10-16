@@ -70,6 +70,7 @@ import {
 import { PlaybackOptions, TimeStaff } from "./TimeStaff";
 import UserMenu from "./UserMenu";
 import { FrameBuffer, playbackInterval } from "./frameBuffer";
+import { canShowRgb, defaultLayer, isLayerOf } from "./defaultLayer";
 
 type Drawer = "ai" | "result" | null;
 /** A passing notice over the map: a tile failure, a request failure, or a fixed sentence. */
@@ -232,6 +233,12 @@ export default function Viewer({
     lat: number;
   } | null>(null);
   const [activeVariable, setActiveVariable] = useState("");
+  /** True while the shown layer is the default-layer rule's choice; a band the user picks turns it off. */
+  const layerAutoRef = useRef(true);
+  const chooseLayer = useCallback((layer: string) => {
+    layerAutoRef.current = false;
+    setActiveVariable(layer);
+  }, []);
   const [xcubeConnected, setXcubeConnected] = useState<boolean | null>(null);
   const [jobsFailure, setJobsError] = useState<unknown>(null);
   const jobsError = jobsFailure ? userMessage(jobsFailure, lang) : "";
@@ -314,14 +321,7 @@ export default function Viewer({
   const canCompare = times.length > 1 || !!selectedResult;
   const aiCompare =
     !!selected && displayMode !== "single" && compareTarget === "ai" && !!selectedResult;
-  const hasRgb = useMemo(
-    () =>
-      selected?.rgbAvailable === true ||
-      ["red", "green", "blue"].every((band) =>
-        selected?.variables.some((variable) => variable.toLowerCase() === band),
-      ),
-    [selected],
-  );
+  const hasRgb = useMemo(() => canShowRgb(selected), [selected]);
   // Bands of the RGB composite (xcube rgbSchema), or the red/green/blue variables it is built from.
   const rgbBands = useMemo(() => {
     if (selected?.rgbBands?.length === 3) return selected.rgbBands;
@@ -589,6 +589,7 @@ export default function Viewer({
     setPixel(null);
     setPlaying(false);
     setActiveVariable("");
+    layerAutoRef.current = true; // a new dataset opens with the default-layer rule
     detailLoadedRef.current = "";
     setCompareIndex(-1);
     if (urlStateRef.current.dataset && urlStateRef.current.dataset !== datasetId && datasetId)
@@ -605,10 +606,6 @@ export default function Viewer({
     const pending = urlStateRef.current;
     if (!selected || pending.dataset !== selected.id) return;
     const next = { ...pending };
-    if (pending.variable && (pending.variable === "rgb" || selected.variables.includes(pending.variable))) {
-      setActiveVariable(pending.variable);
-      next.variable = undefined;
-    }
     if (times.length) {
       const a = pending.time ? times.findIndex((time) => time.iso === pending.time) : -1;
       if (a >= 0) setTimeIndex(a);
@@ -622,6 +619,23 @@ export default function Viewer({
     }
     urlStateRef.current = next;
   }, [selected, times]);
+  // Layer a dataset opens with (FB1 §1): `?var=` > RGB > first band, re-applied while the layer is still the
+  // rule's choice (the catalog entry may learn its RGB bands from the detail), never over a band the user picked.
+  useEffect(() => {
+    if (!selected || (!selected.variables.length && !canShowRgb(selected))) return;
+    const pending = urlStateRef.current;
+    if (pending.dataset === selected.id && pending.variable) {
+      urlStateRef.current = { ...urlStateRef.current, variable: undefined };
+      if (isLayerOf(selected, pending.variable)) {
+        layerAutoRef.current = false;
+        setActiveVariable(pending.variable);
+        return;
+      }
+    }
+    if (!layerAutoRef.current) return;
+    const layer = defaultLayer(selected);
+    setActiveVariable((current) => (current === layer ? current : layer));
+  }, [selected]);
   useEffect(() => {
     if (!window.location.pathname.startsWith(VIEWER_PATH)) return;
     if (loading || (initialDatasetId && !initialAppliedRef.current)) return;
@@ -685,7 +699,6 @@ export default function Viewer({
               : item,
           ),
         );
-        setActiveVariable((current) => current || resolved.defaultVariable);
         setViewerNotice(null);
       })
       .catch((cause) => setViewerNotice({ cause }));
@@ -1513,7 +1526,7 @@ export default function Viewer({
                           type="button"
                           aria-pressed={activeVariable === "rgb"}
                           className={activeVariable === "rgb" ? "active" : ""}
-                          onClick={() => setActiveVariable("rgb")}
+                          onClick={() => chooseLayer("rgb")}
                         >
                           RGB
                         </button>
@@ -1526,7 +1539,7 @@ export default function Viewer({
                           className={
                             activeVariable === variable ? "active" : ""
                           }
-                          onClick={() => setActiveVariable(variable)}
+                          onClick={() => chooseLayer(variable)}
                         >
                           {variable}
                         </button>

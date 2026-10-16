@@ -21,6 +21,25 @@ const ko = {
   language: {
     label: '언어',
   },
+  /** How datasets are told apart in lists (FB1): one time or a series, band count, kind. Viewer and app share it. */
+  datasetFacts: {
+    series: '시계열 {count}시점',
+    single: '단일 시점',
+    seriesShort: '{count}시점',
+    singleShort: '단일',
+    bands: 'band {count}개',
+    kinds: {
+      original: '원본',
+      fusion: '융합',
+      ai: 'AI',
+    },
+    filter: {
+      label: '시점 수',
+      all: '전체',
+      series: '시계열',
+      single: '단일 시점',
+    },
+  },
   route: {
     loading: '화면을 불러오고 있습니다…',
     loadingInline: '화면을 불러오는 중',

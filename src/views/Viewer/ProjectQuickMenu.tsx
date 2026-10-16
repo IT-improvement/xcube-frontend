@@ -142,6 +142,7 @@ export default function ProjectQuickMenu({
           <div className="vx-pmenu__head">
             <small>{t("viewer.project.current")}</small>
             <strong>{project?.name ?? t("viewer.project.noProject")}</strong>
+            <p className="vx-pmenu__what">{t("viewer.project.what")}</p>
           </div>
           {mode === "menu" ? (
             <ul className="vx-pmenu__list">

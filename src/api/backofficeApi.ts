@@ -2,7 +2,7 @@ import { Project, TimePoint, ViewerAdapter, ZarrDataset, AiJob } from './viewerA
 import { isSameOrigin, request, requestBlob, session } from './httpClient';
 export const BACKOFFICE_API_BASE_URL = process.env.REACT_APP_BACKOFFICE_API_URL ?? 'http://localhost:8082';
 export const XCUBE_API_BASE_URL = process.env.REACT_APP_XCUBE_URL ?? 'http://localhost:8080';
-type ProjectDto = { id: number; name: string; description?: string; createdAt: string; updatedAt: string; ownerUserId?: number; ownerUsername?: string; accessRole?: 'OWNER' | 'EDITOR' | 'VIEWER'; canEdit?: boolean; canDelete?: boolean; canShare?: boolean };
+type ProjectDto = { id: number; name: string; description?: string; createdAt: string; updatedAt: string; ownerUserId?: number; ownerUsername?: string; accessRole?: 'OWNER' | 'EDITOR' | 'VIEWER'; canEdit?: boolean; canDelete?: boolean; canShare?: boolean; datasetCount?: number; memberCount?: number };
 type InferLink = { id: number; name: string; status: string; storageUri?: string };
 type DatacubeDto = { datacubeId: number; id?: number; projectId?: number | null; name: string; kind: 'ORIGINAL' | 'FUSION' | 'AI_RESULT'; status: string; integrationStatus?: string; availabilityStatus?: string; sourceDatacubeId?: number; timeCoordinateName?: string; timeStart?: string; timeEnd?: string; metadata?: Record<string, any>; xcubeDatasetId?: string; linkedSuccessfulInferResults?: InferLink[] };
 type DatasetSummaryDto = { datacubeId: number; xcubeDatasetId: string; ownerUserId: number; accessType: 'OWNED' | 'SHARED'; projectId?: number; projectName?: string; name: string; kind: string; integrationStatus: string; availabilityStatus: string; lastSyncedAt?: string; bbox?: number[]; time?: { dimension?: string; start?: string; end?: string; coordinates?: string[] }; variables?: Array<{ name: string; title?: string; units?: string; colorBarName?: string; colorBarNorm?: string; colorBarMin?: number; colorBarMax?: number }>; defaultVariable?: string; rgbAvailable?: boolean; rgbSchema?: { varNames?: unknown } | null; tileBaseUrl?: string | null; generationJobId?: string | null; sourceDatacubeId?: number | null; metadata?: Record<string, any> };
@@ -29,7 +29,7 @@ async function fetchAllPages<T>(path: string): Promise<T[]> {
   }
   return items;
 }
-const toProject = (item: ProjectDto): Project => ({ id: String(item.id), name: item.name, description: item.description, createdAt: item.createdAt, updatedAt: item.updatedAt, ownerUserId: item.ownerUserId == null ? undefined : String(item.ownerUserId), ownerUsername: item.ownerUsername, accessRole: item.accessRole, canEdit: item.canEdit, canDelete: item.canDelete, canShare: item.canShare });
+const toProject = (item: ProjectDto): Project => ({ id: String(item.id), name: item.name, description: item.description, createdAt: item.createdAt, updatedAt: item.updatedAt, ownerUserId: item.ownerUserId == null ? undefined : String(item.ownerUserId), ownerUsername: item.ownerUsername, accessRole: item.accessRole, canEdit: item.canEdit, canDelete: item.canDelete, canShare: item.canShare, datasetCount: typeof item.datasetCount === 'number' ? item.datasetCount : undefined, memberCount: typeof item.memberCount === 'number' ? item.memberCount : undefined });
 
 /** Kinds shown as Zarr datasets. Fusion results are ordinary datasets (M6); AI results carry their input (M7). */
 const VIEWABLE_KINDS = ['ORIGINAL', 'FUSION', 'AI_RESULT'];

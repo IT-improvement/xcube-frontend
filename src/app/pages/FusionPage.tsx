@@ -434,12 +434,14 @@ export default function FusionPage() {
               <div className="form-grid">
                 <TextField label={t('fusion.resultName')} value={name} onChange={(event) => { setName(event.target.value); setNameTouched(true); }} />
                 <TextField label={t('fusion.outputVariable')} value={outputVariable} onChange={(event) => setOutputVariable(event.target.value)} help={t('fusion.outputHelp')} />
-                <Field label={t('fusion.project')}>
-                  <select className="xc-select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                <div className="xc-field">
+                  <label className="xc-label" htmlFor="fusion-project">{t('fusion.project')}</label>
+                  <select id="fusion-project" className="xc-select" value={projectId} onChange={(event) => setProjectId(event.target.value)} aria-describedby="fusion-project-help">
                     <option value="">{t('app.noProject')}</option>
                     {editableProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                   </select>
-                </Field>
+                  <span id="fusion-project-help" className="xc-hint">{t('projects.linkHelp')}</span>
+                </div>
               </div>
               {nameProblem && <p role="alert" className="fusion-error"><span>{nameProblem}</span></p>}
               <section aria-label={t('fusion.preCheck')} className="fusion-preview">
