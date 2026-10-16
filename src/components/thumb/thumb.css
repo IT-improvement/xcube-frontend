@@ -1,0 +1,23 @@
+/* Dataset preview pictures (FB1). A plate on sunken paper with a 1px rule and the 4px mark radius; only the
+   picture carries colour. The extent sketch is the bbox-mini-map mark: overprint frame on a rule grid. */
+.thumb {
+  position: relative; flex: none; display: inline-grid; place-items: center;
+  width: var(--thumb, 48px); height: var(--thumb, 48px); overflow: hidden;
+  border: 1px solid var(--fb-rule); border-radius: var(--fb-radius-mark); background: var(--fb-sunken);
+}
+.thumb img { display: block; width: 100%; height: 100%; object-fit: contain; animation: thumb-in 160ms ease-out; }
+.thumb--loading { animation: thumb-breathe 1.4s ease-in-out infinite; }
+.thumb-sketch { display: block; width: 100%; height: 100%; }
+.thumb-sketch__grid line { stroke: var(--fb-rule); stroke-width: 1; }
+.thumb-sketch__area { fill: color-mix(in srgb, var(--fb-overprint) 10%, transparent); stroke: var(--fb-overprint); stroke-width: 1.5; }
+
+/* Project rows: up to three plates overlapped, each lifted off the next by a surface ring (no shadow). */
+.thumb-stack { display: inline-flex; flex: none; align-items: center; }
+.thumb-stack .thumb { box-shadow: 0 0 0 2px var(--fb-surface); }
+.thumb-stack .thumb + .thumb { margin-left: calc(var(--thumb) * -0.3); }
+
+@keyframes thumb-in { from { opacity: 0; } }
+@keyframes thumb-breathe { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) {
+  .thumb img, .thumb--loading { animation: none; }
+}

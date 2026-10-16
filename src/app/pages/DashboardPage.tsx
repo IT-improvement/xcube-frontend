@@ -6,6 +6,7 @@ import { NEEDS, useRoleGate } from '../../auth/roles';
 import { Badge, Skeleton } from '../../components/ui/kit';
 import { aiViewerHref, appApi, formatDateTime, isOwned, periodLabel, unavailableJobsNotice, viewerHref, ZarrDataset } from '../api';
 import { useLoad } from '../useLoad';
+import DatasetThumb from '../../components/thumb/DatasetThumb';
 import { isActive, jobTypeLabel, JobStatusBadge, useJobsFeed } from '../jobs';
 import { DatasetStatus } from './DataLibraryPage';
 import { useLanguage, useT } from '../../i18n';
@@ -138,10 +139,13 @@ export default function DashboardPage() {
                 {items.slice(0, RECENT).map((item) => (
                   <tr key={item.id}>
                     <td className="cell-main">
-                      <span className="dash-name">
-                        <Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link>
-                        {!isOwned(item) && <Badge tone="water">{t('app.shared')}</Badge>}
-                        <DatasetStatus dataset={item} quiet />
+                      <span className="data-name">
+                        <DatasetThumb dataset={item} size={40} />
+                        <span className="dash-name">
+                          <Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link>
+                          {!isOwned(item) && <Badge tone="water">{t('app.shared')}</Badge>}
+                          <DatasetStatus dataset={item} quiet />
+                        </span>
                       </span>
                     </td>
                     <td><KindTag dataset={item} /></td>

@@ -161,7 +161,7 @@ describe('S6 프로젝트', () => {
   test('프로젝트가 없으면 빈 상태와 새 프로젝트 버튼을 보여 준다', async () => {
     adapter.getProjects.mockResolvedValue([]);
     renderAt('/app/projects');
-    expect(await screen.findByText('프로젝트가 없습니다')).toBeInTheDocument();
+    expect(await screen.findByText('아직 프로젝트가 없습니다')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '새 프로젝트' }).length).toBeGreaterThan(0);
   });
 });

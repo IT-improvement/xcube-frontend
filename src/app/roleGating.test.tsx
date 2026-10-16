@@ -83,7 +83,7 @@ test('유저: 대시보드 바로 가기의 데이터 추가·수식 융합은 �
 test('프로젝트 유저: 새 프로젝트는 꺼지고 프로젝트 관리자 등급을 요청하라고 한다; 프로젝트 관리자는 열 수 있다', async () => {
   mockRole = 'PROJECT_USER';
   const { unmount } = renderAt('/app/projects', <ProjectsPage />);
-  await screen.findByText('프로젝트가 없습니다');
+  await screen.findByText('아직 프로젝트가 없습니다');
   const buttons = screen.getAllByRole('button', { name: /새 프로젝트/ });
   buttons.forEach((button) => {
     expect(button).toHaveAttribute('aria-disabled', 'true');
@@ -95,7 +95,7 @@ test('프로젝트 유저: 새 프로젝트는 꺼지고 프로젝트 관리자 
   unmount();
   mockRole = 'PROJECT_MANAGER';
   renderAt('/app/projects', <ProjectsPage />);
-  await screen.findByText('프로젝트가 없습니다');
+  await screen.findByText('아직 프로젝트가 없습니다');
   fireEvent.click(screen.getAllByRole('button', { name: /새 프로젝트/ })[0]);
   expect(screen.getByRole('dialog')).toBeInTheDocument();
 });

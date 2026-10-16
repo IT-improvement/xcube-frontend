@@ -20,6 +20,24 @@ const en: Translation = {
   language: {
     label: 'Language',
   },
+  datasetFacts: {
+    series: { one: 'Time series · {count} date', other: 'Time series · {count} dates' },
+    single: 'Single date',
+    seriesShort: { one: '{count} date', other: '{count} dates' },
+    singleShort: 'Single',
+    bands: { one: '{count} band', other: '{count} bands' },
+    kinds: {
+      original: 'Original',
+      fusion: 'Band math',
+      ai: 'AI',
+    },
+    filter: {
+      label: 'Dates',
+      all: 'All',
+      series: 'Time series',
+      single: 'Single date',
+    },
+  },
   route: {
     loading: 'Loading…',
     loadingInline: 'Loading page',

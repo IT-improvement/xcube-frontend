@@ -215,6 +215,7 @@ const enViewer: ViewerTranslation = {
       current: 'Current project',
       noProject: 'No project',
       create: 'New project',
+      what: 'A folder that gathers data so you can look at it with other people.',
       createHint: 'Switches to it once created.',
       link: 'Add the shown data to this project',
       open: 'Open project settings',
@@ -268,7 +269,7 @@ const enViewer: ViewerTranslation = {
         },
         project: {
           title: 'Projects',
-          body: 'Choose a project to narrow the data list to that project. Use the folder button on the left to create a project or add the shown data to one.',
+          body: 'A project is a folder that gathers data so you can look at it with other people. Choose a project to narrow the data list to that project. Use the folder button on the left to create a project or add the shown data to one.',
         },
         layers: {
           title: 'Layers',

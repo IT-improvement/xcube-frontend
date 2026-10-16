@@ -1,4 +1,4 @@
-// Small read-only OSM map of a dataset extent (S5 overview). OpenLayers loads lazily on first use; until it
+// Small read-only OSM map of one dataset extent (S5 overview) or of every extent in a project (S6, FB1). OpenLayers loads lazily on first use; until it
 // is ready, and whenever it cannot load (offline, tests), the `fallback` sketch stays in its place.
 import { ReactNode, useEffect, useRef, useState } from 'react';
 
@@ -6,10 +6,11 @@ type Bbox = [number, number, number, number];
 /** The extent is an overprint mark (DESIGN.md), like the wizard's area map. */
 const OVERPRINT_FALLBACK = '#b8166f';
 
-export default function ExtentMap({ bbox, label, fallback }: { bbox: Bbox; label: string; fallback: ReactNode }) {
+export default function ExtentMap({ bbox, bboxes, label, fallback, className = '' }: { bbox?: Bbox; bboxes?: Bbox[]; label: string; fallback: ReactNode; className?: string }) {
   const host = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
-  const key = bbox.join(',');
+  const boxes = bboxes ?? (bbox ? [bbox] : []);
+  const key = boxes.map((box) => box.join(',')).join(';');
   useEffect(() => {
     let disposed = false;
     let cleanup = () => undefined as void;
@@ -22,8 +23,10 @@ export default function ExtentMap({ bbox, label, fallback }: { bbox: Bbox; label
         if (disposed || !host.current) return;
         await import('ol/ol.css');
         const mark = getComputedStyle(host.current).getPropertyValue('--fb-overprint').trim() || OVERPRINT_FALLBACK;
-        const extent = transformExtent(bbox, 'EPSG:4326', 'EPSG:3857');
-        const area = new VectorSource({ features: [new Feature(fromExtent(extent))] });
+        if (!boxes.length) return;
+        const extents = boxes.map((box) => transformExtent(box, 'EPSG:4326', 'EPSG:3857'));
+        const area = new VectorSource({ features: extents.map((one: number[]) => new Feature(fromExtent(one))) });
+        const extent = extents.reduce((all: number[], one: number[]) => [Math.min(all[0], one[0]), Math.min(all[1], one[1]), Math.max(all[2], one[2]), Math.max(all[3], one[3])]);
         const view = new View({ projection: 'EPSG:3857' });
         const map = new Map({
           target: host.current,
@@ -48,7 +51,7 @@ export default function ExtentMap({ bbox, label, fallback }: { bbox: Bbox; label
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   return (
-    <div className={`extent-map${ready ? ' is-ready' : ''}`}>
+    <div className={`extent-map${ready ? ' is-ready' : ''} ${className}`.trim()}>
       <div ref={host} className="extent-map__canvas" role={ready ? 'img' : undefined} aria-label={ready ? label : undefined} aria-hidden={ready ? undefined : true} />
       {!ready && fallback}
     </div>

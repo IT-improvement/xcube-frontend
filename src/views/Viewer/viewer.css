@@ -170,7 +170,7 @@
 .vx .dataset-trigger__tag { flex: none; padding: 2px 6px; border: 1px solid var(--vx-rule-strong); border-radius: 4px; color: var(--vx-ink-2); font: 500 11px/1.3 var(--vx-font); }
 .vx .dataset-trigger > svg { color: var(--vx-ink-3); }
 .vx .dataset-popover {
-  position: absolute; z-index: 60; left: 0; top: 40px; width: min(440px, calc(100vw - 24px)); max-height: min(460px, 70vh);
+  position: absolute; z-index: 60; left: 0; top: 40px; width: min(480px, calc(100vw - 24px)); max-height: min(560px, 76vh);
   display: flex; flex-direction: column; overflow: hidden;
   border: 1px solid var(--vx-rule); border-radius: var(--vx-radius-lg); background: var(--vx-surface); box-shadow: var(--vx-lift-high);
 }
@@ -205,6 +205,32 @@
 .vx .dataset-list [aria-selected='true'] strong { color: var(--vx-ink); }
 .vx .dataset-list [role='option'] > svg { color: var(--vx-ink); }
 .vx .dataset-empty { margin: 0; padding: 24px 16px; text-align: center; color: var(--vx-ink-3); font-size: 13px; }
+/* FB1: preview picture on the left, then name, facts (kind · dates · period · bands) and ownership. */
+.vx .dataset-list [role='option'] { justify-content: flex-start; gap: 12px; }
+.vx .dataset-list [role='option'] > .dataset-option__text { flex: 1 1 auto; }
+.vx .dataset-list [role='option'] > svg { flex: none; margin-left: auto; }
+.vx .dataset-list .dataset-facts { gap: 0; color: var(--vx-ink-2); font-variant-numeric: tabular-nums; }
+.vx .dataset-list .dataset-facts > span + span::before { content: '·'; padding: 0 6px; color: var(--vx-ink-3); }
+.vx .dataset-list .dataset-facts > .dataset-kind + span::before { content: none; }
+.vx .dataset-list .dataset-facts > .dataset-kind { margin-right: 6px; }
+.vx .dataset-kind {
+  flex: none; padding: 1px 5px; border-radius: 4px; font: 600 11px/1.35 var(--vx-font);
+  background: var(--vx-sunken); color: var(--vx-ink-2);
+}
+.vx .dataset-kind--fusion { background: var(--fb-water-soft); color: var(--fb-water); }
+.vx .dataset-kind--ai { background: color-mix(in srgb, var(--fb-result) 12%, var(--vx-surface)); color: var(--fb-result); }
+.vx .dataset-filter {
+  flex: none; display: flex; gap: 2px; margin: 8px 12px 4px; padding: 2px; align-self: flex-start;
+  border: 1px solid var(--vx-rule-strong); border-radius: var(--vx-radius);
+}
+.vx .dataset-filter button {
+  height: 26px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--vx-ink-2);
+  font: 600 12.5px/1 var(--vx-font); white-space: nowrap; cursor: pointer;
+}
+.vx .dataset-filter button:hover:not([aria-pressed='true']) { background: var(--vx-sunken); color: var(--vx-ink); }
+.vx .dataset-filter button[aria-pressed='true'] { background: var(--vx-ink); color: var(--vx-on-ink); }
+.vx .dataset-filter button:focus-visible { outline-offset: -2px; }
+.vx .dataset-filter__count { font-weight: 500; font-variant-numeric: tabular-nums; opacity: 0.8; }
 
 /* Project popover (folder button left of the project crumb) */
 .vx-pmenu { position: relative; flex: none; }
@@ -216,6 +242,7 @@
 .vx-pmenu__head { display: grid; gap: 2px; padding: 8px 10px 10px; border-bottom: 1px solid var(--vx-rule); }
 .vx-pmenu__head small { color: var(--vx-ink-3); font: 400 12px/1.3 var(--vx-font); }
 .vx-pmenu__head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14px/1.3 var(--vx-font); }
+.vx-pmenu__what { margin: 4px 0 0; color: var(--vx-ink-2); font: 400 12px/1.45 var(--vx-font); word-break: keep-all; }
 .vx-pmenu__list { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
 .vx-pmenu__list :where(button, a) {
   width: 100%; display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px; border: 0; border-radius: var(--vx-radius);
@@ -926,7 +953,7 @@
   .vx { --vx-hit: 44px; }
   .vx-btn, .vx-icon-btn, .vx-play, .vx-popt__toggle, .vx-sheet-open, .vx-user__button,
   .vx .dataset-trigger, .vx-crumb select, .vx-field select, .vx-input, .vx-range2 select, .vx-radio,
-  .vx-popt__pair button, .vx .dataset-scope button { min-height: var(--vx-hit); height: auto; }
+  .vx-popt__pair button, .vx .dataset-scope button, .vx .dataset-filter button { min-height: var(--vx-hit); height: auto; }
   .vx-btn { height: var(--vx-hit); }
   .vx-icon-btn, .vx-play { min-width: var(--vx-hit); width: var(--vx-hit); height: var(--vx-hit); }
   .vx-btn:has(.vx-hide-sm), .vx-btn:has(.vx-hide-md) { min-width: var(--vx-hit); }

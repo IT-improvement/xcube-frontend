@@ -38,7 +38,7 @@ beforeEach(() => {
   mockView.setResolution.mockImplementation((resolution) => { mockResolution = resolution; });
   mockMap.getView.mockReturnValue(mockView);
   mockBackoffice.getLinkableDatacubes.mockResolvedValue([]);
-  jest.clearAllMocks(); mockAddLayer.mockResolvedValue(mockLayer); mockBackoffice.checkXcubeStatus.mockResolvedValue(true); mockBackoffice.getDatasetDetail.mockResolvedValue({ id: '77', projectId: '4', name: '서버 상세 이름', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: '77', defaultVariable: 'red', variables: ['red', 'green', 'blue', 'nir'], times: [{ iso: '2026-01-01T00:00:00Z', label: '2026. 1. 1.' }, { iso: '2026-02-01T00:00:00Z', label: '2026. 2. 1.' }], bbox: [126, 33, 127, 34] }); mockBackoffice.tileUrl.mockImplementation(tileUrl); mockBackoffice.getProjectMembers.mockResolvedValue([{ userId: '1', role: 'OWNER' }, { userId: '22', role: 'VIEWER' }]); mockAdapter.getProjects.mockResolvedValue([{ id: '4', name: '임의 프로젝트', accessRole: 'OWNER' }]); mockAdapter.getDatasets.mockResolvedValue([{ id: '77', projectId: '4', name: '임의 데이터셋', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: 'custom_cube_2026', defaultVariable: '', variables: [], times: [] }]); mockAdapter.getProjectDatasets.mockResolvedValue([]); mockAdapter.getJobs.mockResolvedValue([]); mockAi.listJobs.mockResolvedValue([]);
+  jest.clearAllMocks(); mockAddLayer.mockResolvedValue(mockLayer); mockBackoffice.checkXcubeStatus.mockResolvedValue(true); mockBackoffice.getDatasetDetail.mockResolvedValue({ id: '77', projectId: '4', name: '서버 상세 이름', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: '77', defaultVariable: 'nir', variables: ['red', 'nir'], times: [{ iso: '2026-01-01T00:00:00Z', label: '2026. 1. 1.' }, { iso: '2026-02-01T00:00:00Z', label: '2026. 2. 1.' }], bbox: [126, 33, 127, 34] }); mockBackoffice.tileUrl.mockImplementation(tileUrl); mockBackoffice.getProjectMembers.mockResolvedValue([{ userId: '1', role: 'OWNER' }, { userId: '22', role: 'VIEWER' }]); mockAdapter.getProjects.mockResolvedValue([{ id: '4', name: '임의 프로젝트', accessRole: 'OWNER' }]); mockAdapter.getDatasets.mockResolvedValue([{ id: '77', projectId: '4', name: '임의 데이터셋', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: 'custom_cube_2026', defaultVariable: '', variables: [], times: [] }]); mockAdapter.getProjectDatasets.mockResolvedValue([]); mockAdapter.getJobs.mockResolvedValue([]); mockAi.listJobs.mockResolvedValue([]);
   Object.defineProperty(window, 'matchMedia', { writable: true, value: jest.fn().mockReturnValue({ matches: false, addEventListener: jest.fn(), removeEventListener: jest.fn() }) });
 });
 
@@ -65,6 +65,8 @@ test('summary 선택 후 detail의 첫 band, time, bbox로 임의 XCube tile lay
 });
 
 test('RGB 조건과 band 선택이 실제 tile variable을 바꾼다', async () => {
+  // red·green·blue make RGB, so the dataset opens on RGB (FB1 rule) and a band press switches to that band.
+  mockBackoffice.getDatasetDetail.mockResolvedValue({ id: '77', projectId: '4', name: '서버 상세 이름', subtitle: 'REGISTERED · AVAILABLE', xcubeDatasetId: '77', defaultVariable: 'red', variables: ['red', 'green', 'blue', 'nir'], times: [{ iso: '2026-01-01T00:00:00Z', label: '2026. 1. 1.' }, { iso: '2026-02-01T00:00:00Z', label: '2026. 2. 1.' }], bbox: [126, 33, 127, 34] });
   render(<Viewer />);
   const select = await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ });
   fireEvent.click(select); fireEvent.click(await screen.findByRole('option', { name: /임의 데이터셋/ }));
@@ -387,10 +389,14 @@ test('UX8: 원본 colour bar 범례는 비교(스와이프) 중에도 남고, �
   mockAddLayer.mockResolvedValue({ ...mockLayer, on: jest.fn(), un: jest.fn() });
   render(<Viewer />);
   await selectBaselineDataset();
+  // RGB can be built, so it opens on RGB (FB1); pick red for its colour bar.
+  expect(await screen.findByRole('group', { name: '원본 범례: RGB 합성, 빨강 red · 초록 green · 파랑 blue' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  fireEvent.click(screen.getByRole('button', { name: 'red' }));
   expect(await screen.findByRole('group', { name: '원본 범례: red, 94 – 621.7' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /스와이프/ }));
   expect(screen.getByRole('group', { name: '원본 범례: red, 94 – 621.7' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  if (!screen.queryByRole('button', { name: 'nir' })) fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
   fireEvent.click(screen.getByRole('button', { name: 'nir' }));
   expect(screen.getByRole('group', { name: '원본 범례: nir, 32 – 1,469' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'RGB' }));

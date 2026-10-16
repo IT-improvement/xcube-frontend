@@ -212,13 +212,14 @@ describe('C. 상세·프로젝트', () => {
     backoffice.getProject.mockResolvedValue({ id: '4', name: '대청호 점검', accessRole: 'OWNER' });
     backoffice.getProjectDatasets.mockResolvedValue([original]);
     backoffice.getProjectMembers.mockResolvedValue([{ userId: '1', role: 'OWNER' }, { userId: '22', role: 'VIEWER', username: 'kim', createdAt: '2026-10-01T00:00:00Z' }]);
-    renderAt('/app/projects/4');
+    // Pictures are the default view of a project's data (FB1); the table is one press away (?view=table).
+    renderAt('/app/projects/4?view=table');
     await screen.findByRole('link', { name: '대청호 S2' });
     const data = screen.getByRole('table');
     expect(data).toHaveClass('xc-table--cards');
     expect(within(data).getByRole('columnheader', { name: '상태' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: '멤버' }));
-    expect(screen.getByTestId('search')).toHaveTextContent('?tab=members');
+    expect(screen.getByTestId('search')).toHaveTextContent('tab=members');
     await screen.findByRole('combobox', { name: 'kim 권한' });
     const members = screen.getByRole('table');
     expect(members).toHaveClass('xc-table--cards');
