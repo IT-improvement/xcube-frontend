@@ -126,6 +126,8 @@ a.app-account__item { text-decoration: none; }
   display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--space-8) var(--space-10); align-items: start;
   grid-template-areas: 'head head' 'ledgers actions';
 }
+.dash--guide { grid-template-areas: 'head head' 'guide guide' 'ledgers actions'; }
+.dash-guide { grid-area: guide; min-width: 0; }
 .dash-head { grid-area: head; display: grid; gap: 6px; }
 .dash-head__title { font: var(--text-h1); letter-spacing: -0.01em; }
 .dash-summary { display: flex; flex-wrap: wrap; align-items: baseline; color: var(--fb-ink-2); font: 500 14px/1.6 var(--fb-font); font-variant-numeric: tabular-nums; }
@@ -198,6 +200,7 @@ a.app-account__item { text-decoration: none; }
 
 @media (max-width: 1100px) {
   .dash { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'head' 'actions' 'ledgers'; gap: var(--space-6); }
+  .dash--guide { grid-template-areas: 'head' 'guide' 'actions' 'ledgers'; }
   .detail-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 1023px) {
@@ -340,6 +343,7 @@ a.app-account__item { text-decoration: none; }
 }
 .data-card__kind--fusion { background: var(--fb-water-soft); color: var(--fb-water); }
 .data-card__kind--ai { background: color-mix(in srgb, var(--fb-result) 12%, var(--fb-surface)); color: var(--fb-result); }
+.data-card__kind--compare { background: color-mix(in srgb, var(--fb-result) 12%, var(--fb-surface)); color: var(--fb-result); }
 .data-card__text { display: grid; gap: 4px; min-width: 0; padding: 0 4px; }
 .data-card__name {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
@@ -369,3 +373,75 @@ a.app-account__item { text-decoration: none; }
   .data-grid { grid-template-columns: 1fr; padding: var(--space-3); }
   .data-card__thumb.thumb { height: 180px; }
 }
+
+/* Notifications (UR-63 F4): a bell in the top bar with the unread count in ink (never a status colour alone),
+   a Lift High drop-down of the latest 20 on ruled rows. Unread rows carry a 2px ink rule and the word "새 알림". */
+.notify { position: relative; }
+.notify__button { position: relative; }
+.notify__count {
+  position: absolute; top: 2px; right: 0; min-width: 16px; height: 16px; padding: 0 4px; display: grid; place-items: center;
+  border-radius: 8px; background: var(--fb-ink); color: var(--fb-on-ink); font: 700 10px/1 var(--fb-font); box-shadow: 0 0 0 2px var(--fb-ground);
+}
+.notify__panel {
+  position: absolute; right: -40px; top: calc(100% + 6px); z-index: 60; width: min(380px, calc(100vw - 16px)); max-height: min(560px, calc(100dvh - 72px));
+  display: flex; flex-direction: column; border: 1px solid var(--fb-rule); border-radius: var(--fb-radius-lg); background: var(--fb-surface);
+  box-shadow: var(--fb-lift-high, var(--fb-lift)); transform-origin: top right; animation: app-pop 140ms var(--fb-ease-out);
+}
+.notify__head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--fb-rule); }
+.notify__title { font: var(--text-h3); color: var(--fb-ink); }
+.notify__unread { color: var(--fb-ink-2); font: 500 12.5px/1 var(--fb-font); }
+.notify__spacer { flex: 1; }
+.notify__list { margin: 0; padding: 0; list-style: none; overflow-y: auto; }
+.notify__list li + li { border-top: 1px solid var(--fb-rule); }
+.notify-item {
+  width: 100%; display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; padding: 10px 14px; border: 0; background: transparent;
+  text-align: left; cursor: pointer; color: var(--fb-ink); box-shadow: inset 2px 0 0 transparent;
+}
+.notify-item:hover { background: var(--fb-sunken); }
+.notify-item.is-unread { box-shadow: inset 2px 0 0 var(--fb-ink); }
+.notify-item:focus-visible { outline: 2px solid var(--fb-ink); outline-offset: -2px; }
+.notify-item__icon { margin-top: 2px; color: var(--fb-ink-3); }
+.notify-item__icon--ok { color: var(--fb-ok); }
+.notify-item__icon--bad { color: var(--fb-bad); }
+.notify-item__text { display: grid; gap: 2px; min-width: 0; }
+.notify-item__meta { display: flex; flex-wrap: wrap; gap: 0 8px; color: var(--fb-ink-3); font: 500 12px/1.4 var(--fb-font); }
+.notify-item__new { color: var(--fb-ink); font-weight: 600; }
+.notify-item__title { font: 500 13.5px/1.4 var(--fb-font); overflow-wrap: anywhere; }
+.notify-item.is-unread .notify-item__title { font-weight: 600; }
+.notify-item__body { color: var(--fb-ink-2); font: 400 12.5px/1.45 var(--fb-font); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.notify__empty, .notify__error { margin: 0; padding: 16px 14px; color: var(--fb-ink-2); font: var(--text-body); }
+.notify__error { color: var(--fb-bad); padding-bottom: 0; }
+.notify__foot { border-top: 1px solid var(--fb-rule); padding: 6px; }
+.notify__settings { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 8px; border-radius: var(--fb-radius); color: var(--fb-ink-2) !important; text-decoration: none; font: 500 13px/1 var(--fb-font); }
+.notify__settings:hover { background: var(--fb-sunken); color: var(--fb-ink) !important; }
+@media (max-width: 767px) {
+  .notify { position: static; }
+  .notify__panel { position: fixed; left: 8px; right: 8px; top: 54px; width: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .notify__panel { animation: none; } }
+
+/* "시작하기" checklist (UR-63 UX1): one ink rule over numbered ruled rows, done rows quiet with the word "완료". */
+.onboard { display: grid; gap: var(--space-2); }
+.onboard__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.onboard__title { font: var(--text-h2); color: var(--fb-ink); }
+.onboard__count { color: var(--fb-ink-2); font: 500 13px/1 var(--fb-font); }
+.onboard__spacer { flex: 1; }
+.onboard__lead { margin: 0; color: var(--fb-ink-2); font: var(--text-body); }
+.onboard__steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: var(--space-2) 0 0; padding: 0; list-style: none; border-top: 1px solid var(--fb-ink); }
+.onboard__step { display: grid; grid-template-rows: auto 1fr auto; gap: 8px; padding: 14px 16px 16px 0; border-bottom: 1px solid var(--fb-rule); }
+.onboard__step + .onboard__step { padding-left: 16px; border-left: 1px solid var(--fb-rule); }
+.onboard__num { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--fb-ink); color: var(--fb-ink); font: 700 12px/1 var(--fb-font); }
+.onboard__text { display: grid; gap: 4px; align-content: start; }
+.onboard__text strong { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font: 600 14px/1.4 var(--fb-font); color: var(--fb-ink); }
+.onboard__text > span { color: var(--fb-ink-2); font: 400 13px/1.5 var(--fb-font); word-break: keep-all; overflow-wrap: break-word; }
+.onboard__done { color: var(--fb-ok); font: 600 12px/1 var(--fb-font); }
+.onboard__action { justify-self: start; }
+.onboard__step.is-done .onboard__num { background: var(--fb-ink); color: var(--fb-on-ink); }
+.onboard__step.is-done .onboard__text > span { color: var(--fb-ink-3); }
+@media (max-width: 1100px) { .onboard__steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } .onboard__step:nth-child(3) { border-left: 0; padding-left: 0; } }
+@media (max-width: 600px) {
+  .onboard__steps { grid-template-columns: minmax(0, 1fr); }
+  .onboard__step, .onboard__step + .onboard__step { padding: 12px 0 14px; border-left: 0; grid-template-columns: 22px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 12px; }
+  .onboard__action { grid-column: 2; }
+}
+.job-export { color: var(--fb-ink-2) !important; }

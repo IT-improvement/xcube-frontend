@@ -9,6 +9,8 @@ import { useLoad } from '../useLoad';
 import DatasetThumb from '../../components/thumb/DatasetThumb';
 import { isActive, jobTypeLabel, JobStatusBadge, useJobsFeed } from '../jobs';
 import { DatasetStatus } from './DataLibraryPage';
+import { isExample } from '../../api/examples';
+import { OnboardingChecklist, useOnboardingState } from '../onboarding';
 import { useLanguage, useT } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 // The management screens' text (UR-53 stage 2) loads with these pages, not with the main bundle.
@@ -22,6 +24,7 @@ export function KindTag({ dataset }: { dataset: ZarrDataset }) {
   const t = useT();
   if (dataset.kind === 'FUSION') return <Badge tone="water">{t('kinds.fusion')}</Badge>;
   if (dataset.kind === 'AI_RESULT') return <Badge tone="result">{t('kinds.ai')}</Badge>;
+  if (dataset.kind === 'COMPARISON') return <Badge tone="result">{t('datasetFacts.kinds.compare')}</Badge>;
   return <Badge>{t('kinds.original')}</Badge>;
 }
 
@@ -50,7 +53,12 @@ export default function DashboardPage() {
   const items = datasets.data ?? [];
   const jobItems = jobs.data?.items ?? [];
   const partialNotice = unavailableJobsNotice(jobs.data?.unavailable ?? [], lang);
-  const owned = items.filter(isOwned).length;
+  // Example data (UX1) is neither mine nor shared with me: it has its own group.
+  const examples = items.filter(isExample).length;
+  const owned = items.filter((item) => isOwned(item) && !isExample(item)).length;
+  const shared = items.length - owned - examples;
+  const guide = useOnboardingState();
+  const showGuide = !guide.hidden && !!datasets.data;
   const running = jobItems.filter(isActive).length;
   const empty = !datasets.loading && !datasets.error && items.length === 0;
   const latest = items[0];
@@ -62,7 +70,7 @@ export default function DashboardPage() {
   const count = (loading: boolean, failed: boolean, value: number) => (loading || failed ? '—' : value);
 
   return (
-    <div className="dash">
+    <div className={`dash${showGuide ? ' dash--guide' : ''}`}>
       <header className="dash-head">
         <h1 className="dash-head__title">{t('titles.dashboard')}</h1>
         {empty ? (
@@ -70,11 +78,14 @@ export default function DashboardPage() {
         ) : (
           <p className="dash-summary" aria-label={t('dashboard.summary')} aria-busy={(datasets.loading && !datasets.data) || (jobs.loading && !jobs.data)}>
             <Link to="/app/data?scope=owned">{t('app.mine')} <strong>{count(datasets.loading, !!datasets.error, owned)}</strong></Link>
-            <Link to="/app/data?scope=shared">{t('app.shared')} <strong>{count(datasets.loading, !!datasets.error, items.length - owned)}</strong></Link>
+            <Link to="/app/data?scope=shared">{t('app.shared')} <strong>{count(datasets.loading, !!datasets.error, shared)}</strong></Link>
+            {examples > 0 && <Link to="/app/data?scope=example">{t('examples.group')} <strong>{examples}</strong></Link>}
             <Link to={ACTIVE_JOBS} className={running ? 'is-running' : undefined}>{t('dashboard.running')} <strong>{count(jobs.loading, !!jobs.error, running)}</strong></Link>
           </p>
         )}
       </header>
+
+      {showGuide && <div className="dash-guide"><OnboardingChecklist items={datasets.data} /></div>}
 
       <nav className="dash-actions" aria-labelledby="dash-actions-title">
         <h2 id="dash-actions-title" className="dash-section__title dash-actions__title">{t('dashboard.shortcuts')}</h2>
@@ -143,7 +154,7 @@ export default function DashboardPage() {
                         <DatasetThumb dataset={item} size={56} />
                         <span className="dash-name">
                           <Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link>
-                          {!isOwned(item) && <Badge tone="water">{t('app.shared')}</Badge>}
+                          {isExample(item) ? <Badge>{t('examples.tag')}</Badge> : !isOwned(item) && <Badge tone="water">{t('app.shared')}</Badge>}
                           <DatasetStatus dataset={item} quiet />
                         </span>
                       </span>

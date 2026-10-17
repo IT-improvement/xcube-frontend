@@ -4,7 +4,7 @@ import { useState } from 'react';
 export type ViewMode = 'grid' | 'list';
 
 /** Storage keys, one per place, so the Viewer picker and the data list remember their own choice. */
-export const VIEW_KEYS = { picker: 'xcube.viewer.pickerView', data: 'xcube.data.view' } as const;
+export const VIEW_KEYS = { picker: 'xcube.viewer.pickerView', data: 'xcube.data.view', project: 'xcube.project.view' } as const;
 
 const read = (key: string): ViewMode => {
   try { return localStorage.getItem(key) === 'list' ? 'list' : 'grid'; } catch { return 'grid'; }

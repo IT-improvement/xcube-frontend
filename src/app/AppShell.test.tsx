@@ -7,7 +7,7 @@ const mockSignOut = jest.fn();
 let mockActive: number | null = 0;
 jest.mock('../auth/AuthProvider', () => ({ useAuth: () => ({ user: { id: 1, name: '홍길동' }, signOut: mockSignOut }) }));
 // The shell wraps its pages in the one jobs poller (UX12); the badge count is mocked here.
-jest.mock('./jobs', () => ({ useActiveJobCount: () => mockActive, JobsFeedProvider: ({ children }: { children: unknown }) => children }));
+jest.mock('./jobs', () => ({ useActiveJobCount: () => mockActive, useJobsFeedTick: () => null, JobsFeedProvider: ({ children }: { children: unknown }) => children }));
 
 const AppShell = require('./AppShell').default;
 
@@ -35,7 +35,7 @@ test('상단 바: 현재 메뉴만 ink 활성(aria-current), 로고는 대시보
   expect(within(nav).getByRole('link', { name: '데이터' })).toHaveAttribute('aria-current', 'page');
   expect(within(nav).getByRole('link', { name: '데이터' })).toHaveClass('active');
   expect(within(nav).getByRole('link', { name: '대시보드' })).not.toHaveAttribute('aria-current');
-  expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['대시보드', '데이터', '프로젝트', '작업', '수식 융합', 'Viewer(새 탭)']);
+  expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['대시보드', '데이터', '프로젝트', '작업', '수식 융합', '비교 분석', 'Viewer(새 탭)']);
   expect(within(nav).getByRole('link', { name: /Viewer/ })).toHaveAttribute('target', '_blank');
   expect(screen.queryByRole('link', { name: /AI 수체 추출/ })).not.toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'XCube 대시보드' })).toHaveAttribute('href', '/app');

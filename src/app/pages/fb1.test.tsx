@@ -4,6 +4,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import '@testing-library/jest-dom';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
+// Comparison jobs (UR-63 F3) join the job lists; these tests do not run Data Analysis.
+jest.mock('../../api/compare', () => ({ ...jest.requireActual('../../api/compare'), compareApi: { ...jest.requireActual('../../api/compare').compareApi, listJobs: () => Promise.resolve([]) } }));
 jest.mock('../../api', () => ({ activeViewerAdapter: { getProjects: jest.fn(), getDatasets: jest.fn(), getProjectDatasets: jest.fn(), getJobs: jest.fn(), runWaterExtraction: jest.fn() }, useMockApi: false }));
 jest.mock('../../api/backofficeApi', () => ({ backofficeAdapter: { getProject: jest.fn(), createProject: jest.fn(), getProjectMembers: jest.fn(), getProjectDatasets: jest.fn(), getLinkableDatacubes: jest.fn(), linkProjectDataset: jest.fn(), unlinkProjectDataset: jest.fn(), getDatasetDetail: jest.fn() } }));
 jest.mock('../../api/generationApi', () => ({ generationApi: { listJobs: jest.fn(), jobSummary: jest.fn() } }));
@@ -147,16 +149,17 @@ describe('S6 프로젝트', () => {
     expect(await screen.findByRole('dialog', { name: '새 프로젝트' })).toHaveAccessibleDescription(/함께 보는 폴더입니다/);
   });
 
-  test('상세: 머리 문장, 범위 지도, 그림 격자 ↔ 표(?view=table)', async () => {
+  test('상세: 머리 문장, 범위 지도, 그림 보기 ↔ 목록 보기(UX3: 데이터 목록과 같은 전환, 브라우저에 기억)', async () => {
     renderAt('/app/projects/4');
     expect(await screen.findByText('이 프로젝트의 데이터 2개를 3명이 함께 봅니다.')).toBeInTheDocument();
     const grid = await screen.findByRole('list', { name: '데이터' });
     expect(within(grid).getAllByRole('listitem')).toHaveLength(2);
     expect(within(grid).getByText('원본 · 시계열 12시점 · 2024.01–2024.12')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: '이 프로젝트 데이터의 범위 2곳' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '표' }));
-    expect(screen.getByTestId('search')).toHaveTextContent('?view=table');
+    fireEvent.click(screen.getByRole('button', { name: '목록 보기' }));
     expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(localStorage.getItem('xcube.project.view')).toBe('list');
+    localStorage.removeItem('xcube.project.view');
   });
 
   test('상세: 소유자 혼자면 멤버를 추가하라고 한다', async () => {

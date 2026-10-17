@@ -20,7 +20,7 @@ const CODE = /^[A-Z][A-Z0-9_]*$/;
 const realCode = (code?: string | null) => (code && CODE.test(code) && !code.startsWith('HTTP_') ? code : undefined);
 
 /** Where a code's text may be: shared codes first, then the parts (registered when their screens load). */
-const NAMESPACES = ['errors.code', 'aiCodes', 'dataCodes'];
+const NAMESPACES = ['errors.code', 'aiCodes', 'dataCodes', 'fxCodes'];
 /**
  * Codes whose server sentence is a diagnostic (a framework validation message, a worker traceback line, the
  * Backoffice's answer): the sentence says more than the code, so it is shown when the language allows.

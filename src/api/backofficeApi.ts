@@ -1,5 +1,6 @@
 import { Project, TimePoint, ViewerAdapter, ZarrDataset, AiJob } from './viewerAdapter';
 import { isSameOrigin, request, requestBlob, session } from './httpClient';
+import { withExampleFlag } from './examples';
 export const BACKOFFICE_API_BASE_URL = process.env.REACT_APP_BACKOFFICE_API_URL ?? 'http://localhost:8082';
 export const XCUBE_API_BASE_URL = process.env.REACT_APP_XCUBE_URL ?? 'http://localhost:8080';
 type ProjectDto = { id: number; name: string; description?: string; createdAt: string; updatedAt: string; ownerUserId?: number; ownerUsername?: string; accessRole?: 'OWNER' | 'EDITOR' | 'VIEWER'; canEdit?: boolean; canDelete?: boolean; canShare?: boolean; datasetCount?: number; memberCount?: number };
@@ -99,15 +100,15 @@ export const backofficeAdapter: ViewerAdapter & {
   async addProjectMember(id, input) { const body = 'username' in input ? { username: input.username.trim(), role: input.role } : { userId: Number(input.userId), role: input.role }; return toMember(await request<MemberDto>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}/members`, { method: 'POST', body: JSON.stringify(body) })); },
   async updateProjectMember(id, userId, input) { return toMember(await request<MemberDto>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, { method: 'PATCH', body: JSON.stringify(input) })); },
   async removeProjectMember(id, userId) { await request<void>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' }); },
-  async getDatasets(projectId) { const path = projectId ? `/api/v1/datasets?scope=all&projectId=${encodeURIComponent(projectId)}` : '/api/v1/datasets?scope=all'; const items = await fetchAllPages<DatasetSummaryDto>(path); return items.filter((item) => VIEWABLE_KINDS.includes(item.kind) && (!projectId || item.projectId === Number(projectId))).map(summaryToDataset); },
+  async getDatasets(projectId) { const path = projectId ? `/api/v1/datasets?scope=all&projectId=${encodeURIComponent(projectId)}` : '/api/v1/datasets?scope=all'; const items = await fetchAllPages<DatasetSummaryDto>(path); return items.filter((item) => VIEWABLE_KINDS.includes(item.kind) && (!projectId || item.projectId === Number(projectId))).map((item) => withExampleFlag(summaryToDataset(item), item)); },
   async getProjectDatasets(projectId) { const items = await fetchAllPages<DatacubeDto>(`/api/v1/projects/${encodeURIComponent(projectId)}/datacubes`); return items.filter((item) => VIEWABLE_KINDS.includes(item.kind)).map((item) => toDataset(item, projectId)); },
   async registerDatacube(input) { const dto = await request<DatacubeDto>(BACKOFFICE_API_BASE_URL, '/api/v1/datacubes', { method: 'POST', body: JSON.stringify({ ...input, kind: 'ORIGINAL', metadata: input.metadata ?? {} }) }); return toDataset(dto); },
   async deleteDatacube(id) { await request<void>(BACKOFFICE_API_BASE_URL, `/api/v1/datacubes/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
   async getLinkableDatacubes() { const items = await fetchAllPages<DatacubeDto>('/api/v1/datacubes'); return items.filter((item) => VIEWABLE_KINDS.includes(item.kind)).map((item) => toDataset(item)); },
   async linkProjectDataset(projectId, datasetId) { await request<void>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(projectId)}/datasets/${encodeURIComponent(datasetId)}`, { method: 'POST' }); },
   async unlinkProjectDataset(projectId, datasetId) { await request<void>(BACKOFFICE_API_BASE_URL, `/api/v1/projects/${encodeURIComponent(projectId)}/datasets/${encodeURIComponent(datasetId)}`, { method: 'DELETE' }); },
-  async getDatasetDetail(id) { const dto = await request<DatasetDetailDto>(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${id}`); return summaryToDataset(dto); },
-  async getJobs(datasetId) { const dto = await request<DatasetDetailDto>(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${datasetId}`); return (dto.linkedSuccessfulInferResults ?? []).map<AiJob>((item) => ({ id: String(item.datacubeId), inputDatacubeId: datasetId, outputDatacubeId: String(item.datacubeId), outputType: 'INFER_ZARR', status: item.status === 'READY' ? 'SUCCEEDED' : 'RUNNING', period: 'Backend 결과' })); },
+  async getDatasetDetail(id) { const dto = await request<DatasetDetailDto>(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${id}`); return withExampleFlag(summaryToDataset(dto), dto); },
+  async getJobs(datasetId) { const dto = await request<DatasetDetailDto>(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${datasetId}`); return (dto.linkedSuccessfulInferResults ?? []).map<AiJob>((item) => ({ id: String(item.datacubeId), inputDatacubeId: datasetId, outputDatacubeId: String(item.datacubeId), outputType: 'INFER_ZARR', status: item.status === 'READY' ? 'SUCCEEDED' : 'RUNNING', period: 'Backend 결과', name: item.name })); },
   async runWaterExtraction() { throw new Error('AI_EXECUTION_API_UNAVAILABLE'); },
   // Raster tiles are served directly by the official XCube Server.
   // Tiles come straight from the xcube instance that serves the dataset: the owner's pod (tileBaseUrl) or the main server.

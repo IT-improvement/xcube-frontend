@@ -20,7 +20,7 @@ jest.mock('../api/authApi', () => ({
   authApi: { me: () => mockMe(), refresh: () => mockRefresh(), login: jest.fn(), signup: jest.fn(), logout: jest.fn() },
 }));
 jest.mock('../views/Viewer', () => ({ __esModule: true, default: () => <div>Viewer</div> }));
-jest.mock('../app/jobs', () => ({ useActiveJobCount: () => 1, JobsFeedProvider: ({ children }: { children: unknown }) => children }));
+jest.mock('../app/jobs', () => ({ useActiveJobCount: () => 1, useJobsFeedTick: () => null, JobsFeedProvider: ({ children }: { children: unknown }) => children }));
 
 const App = require('../App').default;
 
@@ -144,7 +144,7 @@ describe('언어 바꾸기', () => {
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Keep satellite imagery small. Open only the places and dates you need, on a map.');
     expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent))
-      .toEqual(['What changes', 'Daecheong Lake, one scene from start to finish', 'Who it’s for', 'How it runs']);
+      .toEqual(['What changes', 'Daecheong Lake, one scene from start to finish', 'What you can do today', 'Who it’s for', 'How it runs']);
     expect(screen.getByText(/Daecheong Lake, August 14, 2024, Sentinel-1\/2/)).toBeInTheDocument();
     expect(screen.getByRole('img', { name: /The actual XCube Viewer/ })).toBeInTheDocument();
     expect(document.documentElement.lang).toBe('en');
@@ -228,7 +228,7 @@ describe('관리 화면 상단 바', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Main menu' });
     expect(within(nav).getAllByRole('link').map((link) => link.textContent))
-      .toEqual(['Dashboard', 'Data', 'Projects', 'Jobs', 'Band math', 'Viewer(new tab)']);
+      .toEqual(['Dashboard', 'Data', 'Projects', 'Jobs', 'Band math', 'Compare', 'Viewer(new tab)']);
     expect(screen.getByRole('link', { name: '1 job running' })).toHaveTextContent('Running 1');
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
     expect(document.documentElement.lang).toBe('en');

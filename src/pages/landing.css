@@ -84,6 +84,18 @@ body:has(.landing) { overflow-x: clip; }
 .lp-line__body { display: grid; gap: var(--space-2); max-width: 40em; color: var(--fb-ink-2); }
 .lp-line__note { font: var(--lp-small); color: var(--fb-ink-3); }
 
+/* ── 지금 할 수 있는 일 (UX5): one real capture, then a ruled two-column ledger. Colour only from the capture. ── */
+.lp-features { padding: clamp(56px, 8vw, 104px) 0; }
+.lp-features__head { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--space-3) clamp(24px, 5vw, 72px); align-items: end; }
+.lp-features__lead { font: var(--lp-lead); color: var(--fb-ink-2); max-width: 36em; }
+.lp-features__shot { margin: clamp(28px, 4vw, 48px) 0 0; }
+.lp-features__shot img { display: block; width: 100%; height: auto; border: 1px solid var(--fb-rule); border-radius: var(--fb-radius-lg); background: var(--fb-sunken); }
+.lp-ledger { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: clamp(24px, 5vw, 72px); margin-top: clamp(28px, 4vw, 48px); border-top: 1px solid var(--fb-ink); }
+.lp-ledger__item { display: grid; gap: var(--space-2); align-content: start; padding: clamp(18px, 2.2vw, 28px) 0; border-bottom: 1px solid var(--fb-rule); }
+.lp-ledger__title { font: 600 clamp(18px, 1.7vw, 22px)/1.35 var(--fb-font); letter-spacing: -0.01em; color: var(--fb-ink); }
+.lp-ledger__item p { color: var(--fb-ink-2); max-width: 36em; }
+.lp-ledger__item--quiet .lp-ledger__title { color: var(--fb-ink-2); }
+
 /* ── Case: one real scene, read top to bottom next to its result panel ── */
 .lp-case { padding: clamp(56px, 8vw, 104px) 0; background: var(--fb-surface); border-top: 1px solid var(--fb-rule); border-bottom: 1px solid var(--fb-rule); }
 .lp-case__grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); gap: clamp(32px, 6vw, 96px); align-items: start; }
@@ -145,6 +157,7 @@ body:has(.landing) { overflow-x: clip; }
 
 /* ── Tablet ── */
 @media (max-width: 1023px) {
+  .lp-features__head { grid-template-columns: minmax(0, 1fr); }
   .lp-hero__copy { grid-template-columns: minmax(0, 1fr); align-items: start; }
   .lp-case__grid, .lp-adopt__grid { grid-template-columns: minmax(0, 1fr); }
   .lp-case__shot, .lp-adopt__head { position: static; }
@@ -158,6 +171,7 @@ body:has(.landing) { overflow-x: clip; }
 
 /* ── Phone: the bar keeps logo + menu button; the menu drops down as a sheet ── */
 @media (max-width: 767px) {
+  .lp-ledger { grid-template-columns: minmax(0, 1fr); }
   .landing { --lp-bar-h: 56px; }
   .lp-bar__nav, .lp-bar__actions { display: none; }
   .lp-bar__toggle { display: grid; }

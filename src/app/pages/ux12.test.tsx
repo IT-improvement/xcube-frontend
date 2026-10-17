@@ -4,6 +4,8 @@ import '@testing-library/jest-dom';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { LanguageProvider } from '../../i18n';
 
+// Comparison jobs (UR-63 F3) join the job lists; these tests do not run Data Analysis.
+jest.mock('../../api/compare', () => ({ ...jest.requireActual('../../api/compare'), compareApi: { ...jest.requireActual('../../api/compare').compareApi, listJobs: () => Promise.resolve([]) } }));
 jest.mock('../../api', () => ({ activeViewerAdapter: { getProjects: jest.fn(), getDatasets: jest.fn(), getProjectDatasets: jest.fn(), getJobs: jest.fn(), runWaterExtraction: jest.fn() }, useMockApi: false }));
 jest.mock('../../api/backofficeApi', () => ({ backofficeAdapter: { getProject: jest.fn(), createProject: jest.fn(), updateProject: jest.fn(), deleteProject: jest.fn(), getProjectMembers: jest.fn(), addProjectMember: jest.fn(), updateProjectMember: jest.fn(), removeProjectMember: jest.fn(), getProjectDatasets: jest.fn(), getLinkableDatacubes: jest.fn(), linkProjectDataset: jest.fn(), unlinkProjectDataset: jest.fn(), getDatasetDetail: jest.fn(), deleteDatacube: jest.fn(), registerDatacube: jest.fn() } }));
 jest.mock('../../api/generationApi', () => ({ generationApi: { listJobs: jest.fn(), jobSummary: jest.fn(), retryJob: jest.fn(), cancelJob: jest.fn(), getColorBarOptions: jest.fn(), getCollections: jest.fn() } }));
@@ -214,8 +216,9 @@ describe('C. 상세·프로젝트', () => {
     backoffice.getProject.mockResolvedValue({ id: '4', name: '대청호 점검', accessRole: 'OWNER' });
     backoffice.getProjectDatasets.mockResolvedValue([original]);
     backoffice.getProjectMembers.mockResolvedValue([{ userId: '1', role: 'OWNER' }, { userId: '22', role: 'VIEWER', username: 'kim', createdAt: '2026-10-01T00:00:00Z' }]);
-    // Pictures are the default view of a project's data (FB1); the table is one press away (?view=table).
-    renderAt('/app/projects/4?view=table');
+    // Pictures are the default view of a project's data (FB1); the list (table) is remembered per browser (UX3).
+    localStorage.setItem('xcube.project.view', 'list');
+    renderAt('/app/projects/4');
     await screen.findByRole('link', { name: '대청호 S2' });
     const data = screen.getByRole('table');
     expect(data).toHaveClass('xc-table--cards');

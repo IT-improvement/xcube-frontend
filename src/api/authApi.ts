@@ -13,7 +13,8 @@ export type User = { id: number; email: string; name: string; role: string; stat
 export type ProfileUpdate = { name?: string; language?: Lang | null };
 type Token = { accessToken: string; tokenType: string; expiresIn: number };
 export const authApi = {
-  signup: (input: { email: string; password: string; name: string }) => request<User>(AUTH_API_BASE_URL, '/api/v1/auth/signup', { method: 'POST', body: JSON.stringify(input) }, false),
+  /** `contactEmail` (UR-63 F6, optional): a code goes there and the answer names it as `pendingEmail`. */
+  signup: (input: { email: string; password: string; name: string; contactEmail?: string }) => request<User & { pendingEmail?: string | null }>(AUTH_API_BASE_URL, '/api/v1/auth/signup', { method: 'POST', body: JSON.stringify(input) }, false),
   async login(input: { email: string; password: string }) { const token = await request<Token>(AUTH_API_BASE_URL, '/api/v1/auth/login', { method: 'POST', body: JSON.stringify(input), credentials: 'include' }, false); session.setToken(token.accessToken); authSession.touch(); return token; },
   async refresh() { const accessToken = await refreshSession(); return { accessToken, tokenType: 'Bearer', expiresIn: 900 }; },
   me: () => request<User>(AUTH_API_BASE_URL, '/api/v1/users/me'),
