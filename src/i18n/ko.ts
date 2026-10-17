@@ -32,6 +32,7 @@ const ko = {
       original: '원본',
       fusion: '융합',
       ai: 'AI',
+      compare: '비교',
     },
     filter: {
       label: '시점 수',

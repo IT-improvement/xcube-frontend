@@ -10,18 +10,19 @@ import { User } from "../../api/authApi";
 import { toLonLat, transformExtent } from "ol/proj";
 import { useTheme } from "../../hooks/useTheme";
 import {
+  ChartSpline,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronsRight,
   CircleAlert,
   CircleCheck,
   CircleDashed,
   CircleHelp,
   Crosshair,
   Hand,
+  FileDown,
+  GitCompareArrows,
   Layers,
-  Layers2,
   LoaderCircle,
   Pause,
   Play,
@@ -70,9 +71,40 @@ import {
 import { PlaybackOptions, TimeStaff } from "./TimeStaff";
 import UserMenu from "./UserMenu";
 import { FrameBuffer, playbackInterval } from "./frameBuffer";
-import { canShowRgb, defaultLayer, isLayerOf } from "./defaultLayer";
+import { canShowRgb, defaultLayer, isAuxiliary, isLayerOf } from "./defaultLayer";
+import AreaStatsPanel from "./AreaStatsPanel";
+import type { AreaTarget } from "./AreaStatsPanel";
+import ExportPanel from "./ExportPanel";
+import type { ExportTarget } from "./ExportPanel";
+import { CompareEntry, ComparisonLegend, ComparisonPanel } from "./ComparisonPanel";
+import { useAreaDraw } from "./areaDraw";
+import { colorBarPreviews, rampStops, rgbMapping, legendValue, categoriesOf } from "./SourceLegend";
+import { metersPerPixel, niceScale, pngFileName, settled, sheetPng, snapshotMap } from "./mapPng";
+import type { LegendSpec } from "./mapPng";
+import { comparisonForDataset, comparisonInfo, comparisonStyle, comparisonTypeFromColorBar, COMPARISON_CLASSES } from "../../api/compare";
+import { setAreaStatsDemoContext } from "../../api/areaStats";
+import { saveBlob } from "../../api/exports";
 
-type Drawer = "ai" | "result" | null;
+/** The one tool panel on the right (UX2): its tabs are the tool rail's buttons. */
+type Tool = "layers" | "area" | "ai" | "result" | "export";
+const TOOLS: Tool[] = ["layers", "area", "ai", "result", "export"];
+const TOOL_ICON = { layers: Layers, area: ChartSpline, ai: Waves, result: GitCompareArrows, export: FileDown } as const;
+type Drawer = Tool | null;
+const loadImage = (src: string) =>
+  new Promise<HTMLImageElement | null>((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = src;
+  });
+/** A CSS colour token's value (OpenLayers styles need the colour itself). */
+const cssColor = (name: string, fallback: string) => {
+  try {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  } catch {
+    return fallback;
+  }
+};
 /** A passing notice over the map: a tile failure, a request failure, or a fixed sentence. */
 type ViewerNotice = { tile?: boolean; cause?: unknown; key?: TKey };
 function noticeText(notice: ViewerNotice, lang: Lang) {
@@ -142,19 +174,6 @@ function ownsKeys(target: EventTarget | null, key: string) {
   return !!target.closest(key === " " ? `${fields}, button, a, summary` : fields);
 }
 
-/** ←/→ (and Home/End) move between the tabs of a tablist and select the one reached (roving tab stop). */
-function moveTab(event: React.KeyboardEvent<HTMLElement>) {
-  const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("[role='tab']"));
-  const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
-  if (index < 0 || tabs.length < 2) return;
-  const next = ({ ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: tabs.length - 1 } as Record<string, number>)[event.key];
-  if (next === undefined) return;
-  event.preventDefault();
-  const tab = tabs[(next + tabs.length) % tabs.length];
-  tab.focus();
-  tab.click();
-}
-
 /** How often and how long the Viewer asks whether a new AI result is on the map yet (pod restart, FR-AI). */
 const RESULT_PUBLISH_POLL_MS = 3000;
 /** A frame that takes longer than this to draw shows "불러오는 중…" (Loading…) beside the date. */
@@ -183,8 +202,6 @@ export default function Viewer({
   const [datasets, setDatasets] = useState<ZarrDataset[]>([]);
   const [projectDatasets, setProjectDatasets] = useState<ZarrDataset[]>([]);
   const [datasetId, setDatasetId] = useState("");
-  // The layer panel starts open on wide screens (S7) and collapsed on narrow ones.
-  const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 1280);
   const [flash, setFlash] = useState("");
   const [notice, setNotice] = useState("");
   const [noDataHidden, setNoDataHidden] = useState(false);
@@ -192,8 +209,10 @@ export default function Viewer({
   const [tourOpen, setTourOpen] = useState(
     () => onboarding && !tourDismissed(),
   );
-  const [tab, setTab] = useState<"layers" | "jobs">("layers");
+  // UX2: the tool panel starts closed; the rail on the right names every tool.
   const [drawer, setDrawer] = useState<Drawer>(null);
+  /** Tools opened once stay mounted (hidden) so a running area query or export keeps going across tabs. */
+  const [visited, setVisited] = useState<Tool[]>([]);
   const [baseVisible, setBaseVisible] = useState(true);
   const [sourceVisible, setSourceVisible] = useState(true);
   const [resultVisible, setResultVisible] = useState(false);
@@ -244,16 +263,12 @@ export default function Viewer({
   const jobsError = jobsFailure ? userMessage(jobsFailure, lang) : "";
   const [mapTool, setMapTool] = useState<MapTool>("pan");
   const [pixelTip, setPixelTip] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
   const [graphExpanded, setGraphExpanded] = useState(true);
   const [pickerRequest, setPickerRequest] = useState(0);
   // Keyboard pixel query: a reticle moved with the arrow keys, queried with Enter.
   const mapBoxRef = useRef<HTMLElement>(null);
-  /** Bottom-left legend stack; the layer sheet stops above it so the legend is never hidden (S7). */
-  const legendsRef = useRef<HTMLDivElement>(null);
   const aiStartingRef = useRef(false);
   const [aiStarting, setAiStarting] = useState(false);
-  const [legendSpace, setLegendSpace] = useState(0);
   const probeRef = useRef<HTMLButtonElement>(null);
   const focusProbeRef = useRef(false);
   const [probe, setProbe] = useState<[number, number] | null>(null);
@@ -285,11 +300,38 @@ export default function Viewer({
   // Colour bar and value range of the shown variable (raw values need their real range, M1/M2).
   const variableStyle = activeVariable && activeVariable !== "rgb" ? selected?.variableMetadata?.[activeVariable] : undefined;
   const styleKey = variableStyle?.colorBarName || variableStyle?.colorBarMin != null ? `${variableStyle?.colorBarName}|${variableStyle?.colorBarMin}|${variableStyle?.colorBarMax}` : "";
-  const tileStyle = useMemo(() => {
+  const catalogStyle = useMemo(() => {
     if (!styleKey) return undefined;
     const [cmap, vmin, vmax] = styleKey.split("|");
     return { cmap: cmap && cmap !== "undefined" ? cmap : undefined, vmin: vmin === "undefined" ? undefined : Number(vmin), vmax: vmax === "undefined" ? undefined : Number(vmax) };
   }, [styleKey]);
+  // A comparison result (UR-63 F3) is drawn with the contract's class colours, the same ones its legend shows.
+  // Its metrics come from the dataset's metadata when Backoffice shows it, else from the compare job that made it.
+  const [jobComparison, setJobComparison] = useState<{ id: string; value: Record<string, unknown> | null } | null>(null);
+  const needsJobComparison = selected?.kind === "COMPARISON" && !selected.comparison && !useMockApi ? selected.id : "";
+  useEffect(() => {
+    if (!needsJobComparison) return;
+    let alive = true;
+    comparisonForDataset(needsJobComparison)
+      .then((value) => alive && setJobComparison({ id: needsJobComparison, value }))
+      .catch(() => alive && setJobComparison({ id: needsJobComparison, value: null }));
+    return () => {
+      alive = false;
+    };
+  }, [needsJobComparison]);
+  const classColorBar = selected?.kind === "COMPARISON" ? selected.variableMetadata?.class?.colorBarName : undefined;
+  const comparison = useMemo(() => {
+    if (selected?.kind !== "COMPARISON") return null;
+    const recorded = selected.comparison ?? (jobComparison?.id === selected.id ? jobComparison.value : null);
+    const info = comparisonInfo(recorded);
+    return info.type ? info : { ...info, type: comparisonTypeFromColorBar(classColorBar) };
+  }, [selected?.kind, selected?.comparison, selected?.id, jobComparison, classColorBar]);
+  const comparisonType = comparison?.type ?? null;
+  const showsClasses = !!comparison && activeVariable === "class";
+  const tileStyle = useMemo(
+    () => (showsClasses && comparisonType ? comparisonStyle(comparisonType) : catalogStyle),
+    [showsClasses, comparisonType, catalogStyle],
+  );
   const entries = useMemo(
     () =>
       resultEntries(
@@ -878,7 +920,7 @@ export default function Viewer({
     if (times.length < 2 && selectedResult && compareTarget !== "ai") setCompareTarget("ai");
   }, [times.length, selectedResult, compareTarget]);
   const onMapReady = useCallback((instance: Map) => setMap(instance), []);
-  // Focus follows the sheets (UX13): into a sheet when it opens, back to what opened it when it closes.
+  // Focus follows the panel (UX13): into it when it opens, back to what opened it when it closes.
   const focusNextRef = useRef<(() => HTMLElement | null | undefined) | null>(null);
   useEffect(() => {
     const next = focusNextRef.current;
@@ -886,53 +928,26 @@ export default function Viewer({
     focusNextRef.current = null;
     next()?.focus();
   });
-  const sheetOpenRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLElement>(null);
   const drawerBoxRef = useRef<HTMLElement>(null);
-  const railRef = useRef<HTMLButtonElement>(null);
-  const aiButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerTitleRef = useRef<HTMLHeadingElement>(null);
+  const railRefs = useRef<Partial<Record<Tool, HTMLButtonElement | null>>>({});
   const drawerReturnRef = useRef<HTMLElement | null>(null);
   const drawerRef = useRef<Drawer>(drawer);
   drawerRef.current = drawer;
-  const panelOpenRef = useRef(panelOpen);
-  panelOpenRef.current = panelOpen;
-  const rightCollapsedRef = useRef(rightCollapsed);
-  rightCollapsedRef.current = rightCollapsed;
   const splitActiveRef = useRef(false);
-  const selectedTabIn = (box: HTMLElement | null) => box?.querySelector<HTMLElement>("[role='tab'][aria-selected='true']");
-  /** Opens (or switches) the analysis drawer. `focus`: opened from a button, so focus moves into it and returns there on close. */
-  const openRightPanel = useCallback((type: Exclude<Drawer, null>, focus = false) => {
+  /** Opens (or switches) the tool panel. `focus`: opened from a button, so focus moves into it and returns there on close. */
+  const openRightPanel = useCallback((type: Tool, focus = false) => {
     if (focus) {
       if (!drawerRef.current) drawerReturnRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      focusNextRef.current = () => selectedTabIn(drawerBoxRef.current);
+      focusNextRef.current = () => drawerTitleRef.current;
     }
     setDrawer(type);
-    setRightCollapsed(false);
-    // Narrow screens and side by side: one sheet at a time, so the maps stay in view.
-    if (window.innerWidth < 1180 || splitActiveRef.current) setPanelOpen(false);
+    setVisited((list) => (list.includes(type) ? list : [...list, type]));
   }, []);
-  /** The top-bar AI / 결과 buttons open their drawer tab, or close the drawer when that tab is already open. */
-  const toggleRightPanel = (type: Exclude<Drawer, null>) => {
-    if (drawer === type && !rightCollapsed) closeRightPanel();
+  /** A rail button opens its tool, or closes the panel when that tool is already open. */
+  const toggleRightPanel = (type: Tool) => {
+    if (drawer === type) closeRightPanel();
     else openRightPanel(type, true);
-  };
-  const openPanel = () => {
-    setPanelOpen(true);
-    if (splitActiveRef.current && drawerRef.current) setRightCollapsed(true);
-    focusNextRef.current = () => selectedTabIn(panelRef.current);
-  };
-  const closePanel = () => {
-    setPanelOpen(false);
-    focusNextRef.current = () => sheetOpenRef.current;
-  };
-  const collapseRightPanel = () => {
-    setRightCollapsed(true);
-    focusNextRef.current = () => railRef.current;
-  };
-  const expandRightPanel = () => {
-    setRightCollapsed(false);
-    if (splitActiveRef.current) setPanelOpen(false);
-    focusNextRef.current = () => selectedTabIn(drawerBoxRef.current);
   };
   /** Time series at a map coordinate: from a click with the pixel tool, the keyboard reticle or the focused map's centre. */
   const queryPixel = useCallback(
@@ -1095,11 +1110,11 @@ export default function Viewer({
     });
   }, [map, selectedId, selectedBbox]);
   function closeRightPanel() {
+    const closing = drawerRef.current;
     setDrawer(null);
-    setRightCollapsed(false);
     const back = drawerReturnRef.current;
     drawerReturnRef.current = null;
-    focusNextRef.current = () => (back?.isConnected ? back : aiButtonRef.current);
+    focusNextRef.current = () => (back?.isConnected ? back : closing ? railRefs.current[closing] : null);
   }
   // Keep centre and zoom when the graph panel opens or closes. Skip the first run so it
   // does not undo the fit to a dataset selected right at load (/app/viewer?dataset=…).
@@ -1191,7 +1206,7 @@ export default function Viewer({
   };
   const labelOf = (iso: string) => {
     const match = matchTime(times.map((time) => time.iso), iso);
-    return times.find((time) => time.iso === match)?.label ?? iso;
+    return times.find((time) => time.iso === match)?.label ?? (Number.isFinite(Date.parse(iso)) ? formatDate(iso, lang) : iso);
   };
   // AI results are reached through their source dataset, not picked as layers of their own.
   const pickable = useMemo(() => datasets.filter((item) => item.kind !== "AI_RESULT"), [datasets]);
@@ -1235,20 +1250,18 @@ export default function Viewer({
   const userName = user?.name ?? t("viewer.top.user");
   const currentProject = projects.find((item) => item.id === projectId);
   const splitActive = compareActive && displayMode === "split";
-  // Side by side (UX13): fold the layer sheet to its button and the drawer to its rail so both maps keep about
-  // half the width; leaving side by side brings back what was open before.
-  const splitRestoreRef = useRef<{ panel: boolean; rail: boolean } | null>(null);
+  // Side by side (UX13): close the tool panel so both maps keep about half the width; leaving side by side brings
+  // back the tool that was open. A tool opened during side by side sits beside the maps (CSS), not over map B.
+  const splitRestoreRef = useRef<Drawer | undefined>(undefined);
   useEffect(() => {
     splitActiveRef.current = splitActive;
     if (splitActive) {
-      splitRestoreRef.current = { panel: panelOpenRef.current, rail: rightCollapsedRef.current };
-      setPanelOpen(false);
-      setRightCollapsed(true);
-    } else if (splitRestoreRef.current) {
+      splitRestoreRef.current = drawerRef.current;
+      setDrawer(null);
+    } else if (splitRestoreRef.current !== undefined) {
       const before = splitRestoreRef.current;
-      splitRestoreRef.current = null;
-      setPanelOpen((open) => open || before.panel);
-      setRightCollapsed((collapsed) => collapsed && before.rail);
+      splitRestoreRef.current = undefined;
+      setDrawer((open) => open ?? before);
     }
   }, [splitActive]);
   // Entry with datasets shows the map and one plain hint; the tour explains the rest.
@@ -1259,27 +1272,149 @@ export default function Viewer({
         ? ""
         : t("viewer.empty.noData"));
   const pickHint = !selected && !loading && !apiError && datasets.length > 0 && !pickHintHidden;
-  // Keep the layer sheet's bottom above the legend stack: measure the stack (its size and its
-  // compare-mode offset) and hand the space it takes to the sheet as --vx-legend-space.
+
+  // ── UR-63 F1: the area drawn for area statistics (overprint magenta: the user's mark) ──
+  const markColor = useMemo(() => cssColor("--fb-overprint", theme === "dark" ? "#ff6fb3" : "#b8166f"), [theme]);
+  const area = useAreaDraw(map, markColor);
+  const clearArea = area.clear;
   useEffect(() => {
-    const legends = legendsRef.current;
-    const box = mapBoxRef.current;
-    if (!legends || !box) {
-      setLegendSpace(0);
-      return;
+    clearArea();
+  }, [selectedId, clearArea]);
+  const startDraw = (kind: "polygon" | "rect") => {
+    selectMapTool("pan");
+    area.start(kind);
+  };
+  const mapExtent4326 = useCallback((): [number, number, number, number] | null => {
+    if (!map || typeof map.getView !== "function" || typeof map.getSize !== "function") return null;
+    const size = map.getSize();
+    if (!size) return null;
+    const view = map.getView();
+    const extent = view.calculateExtent(size);
+    const projection = view.getProjection().getCode();
+    return (projection === "EPSG:4326" ? extent : transformExtent(extent, projection, "EPSG:4326")) as [number, number, number, number];
+  }, [map]);
+  /** 지금 화면: the view as a rectangle, cut to the data's extent so the whole shape has values. */
+  const areaFromView = () => {
+    if (!map || typeof map.getView !== "function") return;
+    const size = map.getSize();
+    if (!size) return;
+    const view = map.getView();
+    const projection = view.getProjection().getCode();
+    let extent = view.calculateExtent(size);
+    if (selectedBbox) {
+      const data = projection === "EPSG:4326" ? selectedBbox : transformExtent(selectedBbox, "EPSG:4326", projection);
+      const cut = [Math.max(extent[0], data[0]), Math.max(extent[1], data[1]), Math.min(extent[2], data[2]), Math.min(extent[3], data[3])];
+      if (cut[0] < cut[2] && cut[1] < cut[3]) extent = cut;
     }
-    const measure = () => {
-      const top = legends.getBoundingClientRect().top;
-      const bottom = box.getBoundingClientRect().bottom;
-      setLegendSpace(legends.childElementCount ? Math.max(0, Math.round(bottom - top)) : 0);
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(legends);
-    observer.observe(box);
-    return () => observer.disconnect();
-  }, [selected, compareActive, displayMode, panelOpen]);
+    selectMapTool("pan");
+    area.fromView(extent);
+  };
+  /** What area statistics can measure: the shown data (its band), and the AI result shown with it (water area). */
+  const measurable = useMemo(() => (selected?.variables ?? []).filter((band) => band !== "rgb"), [selected?.variables]);
+  const measuredBand = selected ? (activeVariable && activeVariable !== "rgb" ? activeVariable : measurable.find((band) => !isAuxiliary(selected, band)) ?? measurable[0] ?? "") : "";
+  const resultDatacubeId = selectedResult?.datacubeId;
+  const areaTargets = useMemo<AreaTarget[]>(() => {
+    if (!selected) return [];
+    const list: AreaTarget[] = [
+      { key: "source", label: t(selected.kind === "COMPARISON" ? "viewer.panel.comparison" : "viewer.panel.source"), datasetId: selected.id, variables: measurable, variable: measuredBand, water: false },
+    ];
+    if (resultDatacubeId && selected.kind !== "COMPARISON")
+      list.push({ key: "ai", label: t("viewer.panel.aiResult"), datasetId: resultDatacubeId, variables: ["water_mask"], variable: "water_mask", water: true });
+    return list;
+  }, [selected, measurable, measuredBand, resultDatacubeId, t]);
+  const exportTargets = useMemo<ExportTarget[]>(() => {
+    if (!selected) return [];
+    const bands = [...(hasRgb ? ["rgb"] : []), ...selected.variables.filter((band) => band !== "rgb")];
+    const list: ExportTarget[] = [
+      { key: "source", label: t(selected.kind === "COMPARISON" ? "viewer.panel.comparison" : "viewer.panel.source"), datasetId: selected.id, variables: bands, variable: activeVariable && bands.includes(activeVariable) ? activeVariable : bands[0] ?? "" },
+    ];
+    if (resultDatacubeId && selected.kind !== "COMPARISON") {
+      const resultBands = resultCube?.variables?.length ? resultCube.variables : ["water_mask"];
+      list.push({ key: "ai", label: t("viewer.panel.aiResult"), datasetId: resultDatacubeId, variables: resultBands, variable: resultBands.includes("water_mask") ? "water_mask" : resultBands[0] });
+    }
+    return list;
+  }, [selected, hasRgb, activeVariable, resultDatacubeId, resultCube?.variables, t]);
+  // Demo: the area-stats stand-in answers for the shown dataset's times.
+  useEffect(() => {
+    if (useMockApi) setAreaStatsDemoContext({ times: times.map((time) => time.iso), water: false });
+  }, [times]);
+
+  // ── UR-63 F2: the map PNG, framed like a map sheet (everything in the browser) ──
+  const legendSpecs = async (): Promise<LegendSpec[]> => {
+    const specs: LegendSpec[] = [];
+    if (area.shape) specs.push({ kind: "outline", title: t("viewer.stats.legend"), text: `${legendValue(area.shape.areaKm2, lang)} km²`, color: "#b8166f" });
+    if (selectedResult && (resultVisible || aiCompare) && resultTime) specs.push({ kind: "hatch", title: t("viewer.ai.legend.title"), text: `${selectedResult.name}`, color: "#3fb4ff" });
+    if (showsClasses && comparisonType)
+      specs.push({
+        kind: "classes",
+        title: t(`viewer.cmp.type.${comparisonType}`),
+        classes: COMPARISON_CLASSES[comparisonType].map((item) => ({ color: item.color, label: t(`viewer.cmp.class.${item.key}`) })),
+      });
+    else if (activeVariable && sourceVisible) {
+      if (activeVariable === "rgb") specs.push({ kind: "rgb", title: t("viewer.legend.rgb"), text: rgbBands?.length === 3 ? rgbMapping(rgbBands, lang) : t("viewer.legend.rgbFallback") });
+      else {
+        const classes = categoriesOf(variableStyle?.colorBarName);
+        const units = variableStyle?.units && variableStyle.units !== "1" ? variableStyle.units : undefined;
+        if (classes) specs.push({ kind: "classes", title: activeVariable, classes: classes.map((item) => ({ color: item.color, label: item.label ?? t("viewer.legend.code", { code: item.code }) })) });
+        else {
+          const stops = rampStops(variableStyle?.colorBarName) ?? ["#f3f5f2", "#1769aa"];
+          const base = variableStyle?.colorBarName?.replace(/_alpha$/, "").replace(/_r$/, "");
+          const previews = base ? await colorBarPreviews() : {};
+          const image = base && previews[base] && !variableStyle?.colorBarName?.replace(/_alpha$/, "").endsWith("_r") ? await loadImage(`data:image/png;base64,${previews[base]}`) : null;
+          const min = variableStyle?.colorBarMin;
+          const max = variableStyle?.colorBarMax;
+          specs.push({ kind: "ramp", title: activeVariable, units, stops, image, min: typeof min === "number" ? legendValue(min, lang) : undefined, max: typeof max === "number" ? legendValue(max, lang) : undefined });
+        }
+      }
+    }
+    return specs;
+  };
+  const makePng = async (title: string) => {
+    if (!map || typeof map.getSize !== "function") throw new Error("NO_MAP");
+    const size = map.getSize();
+    if (!size) throw new Error("NO_MAP");
+    await settled(map);
+    const first = snapshotMap(map);
+    if (!first) throw new Error("NO_CANVAS");
+    const timeLabel = times[timeIndex]?.label ?? "";
+    const bandLabel = activeVariable === "rgb" ? t("viewer.legend.rgb") : activeVariable;
+    const maps: Array<{ canvas: HTMLCanvasElement; label?: string }> = [{ canvas: first, label: splitActive ? (aiCompare ? `${t("viewer.compare.source")} · ${timeLabel}` : `A · ${timeLabel}`) : undefined }];
+    if (splitActive && compareMap) {
+      await settled(compareMap);
+      const second = snapshotMap(compareMap);
+      if (second) maps.push({ canvas: second, label: aiCompare ? `${t("viewer.compare.sourcePlusAi")} · ${timeLabel}` : `B · ${times[compareIndex]?.label ?? ""}` });
+    }
+    const width = splitActive ? Math.round(size[0] / 2) : size[0];
+    const scale = niceScale((await metersPerPixel(map)) ?? NaN, 120, lang);
+    const attribution = [t("viewer.export.png.osm"), t("viewer.export.png.data", { name: selected?.name ?? "" }), ...(selectedResult && (resultVisible || aiCompare) ? [t("viewer.export.png.ai", { name: selectedResult.name })] : [])].join(" · ");
+    const blob = await sheetPng(
+      {
+        title,
+        subtitle: [bandLabel, timeLabel].filter(Boolean).join(" · "),
+        maps: maps.map((item) => ({ ...item })),
+        legends: await legendSpecs(),
+        scale,
+        attribution,
+        created: t("viewer.export.png.created", { time: new Date().toLocaleString(lang === "ko" ? "ko-KR" : "en-US", { dateStyle: "medium", timeStyle: "short" }) }),
+      },
+      width,
+      size[1],
+    );
+    saveBlob(blob, pngFileName(title, times[timeIndex]?.iso?.slice(0, 10) ?? ""));
+  };
+
+  const toolDisabled = (tool: Tool): string | undefined => {
+    if (tool === "layers") return undefined;
+    if (!selected) return t("viewer.tools.needData");
+    if (tool === "ai" && (selected.kind === "AI_RESULT" || selected.kind === "COMPARISON")) return t("viewer.tools.aiNotHere");
+    return undefined;
+  };
+  // A tool that cannot be used for the new dataset closes.
+  useEffect(() => {
+    if (drawer && drawer !== "layers" && (!selected || (drawer === "ai" && selected.kind === "COMPARISON"))) setDrawer(null);
+  }, [drawer, selected]);
+  const bandLabel = activeVariable === "rgb" ? t("viewer.legend.rgb") : activeVariable;
+  const bandTitle = variableStyle?.title && variableStyle.title !== activeVariable ? variableStyle.title : "";
 
   return (
     <main className="viewer vx" aria-label={t("viewer.top.main")}>
@@ -1363,6 +1498,26 @@ export default function Viewer({
             }
           />
         </nav>
+        {selected && (
+          // UX2: what is on the map, in large type — the band (opens the layer tab) and the shown date.
+          <div className="vx-now" aria-label={t("viewer.now.aria")} role="group">
+            <button
+              type="button"
+              className="vx-now__band"
+              onClick={() => (drawer === "layers" ? closeRightPanel() : openRightPanel("layers", true))}
+              aria-label={t("viewer.now.bandAria", { band: bandLabel || t("viewer.now.noBand") })}
+              title={bandTitle || t("viewer.now.bandTitle")}
+            >
+              <small>{t("viewer.now.band")}</small>
+              <strong>{bandLabel || t("viewer.now.noBand")}</strong>
+              <ChevronDown size={14} aria-hidden="true" />
+            </button>
+            <span className="vx-now__date">
+              <small>{t("viewer.now.date")}</small>
+              <strong className="tabular">{times[timeIndex]?.label ?? t("viewer.dock.noTime")}</strong>
+            </span>
+          </div>
+        )}
         <div className="vx-top__actions">
           <span
             className={`vx-status is-${statusTone}`}
@@ -1403,45 +1558,6 @@ export default function Viewer({
               <span className="vx-hide-md">{t("viewer.top.addData")}</span>
             </a>
           )}
-          {selected && selected.kind !== "AI_RESULT" && (
-            <button
-              type="button"
-              className="vx-btn vx-btn--line"
-              aria-label={t("viewer.top.ai")}
-              title={t("viewer.top.ai")}
-              data-tour="ai"
-              ref={aiButtonRef}
-              aria-expanded={drawer === "ai" && !rightCollapsed}
-              aria-controls={drawer === "ai" && !rightCollapsed ? "vx-drawer" : undefined}
-              onClick={() => toggleRightPanel("ai")}
-            >
-              <Waves size={16} aria-hidden="true" />
-              <span className="vx-hide-sm">{t("viewer.top.ai")}</span>
-            </button>
-          )}
-          {hasInference && (
-            <button
-              type="button"
-              className="vx-btn vx-btn--line"
-              aria-expanded={drawer === "result" && !rightCollapsed}
-              aria-controls={drawer === "result" && !rightCollapsed ? "vx-drawer" : undefined}
-              onClick={() => {
-                // 결과 is the switch for seeing the AI result: closing it also hides the AI water layer
-                // (and leaves the AI-result comparison), opening it shows the layer again.
-                if (drawer === "result" && !rightCollapsed) {
-                  closeRightPanel();
-                  setResultVisible(false);
-                  if (compareTarget === "ai") setCompareTarget("time");
-                } else {
-                  setResultVisible(true);
-                  openRightPanel("result", true);
-                }
-              }}
-            >
-              <Layers2 size={16} aria-hidden="true" />
-              <span>{t("viewer.top.results")}</span>
-            </button>
-          )}
           <button
             type="button"
             className="vx-icon-btn"
@@ -1460,187 +1576,7 @@ export default function Viewer({
         </div>
       </header>
 
-      <div
-        style={{ "--vx-legend-space": `${legendSpace}px` } as React.CSSProperties}
-        className={`vx-body ${panelOpen ? "panel-open" : ""} ${drawer && !rightCollapsed ? "drawer-open" : ""} ${drawer && rightCollapsed ? "rail-open" : ""} ${splitActive ? "is-split" : ""}`}
-      >
-        {panelOpen && (
-          <aside
-            ref={panelRef}
-            id="vx-panel"
-            className="vx-panel"
-            aria-label={t("viewer.panel.aria")}
-            data-tour="layers"
-            onKeyDown={(event) => {
-              if (event.key !== "Escape" || event.defaultPrevented) return;
-              event.preventDefault();
-              closePanel();
-            }}
-          >
-            <div className="vx-panel__head">
-              <div className="vx-tabs" role="tablist" aria-label={t("viewer.panel.aria")} onKeyDown={moveTab}>
-                <button
-                  type="button"
-                  role="tab"
-                  id="vx-tab-layers"
-                  aria-controls="vx-panel-body"
-                  tabIndex={tab === "layers" ? 0 : -1}
-                  aria-selected={tab === "layers"}
-                  onClick={() => setTab("layers")}
-                >
-                  {t("viewer.panel.layers")}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  id="vx-tab-jobs"
-                  aria-controls="vx-panel-body"
-                  tabIndex={tab === "jobs" ? 0 : -1}
-                  aria-selected={tab === "jobs"}
-                  onClick={() => setTab("jobs")}
-                >
-                  {t("viewer.panel.aiJobs")}
-                  {entries.length > 0 && (
-                    <span className="vx-count tabular">{entries.length}</span>
-                  )}
-                </button>
-              </div>
-              <button
-                type="button"
-                className="vx-icon-btn"
-                onClick={closePanel}
-                aria-label={t("viewer.panel.close")}
-                title={t("viewer.panel.collapse")}
-              >
-                <X size={18} aria-hidden="true" />
-              </button>
-            </div>
-            {tab === "layers" ? (
-              <div className="vx-panel__body" id="vx-panel-body" role="tabpanel" aria-labelledby="vx-tab-layers">
-                {selected && (
-                  <section className="vx-section">
-                    <h2 className="vx-section__title">{t("viewer.panel.bands")}</h2>
-                    <div className="vx-chips">
-                      {hasRgb && (
-                        <button
-                          type="button"
-                          aria-pressed={activeVariable === "rgb"}
-                          className={activeVariable === "rgb" ? "active" : ""}
-                          onClick={() => chooseLayer("rgb")}
-                        >
-                          RGB
-                        </button>
-                      )}
-                      {selected.variables.map((variable) => (
-                        <button
-                          type="button"
-                          key={variable}
-                          aria-pressed={activeVariable === variable}
-                          className={
-                            activeVariable === variable ? "active" : ""
-                          }
-                          onClick={() => chooseLayer(variable)}
-                        >
-                          {variable}
-                        </button>
-                      ))}
-                    </div>
-                    {activeVariable === "rgb" && (
-                      <p className="vx-section__hint">
-                        {t("viewer.panel.rgbHint")}
-                      </p>
-                    )}
-                  </section>
-                )}
-                <section className="vx-section">
-                  <h2 className="vx-section__title">{t("viewer.panel.layers")}</h2>
-                  <div className="vx-layers">
-                    {hasInference && (
-                      <LayerControl
-                        label={t("viewer.panel.aiResult")}
-                        accent="result"
-                        checked={resultVisible}
-                        onChecked={setResultVisible}
-                        opacity={resultOpacity}
-                        onOpacity={setResultOpacity}
-                      />
-                    )}
-                    {selected && (
-                      <LayerControl
-                        label={t("viewer.panel.source")}
-                        accent="source"
-                        swatch={activeVariable ? swatchBackground(activeVariable, variableStyle?.colorBarName) : undefined}
-                        checked={sourceVisible}
-                        onChecked={setSourceVisible}
-                        opacity={sourceOpacity}
-                        onOpacity={setSourceOpacity}
-                      />
-                    )}
-                    <div className="vx-layer-row">
-                      <label className="vx-layer">
-                        <input
-                          type="checkbox"
-                          checked={baseVisible}
-                          onChange={(e) => setBaseVisible(e.target.checked)}
-                        />
-                        <i className="vx-swatch vx-swatch--base" aria-hidden="true" />
-                        <span>{t("viewer.panel.basemap")}</span>
-                      </label>
-                    </div>
-                  </div>
-                </section>
-                {selected && (
-                  <section className="vx-section">
-                    <h2 className="vx-section__title">{t("viewer.panel.info")}</h2>
-                    <dl className="vx-meta">
-                      <div>
-                        <dt>{t("viewer.panel.name")}</dt>
-                        <dd title={selected.name}>{selected.name}</dd>
-                      </div>
-                      <div>
-                        <dt>{t("viewer.panel.times")}</dt>
-                        <dd className="tabular">{t("viewer.panel.count", { count: times.length })}</dd>
-                      </div>
-                      {times.length > 0 && (
-                        <div>
-                          <dt>{t("viewer.panel.period")}</dt>
-                          <dd className="tabular">
-                            {t("viewer.panel.periodValue", { start: times[0]?.label, end: times[times.length - 1]?.label })}
-                          </dd>
-                        </div>
-                      )}
-                      <div>
-                        <dt>{t("viewer.panel.bandCount")}</dt>
-                        <dd className="tabular">{t("viewer.panel.count", { count: selected.variables.length })}</dd>
-                      </div>
-                      <div>
-                        <dt>{t("viewer.panel.crs")}</dt>
-                        <dd>EPSG:4326</dd>
-                      </div>
-                    </dl>
-                  </section>
-                )}
-              </div>
-            ) : (
-              <div className="vx-panel__body" id="vx-panel-body" role="tabpanel" aria-labelledby="vx-tab-jobs">
-                <section className="vx-section">
-                  <h2 className="vx-section__title">{t("viewer.panel.aiResults")}</h2>
-                  {jobsError && (
-                    <p className="vx-section__hint" role="status">
-                      {t("viewer.panel.linkedError", { error: jobsError })}
-                    </p>
-                  )}
-                  {selected ? (
-                    <AiResultList entries={entries} selectedKey={resultKey} onMap={!!selectedResult && (resultVisible || aiCompare)} onSelect={chooseResult} />
-                  ) : (
-                    <p className="vx-section__hint">{t("viewer.panel.pickFirst")}</p>
-                  )}
-                </section>
-              </div>
-            )}
-          </aside>
-        )}
-
+      <div className={`vx-body ${drawer ? "drawer-open" : ""} ${splitActive ? "is-split" : ""}`}>
         <section
           ref={mapBoxRef}
           className={`vx-map ${splitActive ? "is-split" : ""} ${compareActive ? "is-comparing" : ""}`}
@@ -1661,22 +1597,6 @@ export default function Viewer({
           <p id="vx-map-keys" className="vx-sr">
             {t(selected ? "viewer.map.keysHelp" : "viewer.map.keysHelpEmpty")}
           </p>
-          {!panelOpen && (
-            <button
-              ref={sheetOpenRef}
-              type="button"
-              className="vx-sheet-open"
-              aria-expanded={false}
-              aria-controls="vx-panel"
-              onClick={openPanel}
-              data-tour="layers"
-              aria-label={t("viewer.map.openSheet")}
-              title={t("viewer.map.openSheetTitle")}
-            >
-              <Layers size={16} aria-hidden="true" />
-              <span>{t("viewer.panel.layers")}</span>
-            </button>
-          )}
           <div
             className="vx-tools"
             role="toolbar"
@@ -1855,9 +1775,15 @@ export default function Viewer({
               aiAvailable={readyEntries.length > 0}
             />
           )}
-          {/* Legends stack bottom-left: the source colour bar, and the AI result above it when shown (S7). */}
+          {/* Legends stack bottom-left in one place (UX2): drawn area, AI result, comparison classes, source colour bar. */}
           {selected && (
-            <div className="vx-legends" ref={legendsRef}>
+            <div className="vx-legends">
+              {area.shape && !area.drawing && (
+                <div className="vx-legend" role="group" aria-label={t("viewer.stats.legendAria", { area: legendValue(area.shape.areaKm2, lang) })}>
+                  <span className="vx-legend__row"><i className="vx-shape__swatch" aria-hidden="true" /><strong>{t("viewer.stats.legend")}</strong></span>
+                  <small className="tabular">{`${legendValue(area.shape.areaKm2, lang)} km²`}</small>
+                </div>
+              )}
               {selectedResult && (resultVisible || aiCompare) && !(aiCompare && displayMode === "swipe") && (
                 <AiLegend
                   entry={selectedResult}
@@ -1866,7 +1792,8 @@ export default function Viewer({
                   publishing={resultPublishing}
                 />
               )}
-              {activeVariable && sourceVisible && (
+              {showsClasses && comparison && sourceVisible && <ComparisonLegend info={comparison} timeLabel={times[timeIndex]?.label} />}
+              {activeVariable && sourceVisible && !showsClasses && (
                 <SourceLegend variable={activeVariable} style={variableStyle} rgbBands={rgbBands} />
               )}
             </div>
@@ -1913,30 +1840,64 @@ export default function Viewer({
           )}
         </section>
 
-        {drawer && rightCollapsed && (
-          <aside className="vx-drawer-rail">
-            <button
-              ref={railRef}
-              type="button"
-              aria-expanded={false}
-              aria-controls="vx-drawer"
-              onClick={expandRightPanel}
-              aria-label={t("viewer.drawer.open", { name: t(drawer === "ai" ? "viewer.drawer.aiTab" : "viewer.drawer.resultTab") })}
-            >
-              {drawer === "ai" ? (
-                <Waves size={18} aria-hidden="true" />
-              ) : (
-                <Layers2 size={18} aria-hidden="true" />
-              )}
-            </button>
-          </aside>
-        )}
-        {drawer && !rightCollapsed && (
+        {/* UX2: the tool rail — the tabs of the one tool panel, named in words. A second press closes the panel. */}
+        <nav className="vx-rail" aria-label={t("viewer.tools.aria")}>
+          {TOOLS.map((tool) => {
+            const Icon = TOOL_ICON[tool];
+            const reason = toolDisabled(tool);
+            const open = drawer === tool;
+            return (
+              <button
+                key={tool}
+                ref={(node) => {
+                  railRefs.current[tool] = node;
+                }}
+                type="button"
+                className="vx-rail__tool"
+                data-tour={tool === "layers" ? "layers" : tool === "ai" ? "ai" : undefined}
+                aria-expanded={open}
+                aria-controls={open ? "vx-drawer" : undefined}
+                aria-disabled={reason ? "true" : undefined}
+                aria-describedby={reason ? `vx-rail-why-${tool}` : undefined}
+                title={reason ?? t(`viewer.tools.${tool}Title`)}
+                onClick={() => {
+                  if (reason) return;
+                  if (tool === "result") {
+                    // 결과 비교 is also the switch for seeing the AI result (UX13B): closing it hides the AI water layer
+                    // (and leaves the AI-result comparison), opening it shows the layer again.
+                    if (open) {
+                      closeRightPanel();
+                      if (hasInference) {
+                        setResultVisible(false);
+                        if (compareTarget === "ai") setCompareTarget("time");
+                      }
+                    } else {
+                      if (hasInference) setResultVisible(true);
+                      openRightPanel("result", true);
+                    }
+                    return;
+                  }
+                  toggleRightPanel(tool);
+                }}
+              >
+                <Icon size={18} aria-hidden="true" />
+                <span className="vx-rail__label">{t(`viewer.tools.${tool}`)}</span>
+                {tool === "ai" && isRunning(aiRunHere) && <i className="vx-pulse" aria-hidden="true" />}
+                {tool === "result" && hasInference && <span className="vx-rail__count tabular" aria-label={t("viewer.tools.resultCount", { count: readyEntries.length })}>{readyEntries.length}</span>}
+              </button>
+            );
+          })}
+          {TOOLS.map((tool) => {
+            const reason = toolDisabled(tool);
+            return reason ? <span key={tool} id={`vx-rail-why-${tool}`} className="vx-sr">{reason}</span> : null;
+          })}
+        </nav>
+        {drawer && (
           <aside
             ref={drawerBoxRef}
             id="vx-drawer"
-            className="vx-drawer"
-            aria-label={t(drawer === "ai" ? "viewer.drawer.aiAria" : "viewer.drawer.resultAria")}
+            className={`vx-drawer vx-drawer--${drawer}`}
+            aria-labelledby="vx-drawer-title"
             onKeyDown={(event) => {
               if (event.key !== "Escape" || event.defaultPrevented) return;
               event.preventDefault();
@@ -1945,118 +1906,183 @@ export default function Viewer({
           >
             <div className="vx-drawer__head">
               <div>
-                <h2>{t(drawer === "ai" ? "viewer.drawer.aiTitle" : "viewer.drawer.resultTitle")}</h2>
-                <p title={drawer === "ai" ? selected?.name : selectedResult?.name}>
-                  {drawer === "ai"
-                    ? isRunning(aiRunHere)
-                      ? t("viewer.drawer.running")
-                      : selected?.name ?? t("viewer.drawer.newJob")
-                    : selectedResult?.name ?? t("viewer.drawer.layersFallback")}
+                <h2 id="vx-drawer-title" ref={drawerTitleRef} tabIndex={-1}>{t(`viewer.tools.full.${drawer}`)}</h2>
+                <p title={selected?.name}>
+                  {drawer === "ai" && isRunning(aiRunHere) ? t("viewer.drawer.running") : drawer === "result" && selectedResult && selected?.kind !== "COMPARISON" ? selectedResult.name : selected?.name ?? t("viewer.drawer.noData")}
                 </p>
               </div>
-              <span>
-                <button
-                  type="button"
-                  className="vx-icon-btn"
-                  onClick={collapseRightPanel}
-                  aria-label={t("viewer.drawer.collapse")}
-                  title={t("viewer.drawer.collapse")}
-                >
-                  <ChevronsRight size={18} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="vx-icon-btn"
-                  onClick={closeRightPanel}
-                  aria-label={t("viewer.drawer.close")}
-                  title={t("common.close")}
-                >
-                  <X size={18} aria-hidden="true" />
-                </button>
-              </span>
-            </div>
-            <div className="vx-tabs vx-tabs--full" role="tablist" aria-label={t("viewer.drawer.tabs")} onKeyDown={moveTab}>
               <button
                 type="button"
-                role="tab"
-                id="vx-dtab-ai"
-                aria-controls="vx-drawer-body"
-                tabIndex={drawer === "ai" ? 0 : -1}
-                aria-selected={drawer === "ai"}
-                onClick={() => openRightPanel("ai")}
+                className="vx-btn vx-btn--quiet vx-drawer__close"
+                onClick={closeRightPanel}
+                aria-label={t("viewer.drawer.close")}
+                title={t("viewer.drawer.closeTitle")}
               >
-                {t("viewer.drawer.aiTab")}
-                {isRunning(aiRunHere) && (
-                  <i className="vx-pulse" aria-hidden="true" />
-                )}
+                <X size={16} aria-hidden="true" />
+                <span className="vx-hide-sm">{t("common.close")}</span>
               </button>
-              {hasInference && (
-                <button
-                  type="button"
-                  role="tab"
-                  id="vx-dtab-result"
-                  aria-controls="vx-drawer-body"
-                  tabIndex={drawer === "result" ? 0 : -1}
-                  aria-selected={drawer === "result"}
-                  onClick={() => openRightPanel("result")}
-                >
-                  {t("viewer.drawer.resultTab")}
-                </button>
-              )}
             </div>
-            <div className="vx-drawer__body" id="vx-drawer-body" role="tabpanel" aria-labelledby={drawer === "result" ? "vx-dtab-result" : "vx-dtab-ai"}>
-              {drawer === "ai" && selected ? (
-                <>
-                  <AiRunForm
-                    dataset={selected}
+            <div className="vx-drawer__body">
+              {drawer === "layers" && (
+                <div id="vx-panel-body">
+                  {!selected && <p className="vx-section__hint vx-form__pad">{t("viewer.panel.pickFirstLayers")}</p>}
+                  {selected && (
+                    <section className="vx-section">
+                      <h3 className="vx-section__title">{t("viewer.panel.bands")}</h3>
+                      <div className="vx-chips">
+                        {hasRgb && (
+                          <button type="button" aria-pressed={activeVariable === "rgb"} className={activeVariable === "rgb" ? "active" : ""} onClick={() => chooseLayer("rgb")}>
+                            RGB
+                          </button>
+                        )}
+                        {selected.variables.map((variable) => (
+                          <button type="button" key={variable} aria-pressed={activeVariable === variable} className={activeVariable === variable ? "active" : ""} onClick={() => chooseLayer(variable)}>
+                            {variable}
+                          </button>
+                        ))}
+                      </div>
+                      {activeVariable === "rgb" && <p className="vx-section__hint">{t("viewer.panel.rgbHint")}</p>}
+                    </section>
+                  )}
+                  <section className="vx-section">
+                    <h3 className="vx-section__title">{t("viewer.panel.layers")}</h3>
+                    <div className="vx-layers">
+                      {hasInference && (
+                        <LayerControl label={t("viewer.panel.aiResult")} accent="result" checked={resultVisible} onChecked={setResultVisible} opacity={resultOpacity} onOpacity={setResultOpacity} />
+                      )}
+                      {selected && (
+                        <LayerControl
+                          label={t(selected.kind === "COMPARISON" ? "viewer.panel.comparison" : "viewer.panel.source")}
+                          accent="source"
+                          swatch={activeVariable ? swatchBackground(activeVariable, showsClasses ? tileStyle?.cmap : variableStyle?.colorBarName) : undefined}
+                          checked={sourceVisible}
+                          onChecked={setSourceVisible}
+                          opacity={sourceOpacity}
+                          onOpacity={setSourceOpacity}
+                        />
+                      )}
+                      <div className="vx-layer-row">
+                        <label className="vx-layer">
+                          <input type="checkbox" checked={baseVisible} onChange={(e) => setBaseVisible(e.target.checked)} />
+                          <i className="vx-swatch vx-swatch--base" aria-hidden="true" />
+                          <span>{t("viewer.panel.basemap")}</span>
+                        </label>
+                      </div>
+                    </div>
+                  </section>
+                  {selected && (
+                    <section className="vx-section">
+                      <h3 className="vx-section__title">{t("viewer.panel.info")}</h3>
+                      <dl className="vx-meta">
+                        <div>
+                          <dt>{t("viewer.panel.name")}</dt>
+                          <dd title={selected.name}>{selected.name}</dd>
+                        </div>
+                        <div>
+                          <dt>{t("viewer.panel.times")}</dt>
+                          <dd className="tabular">{t("viewer.panel.count", { count: times.length })}</dd>
+                        </div>
+                        {times.length > 0 && (
+                          <div>
+                            <dt>{t("viewer.panel.period")}</dt>
+                            <dd className="tabular">{t("viewer.panel.periodValue", { start: times[0]?.label, end: times[times.length - 1]?.label })}</dd>
+                          </div>
+                        )}
+                        <div>
+                          <dt>{t("viewer.panel.bandCount")}</dt>
+                          <dd className="tabular">{t("viewer.panel.count", { count: selected.variables.length })}</dd>
+                        </div>
+                        <div>
+                          <dt>{t("viewer.panel.crs")}</dt>
+                          <dd>EPSG:4326</dd>
+                        </div>
+                      </dl>
+                    </section>
+                  )}
+                </div>
+              )}
+              {selected && visited.includes("area") && (
+                <div hidden={drawer !== "area"}>
+                  <AreaStatsPanel
+                    targets={areaTargets}
                     times={times}
-                    run={aiRunHere}
-                    runError={aiRunError}
-                    starting={aiStarting}
-                    onRun={startAi}
-                    onCancel={cancelAi}
-                    onRetry={retryAi}
+                    currentIndex={timeIndex}
+                    onTimeIndex={(value) => {
+                      setTimeIndex(value);
+                      setPlaying(false);
+                    }}
+                    shape={area.shape}
+                    drawing={area.drawing}
+                    canDraw={area.available}
+                    onDraw={startDraw}
+                    onCancelDraw={area.cancel}
+                    onUseView={areaFromView}
+                    onClear={area.clear}
+                    fileBase={selected.name}
                   />
+                </div>
+              )}
+              {drawer === "ai" && selected && (
+                <>
+                  <AiRunForm dataset={selected} times={times} run={aiRunHere} runError={aiRunError} starting={aiStarting} onRun={startAi} onCancel={cancelAi} onRetry={retryAi} />
                   <section className="vx-section vx-section--top">
                     <h3 className="vx-section__title">{t("viewer.panel.aiResults")}</h3>
+                    {jobsError && <p className="vx-section__hint" role="status">{t("viewer.panel.linkedError", { error: jobsError })}</p>}
                     <AiResultList entries={entries} selectedKey={resultKey} onMap={!!selectedResult && (resultVisible || aiCompare)} onSelect={chooseResult} />
                   </section>
                 </>
-              ) : drawer === "result" && selected && selectedResult ? (
+              )}
+              {drawer === "result" && selected && (
                 <>
-                  {readyEntries.length > 1 && (
-                    <label className="vx-field vx-form__pad">
-                      <span>{t("viewer.drawer.pickResult")}</span>
-                      <select aria-label={t("viewer.drawer.pickResultAria")} value={resultKey} onChange={(event) => setResultKey(event.target.value)}>
-                        {readyEntries.map((entry) => (
-                          <option key={entry.key} value={entry.key}>{`${entry.name} · ${entryDetail(entry, lang)}`}</option>
-                        ))}
-                      </select>
-                    </label>
+                  {comparison ? (
+                    <ComparisonPanel info={comparison} labelOf={labelOf} datasetName={selected.name} />
+                  ) : selectedResult ? (
+                    <>
+                      {readyEntries.length > 1 && (
+                        <label className="vx-field vx-form__pad">
+                          <span>{t("viewer.drawer.pickResult")}</span>
+                          <select aria-label={t("viewer.drawer.pickResultAria")} value={resultKey} onChange={(event) => setResultKey(event.target.value)}>
+                            {readyEntries.map((entry) => (
+                              <option key={entry.key} value={entry.key}>{`${entry.name} · ${entryDetail(entry, lang)}`}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      <AiResultPanel
+                        entry={selectedResult}
+                        result={resultStats}
+                        loading={resultStatsLoading}
+                        currentTime={times[timeIndex]?.iso}
+                        currentLabel={times[timeIndex]?.label}
+                        labelOf={labelOf}
+                        source={selected}
+                        resultVisible={resultVisible}
+                        onResultVisible={setResultVisible}
+                        resultOpacity={resultOpacity}
+                        onResultOpacity={setResultOpacity}
+                        sourceVisible={sourceVisible}
+                        onSourceVisible={setSourceVisible}
+                        sourceOpacity={sourceOpacity}
+                        onSourceOpacity={setSourceOpacity}
+                        onRerun={selectedResult.job?.input?.modelId ? rerunAi : undefined}
+                        rerunBusy={isRunning(aiRun)}
+                        demo={useMockApi}
+                      />
+                    </>
+                  ) : (
+                    <p className="vx-section__hint vx-form__pad">{t(selected.kind === "AI_RESULT" ? "viewer.drawer.noResult" : "viewer.drawer.noResultYet")}</p>
                   )}
-                  <AiResultPanel
-                    entry={selectedResult}
-                    result={resultStats}
-                    loading={resultStatsLoading}
-                    currentTime={times[timeIndex]?.iso}
-                    currentLabel={times[timeIndex]?.label}
-                    labelOf={labelOf}
-                    source={selected}
-                    resultVisible={resultVisible}
-                    onResultVisible={setResultVisible}
-                    resultOpacity={resultOpacity}
-                    onResultOpacity={setResultOpacity}
-                    sourceVisible={sourceVisible}
-                    onSourceVisible={setSourceVisible}
-                    sourceOpacity={sourceOpacity}
-                    onSourceOpacity={setSourceOpacity}
-                    onRerun={selectedResult.job?.input?.modelId ? rerunAi : undefined}
-                    rerunBusy={isRunning(aiRun)}
-                    demo={useMockApi}
+                  <CompareEntry
+                    source={comparison ? comparison.sourceDatacubeId : selected.id}
+                    result={comparison ? comparison.resultId ?? comparison.aId : resultDatacubeId}
+                    time={times[timeIndex]?.iso}
                   />
                 </>
-              ) : (
-                <p className="vx-section__hint vx-form__pad">{t("viewer.drawer.noResult")}</p>
+              )}
+              {selected && visited.includes("export") && (
+                <div hidden={drawer !== "export"}>
+                  <ExportPanel targets={exportTargets} times={times} currentIndex={timeIndex} shape={area.shape} viewBbox={mapExtent4326} datasetName={selected.name} onPng={makePng} />
+                </div>
               )}
             </div>
           </aside>

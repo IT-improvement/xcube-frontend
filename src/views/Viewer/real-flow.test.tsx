@@ -71,7 +71,7 @@ test('RGB 조건과 band 선택이 실제 tile variable을 바꾼다', async () 
   const select = await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ });
   fireEvent.click(select); fireEvent.click(await screen.findByRole('option', { name: /임의 데이터셋/ }));
   await waitFor(() => expect(mockAddLayer).toHaveBeenCalled());
-  fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  fireEvent.click(screen.getByRole('button', { name: '레이어' }));
   expect(screen.getByRole('button', { name: 'RGB' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'RGB' }));
   await waitFor(() => expect(mockBackoffice.tileUrl).toHaveBeenCalledWith('custom_cube_2026', 'rgb', '2026-01-01T00:00:00Z'));
@@ -153,7 +153,7 @@ test('M0 FR-VIEW-04/05: 같은 좌표 전체 시계열, 현재 시점 동기화�
   mockView.fit.mockClear();
   fireEvent.click(screen.getByRole('button', { name: '픽셀 그래프 아래로 숨기기' }));
   fireEvent.click(screen.getByRole('button', { name: '픽셀 그래프 위로 펼치기' }));
-  fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  fireEvent.click(screen.getByRole('button', { name: '레이어' }));
   fireEvent.click(screen.getByRole('button', { name: '패널 닫기' }));
   expect(mockAddLayer).toHaveBeenCalledTimes(layers);
   expect(mockBackoffice.getTimeseries).toHaveBeenCalledTimes(1);
@@ -391,12 +391,12 @@ test('UX8: 원본 colour bar 범례는 비교(스와이프) 중에도 남고, �
   await selectBaselineDataset();
   // RGB can be built, so it opens on RGB (FB1); pick red for its colour bar.
   expect(await screen.findByRole('group', { name: '원본 범례: RGB 합성, 빨강 red · 초록 green · 파랑 blue' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  fireEvent.click(screen.getByRole('button', { name: '레이어' }));
   fireEvent.click(screen.getByRole('button', { name: 'red' }));
   expect(await screen.findByRole('group', { name: '원본 범례: red, 94 – 621.7' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /스와이프/ }));
   expect(screen.getByRole('group', { name: '원본 범례: red, 94 – 621.7' })).toBeInTheDocument();
-  if (!screen.queryByRole('button', { name: 'nir' })) fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  if (!screen.queryByRole('button', { name: 'nir' })) fireEvent.click(screen.getByRole('button', { name: '레이어' }));
   fireEvent.click(screen.getByRole('button', { name: 'nir' }));
   expect(screen.getByRole('group', { name: '원본 범례: nir, 32 – 1,469' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'RGB' }));

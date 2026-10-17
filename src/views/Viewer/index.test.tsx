@@ -28,7 +28,11 @@ test('Zarr를 선택하기 전에는 배경지도만 유지하고 데이터 도�
   await screen.findByRole('option', { name: '한강 수체 모니터링' });
   expect(screen.getByRole('button', { name: '테스트 지도' })).toBeInTheDocument();
   expect(screen.queryByRole('region', { name: '시계열 탐색기' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /AI 수체 추출/ })).not.toBeInTheDocument();
+  // UX2: the tool rail is always there; tools that need data are off, with the reason.
+  expect(screen.getByRole('button', { name: 'AI 수체 추출' })).toHaveAttribute('aria-disabled', 'true');
+  expect(screen.getByRole('button', { name: 'AI 수체 추출' })).toHaveAccessibleDescription('데이터를 먼저 고르세요.');
+  expect(screen.getByRole('button', { name: '영역 통계' })).toHaveAttribute('aria-disabled', 'true');
+  expect(screen.getByRole('button', { name: '레이어' })).not.toHaveAttribute('aria-disabled');
   expect(screen.queryByText('원본 영상')).not.toBeInTheDocument();
 });
 
@@ -38,9 +42,10 @@ test('원본 Zarr 선택 후 시간 도구와 원본 레이어만 표시한다',
   fireEvent.click(selector);
   fireEvent.click(await screen.findByRole('option', { name: /Sentinel-2/ }));
   expect(await screen.findByRole('region', { name: '시계열 탐색기' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /AI 수체 추출/ })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: '결과' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  expect(screen.getByRole('button', { name: 'AI 수체 추출' })).not.toHaveAttribute('aria-disabled');
+  // No AI result yet: the 결과 비교 tool has no count.
+  expect(screen.queryByLabelText(/AI 결과 \d+개/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '레이어' }));
   expect(screen.getByText('원본 영상')).toBeInTheDocument();
   expect(screen.queryByText('AI 결과 Zarr')).not.toBeInTheDocument();
 });
@@ -50,7 +55,7 @@ test('연결된 infer 결과가 있는 Zarr에서만 결과 UI를 표시하고 �
   const selector = await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ });
   fireEvent.click(selector);
   fireEvent.click(await screen.findByRole('option', { name: /Landsat-8/ }));
-  expect(await screen.findByRole('button', { name: '결과' })).toBeInTheDocument();
+  expect(await screen.findByLabelText('AI 결과 2개')).toBeInTheDocument();
   expect(screen.queryByRole('img', { name: /시계열 그래프/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '테스트 지도' }));
   expect(screen.queryByRole('img', { name: /시계열 그래프/ })).not.toBeInTheDocument();
@@ -73,8 +78,8 @@ test('연결된 infer 결과가 있는 Zarr에서만 결과 UI를 표시하고 �
   const initialX = graph.querySelector('.current-time .cursor')?.getAttribute('x1');
   fireEvent.change(screen.getByRole('slider', { name: '관측 시점' }), { target: { value: '1' } });
   expect(screen.getByRole('img', { name: /시계열 그래프/ }).querySelector('.current-time .cursor')?.getAttribute('x1')).not.toBe(initialX);
-  fireEvent.click(screen.getByRole('button', { name: /AI 수체 추출/ }));
-  expect(screen.getByRole('complementary', { name: 'AI 수체 추출 설정' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'AI 수체 추출' }));
+  expect(screen.getByRole('complementary', { name: 'AI 수체 추출' })).toBeInTheDocument();
   expect(screen.queryByRole('complementary', { name: '픽셀 시계열 분석' })).not.toBeInTheDocument();
   expect(screen.getByRole('img', { name: /시계열 그래프/ })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '픽셀 그래프 아래로 숨기기' }));
@@ -127,14 +132,21 @@ test('45개 Zarr 목록에서 마지막 항목을 검색해 선택할 수 있다
   getDatasets.mockRestore();
 });
 
-test('레이어 패널은 기본 접힘이며 열기와 닫기를 반복할 수 있다', async () => {
+test('도구 창은 기본 접힘이며 열기와 닫기를 반복할 수 있다 (UX2)', async () => {
   render(<Viewer />);
   await screen.findByRole('option', { name: '한강 수체 모니터링' });
-  fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
-  expect(screen.getByRole('complementary', { name: '레이어 및 AI 작업 패널' })).toBeInTheDocument();
+  expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+  const layers = screen.getByRole('button', { name: '레이어' });
+  expect(layers).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(layers);
+  expect(screen.getByRole('complementary', { name: '레이어' })).toBeInTheDocument();
+  expect(layers).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByText(/지금은 배경지도만 있습니다/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '패널 닫기' }));
-  expect(screen.queryByRole('complementary', { name: '레이어 및 AI 작업 패널' })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' })).toBeInTheDocument();
+  expect(screen.queryByRole('complementary', { name: '레이어' })).not.toBeInTheDocument();
+  fireEvent.click(layers);
+  fireEvent.click(layers);
+  expect(screen.queryByRole('complementary', { name: '레이어' })).not.toBeInTheDocument();
 });
 
 test('데이터 추가는 관리 화면을 새 탭으로 연다', async () => {
