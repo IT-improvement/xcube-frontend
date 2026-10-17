@@ -1177,3 +1177,96 @@
   .vx-drawbar .vx-btn, .vx-shape .vx-btn, .vx-stats__head .vx-btn, .vx-note--mark .vx-btn { min-height: var(--vx-hit); height: var(--vx-hit); }
   .vx-stats__table summary { min-height: var(--vx-hit); display: flex; align-items: center; }
 }
+
+/* ── CMP2 (UR-64): 결과 비교 holds two groups — AI water results, then comparison results as ruled cards ── */
+.vx-resgroup__head {
+  margin: 0; padding: 14px 16px 2px; color: var(--vx-ink); font: 600 15px/1.4 var(--vx-font);
+}
+.vx-resgroup { gap: 12px; border-top: 1px solid var(--vx-rule-strong); }
+.vx-resgroup__title { margin: 0; color: var(--vx-ink); font: 600 15px/1.4 var(--vx-font); }
+.vx-resgroup__title:focus { outline: none; }
+.vx-resgroup__title:focus-visible { outline: 2px solid var(--vx-focus); outline-offset: 2px; border-radius: var(--fb-radius-hair); }
+.vx-cmplist { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--vx-rule); }
+.vx-cmpcard {
+  position: relative; display: grid; gap: 6px; min-width: 0; padding: 12px 0 12px 12px;
+  border-bottom: 1px solid var(--vx-rule);
+}
+/* Shown on the map: an ink rule down the left edge and a worded tag (never colour alone). */
+.vx-cmpcard::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: var(--fb-radius-hair); background: var(--vx-rule); }
+.vx-cmpcard.is-shown::before { background: var(--vx-ink); }
+.vx-cmpcard__top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.vx-cmptag {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px;
+  border: 1px solid var(--vx-rule-strong); border-radius: var(--fb-radius-mark); background: var(--vx-surface);
+  color: var(--vx-ink); font: 600 12px/1 var(--vx-font); white-space: nowrap;
+}
+.vx-cmpcard__who { color: var(--vx-ink-2); font: 500 12px/1.3 var(--vx-font); }
+.vx-cmpcard__on { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--vx-ink); font: 600 12px/1.3 var(--vx-font); }
+.vx-cmpcard__name { margin: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: var(--vx-ink); font: 600 14px/1.4 var(--vx-font); word-break: break-all; }
+.vx-cmpcard__when { margin: 0; color: var(--vx-ink-2); font: 500 13px/1.4 var(--vx-font); }
+.vx-cmpcard__metric { display: flex; align-items: baseline; gap: 8px; margin: 0; color: var(--vx-ink-2); font: 500 13px/1.4 var(--vx-font); }
+.vx-cmpcard__metric strong { color: var(--vx-ink); font: 600 16px/1.3 var(--vx-font); }
+.vx-cmpcard__metric small { color: var(--vx-ink-2); font: 500 13px/1.3 var(--vx-font); }
+.vx-cmpcard__actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.vx-cmpcard__actions .vx-btn { height: 32px; padding: 0 10px; }
+.vx-cmpcard__chev { transition: transform 140ms ease-out; }
+.vx-cmpcard [aria-expanded='true'] .vx-cmpcard__chev { transform: rotate(180deg); }
+.vx-cmpcard__delete { margin-left: auto; color: var(--vx-ink-2); }
+.vx-cmpcard__delete:hover { color: var(--vx-bad); }
+.vx-cmpcard__details { display: grid; gap: 8px; padding-top: 4px; }
+.vx-cmpcard__details[hidden] { display: none; }
+.vx-cmpcard__csv { justify-self: start; padding: 0 8px; }
+.vx-cmpempty { display: grid; gap: 8px; }
+.vx-cmpempty > p:first-child { margin: 0; color: var(--vx-ink); font: var(--fb-text-body); }
+
+/* Rail: a small dot when a comparison this browser has not listed yet exists. */
+.vx-rail__new {
+  position: absolute; top: 6px; left: 8px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--vx-result); box-shadow: 0 0 0 2px var(--vx-surface);
+}
+
+/* Over the map while a comparison is shown. */
+.vx-cmpbar {
+  position: absolute; z-index: 9; top: 12px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; max-width: min(640px, calc(100% - 140px)); padding: 6px 6px 6px 10px;
+  border: 1px solid var(--vx-rule-strong); border-radius: var(--vx-radius-lg); background: var(--vx-surface); box-shadow: var(--vx-lift);
+}
+.drawer-open .vx-cmpbar { left: calc((100% - var(--vx-drawer-w) - 24px) / 2); max-width: min(560px, calc(100% - var(--vx-drawer-w) - 120px)); }
+.vx-cmpbar__text { flex: 1; min-width: 0; margin: 0; color: var(--vx-ink-2); font: 500 13px/1.35 var(--vx-font); }
+.vx-cmpbar__text strong { color: var(--vx-ink); font-weight: 600; }
+.vx-cmpbar__lead { color: var(--vx-ink-2); }
+.vx-cmpbar__note { display: block; color: var(--vx-ink-2); font: 500 12px/1.3 var(--vx-font); }
+.vx-cmpbar__off { flex: none; }
+.vx-cmpbar ~ .vx-toast--notice, .vx-cmpbar ~ .vx-toast--done { top: 108px; }
+
+/* The comparison legend folds (small screens). */
+.vx-cmp-legend__toggle {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; padding: 0; border: 0; background: transparent; cursor: pointer; text-align: left;
+  color: var(--vx-ink); font: 600 12.5px/1.3 var(--vx-font);
+}
+.vx-cmp-legend__toggle strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vx-cmp-legend__chev { color: var(--vx-ink-2); transition: transform 140ms ease-out; }
+.vx-cmp-legend__toggle[aria-expanded='false'] .vx-cmp-legend__chev { transform: rotate(-90deg); }
+.vx-cmp-legend [hidden] { display: none; }
+
+@media (max-width: 1023px) {
+  .vx-cmpbar, .drawer-open .vx-cmpbar { left: 12px; right: 12px; transform: none; max-width: none; }
+}
+@media (max-width: 767px) {
+  /* Leaves the map tool column (right) free. */
+  .vx-cmpbar, .drawer-open .vx-cmpbar { top: 8px; left: 8px; right: 60px; gap: 8px; }
+  .vx-cmpbar .vx-cmptag { display: none; }
+  .vx-cmpcard__actions .vx-btn { height: 44px; flex: 1 1 auto; }
+  .vx-cmpcard__delete { flex: 0 0 auto; margin-left: 0; }
+  .vx-cmpcard__delete-text { display: none; }
+  .vx-cmpcard__delete { min-width: 44px; }
+  .vx-cmp-legend__toggle { min-height: 44px; }
+}
+@media (pointer: coarse) {
+  .vx-cmpcard__actions .vx-btn, .vx-cmpbar__off, .vx-cmpcard__csv { min-height: var(--vx-hit); height: var(--vx-hit); }
+  .vx-cmp-legend__toggle { min-height: var(--vx-hit); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vx-cmpcard__chev, .vx-cmp-legend__chev { transition: none; }
+}
+.vx-cmpbar__when { white-space: nowrap; }

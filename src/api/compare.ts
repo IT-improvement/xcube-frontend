@@ -23,6 +23,8 @@ export type CompareJob = JobSummary & {
   metrics?: Record<string, unknown> | null;
   comparison?: Record<string, unknown> | null;
   result?: Record<string, unknown> | null;
+  /** CMP2: original of the compared AI results (null for jobs made before CMP2). */
+  originDatacubeId?: number | string | null;
 };
 /** POST /api/v1/compare/check: times, grid, estimated size and quota without running. */
 export type CompareCheck = { type?: string; times?: Record<string, string>; grid?: { width: number; height: number; bbox: number[] }; estimatedBytes?: number; quota?: { usedBytes: number; limitBytes: number; allowed: boolean }; blockers?: unknown[]; warnings?: unknown[] };
@@ -144,14 +146,15 @@ export async function comparisonForDataset(datasetId: string | number): Promise<
 
 /**
  * Address of the S9 page with the Viewer's data filled in. Query (read by `/app/analysis/compare`):
- * `type` (TIME_CHANGE|MODEL_COMPARE|REFERENCE, optional), `source` (original datacube id), `result` (AI result datacube id),
- * `t` (time ISO shown in the Viewer).
+ * `type` (TIME_CHANGE|MODEL_COMPARE|REFERENCE, optional), `source` (original datacube id), `resultId` (AI result
+ * datacube id; CMP2 — S9 still reads the older `result`), `t` (time ISO shown in the Viewer).
  */
-export function compareHref(input: { source?: string; result?: string; time?: string; type?: ComparisonType }): string {
+export function compareHref(input: { source?: string; result?: string; resultId?: string; time?: string; type?: ComparisonType }): string {
   const params = new URLSearchParams();
+  const resultId = input.resultId ?? input.result;
   if (input.type) params.set('type', input.type);
-  if (input.source) params.set('source', input.source);
-  if (input.result) params.set('result', input.result);
+  if (input.source && !resultId) params.set('source', input.source);
+  if (resultId) params.set('resultId', resultId);
   if (input.time) params.set('t', input.time);
   const query = params.toString();
   return `/app/analysis/compare${query ? `?${query}` : ''}`;

@@ -178,7 +178,7 @@ describe('F1 영역 통계', () => {
   test('Viewer: 영역 통계 탭은 데이터를 고르면 열리고, 그리기 버튼과 계산 대상(원본·AI 결과)을 보인다', async () => {
     render(<Viewer initialDatasetId="landsat" />);
     await screen.findByRole('region', { name: '시계열 탐색기' });
-    await screen.findByLabelText(/AI 결과 \d+개/);
+    await screen.findByLabelText(/AI 결과 [1-9]\d*개/);
     fireEvent.click(screen.getByRole('button', { name: '영역 통계' }));
     const panel = screen.getByRole('complementary', { name: '영역 통계' });
     expect(within(panel).getByRole('group', { name: '영역 그리기' })).toBeInTheDocument();
@@ -317,8 +317,8 @@ describe('F2 내보내기', () => {
 });
 
 describe('F3 비교 결과', () => {
-  test('COMPARISON 데이터는 클래스 범례와 지표를 보이고, 비교 분석 만들기로 이어진다', async () => {
-    render(<Viewer initialDatasetId="landsat-change-024" />);
+  test('원본을 모르는 예전 COMPARISON 링크는 지금처럼 그 데이터를 열어 클래스 범례와 지표를 보인다', async () => {
+    render(<Viewer initialDatasetId="legacy-change-001" />);
     await screen.findByRole('region', { name: '시계열 탐색기' });
     const legend = await screen.findByRole('group', { name: '비교 범례: 시점 간 변화' });
     expect(within(legend).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['유지 (물 → 물)12.84 km²', '새로 생김1.92 km²', '사라짐3.47 km²', '투명: 변화 없음']);
@@ -329,16 +329,18 @@ describe('F3 비교 결과', () => {
     const panel = screen.getByRole('complementary', { name: '결과 비교' });
     expect(within(panel).getByRole('heading', { name: '시점 간 변화' })).toBeInTheDocument();
     expect(within(panel).getByText('-9.5%')).toBeInTheDocument();
-    expect(within(panel).getByRole('link', { name: /비교 분석 만들기/ })).toHaveAttribute('href', '/app/analysis/compare?result=landsat-infer-024&t=2025-observation-6');
     expect(within(panel).getByRole('link', { name: /비교 분석 만들기/ })).toHaveAttribute('target', '_blank');
   });
 
-  test('원본 데이터의 결과 비교 탭에서도 지금 데이터·AI 결과·시점을 채운 S9 링크가 있다', async () => {
+  test('AI 결과가 없는 원본의 결과 비교는 먼저 AI 수체 추출로 안내한다', async () => {
     render(<Viewer initialDatasetId="sentinel" />);
     await screen.findByRole('region', { name: '시계열 탐색기' });
     fireEvent.click(screen.getByRole('button', { name: '결과 비교' }));
     expect(screen.getByText(/아직 AI 결과가 없습니다/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /비교 분석 만들기/ })).toHaveAttribute('href', '/app/analysis/compare?source=sentinel&t=2025-observation-1');
+    expect(await screen.findByRole('heading', { name: '비교 분석 결과 (0개)' })).toBeInTheDocument();
+    expect(screen.getByText('먼저 AI 수체 추출을 하세요. 비교는 AI 결과로 만듭니다.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'AI 수체 추출로' }));
+    expect(screen.getByRole('complementary', { name: 'AI 수체 추출' })).toBeInTheDocument();
   });
 
   test('지표 읽기·색표·주소', () => {
@@ -353,6 +355,7 @@ describe('F3 비교 결과', () => {
     expect(JSON.parse(comparisonStyle('TIME_CHANGE').cmap)).toEqual({ name: 'xcube_compare_time_change', type: 'categorical', colors: [[1, '#3fb4ff'], [2, '#1a9850'], [3, '#d73027']] });
     expect(JSON.parse(comparisonStyle('REFERENCE').cmap).colors).toEqual([[1, '#3fb4ff'], [2, '#d73027'], [3, '#fdae61']]);
     expect(compareHref({ type: 'MODEL_COMPARE', source: '86' })).toBe('/app/analysis/compare?type=MODEL_COMPARE&source=86');
+    expect(compareHref({ resultId: '87' })).toBe('/app/analysis/compare?resultId=87');
     expect(comparisonTypeFromColorBar('{"name":"xcube_compare_model_compare","type":"categorical"}')).toBe('MODEL_COMPARE');
     expect(comparisonTypeFromColorBar('viridis')).toBeNull();
   });

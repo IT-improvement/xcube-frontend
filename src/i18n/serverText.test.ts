@@ -48,6 +48,8 @@ const SERVER_CODES = {
 const PENDING_CODES = ['PRODUCT_TYPE_MISMATCH', 'PRODUCT_LEVEL_UNSUPPORTED', 'PRODUCT_METADATA_MISSING', 'PRODUCT_BAND_MISSING', 'PRODUCT_SENSOR_MIXED', 'PRODUCT_OFFSET_MIXED', 'PRODUCT_READ_FAILED', 'SENTINEL2_CHECKED', 'LANDSAT_CHECKED',
   // UPL2 loose band files.
   'PRODUCT_GRID_MISMATCH', 'PRODUCT_VISUAL_SKIPPED', 'PRODUCT_NAME_UNRECOGNIZED', 'PRODUCT_LAYOUT_MIXED'] as const;
+/** Codes in the table that no screen words: the screen reacts to them without a message (FB1 thumbnails retry). */
+const SILENT_CODES = ['THUMBNAIL_NOT_READY'] as const;
 const ALL_CODES = Object.values(SERVER_CODES).flat();
 const HANGUL = /[가-힣]/;
 
@@ -80,7 +82,7 @@ describe('every I18N5 code has Korean and English text', () => {
     const rows = text.slice(start, end === -1 ? undefined : end).split('\n').filter((line) => /^\| [^-]/.test(line));
     const codes = new Set(rows.map((line) => /`([A-Z0-9_]+)`/.exec(line)?.[1]).filter((code): code is string => !!code));
     expect(codes.size).toBeGreaterThan(100);
-    const listed = PENDING_CODES.filter((code) => codes.has(code));
+    const listed = [...PENDING_CODES, ...SILENT_CODES].filter((code) => codes.has(code));
     expect(Array.from(codes).sort()).toEqual(Array.from(new Set([...ALL_CODES, ...listed])).sort());
   });
 });

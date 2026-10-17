@@ -73,7 +73,7 @@ const koFx = {
   },
   compare: {
     title: '비교 분석',
-    description: 'AI 수체 결과를 시점끼리, 모델끼리, 정답 자료와 비교합니다. 결과는 클래스 지도 데이터로 저장되어 Viewer에서 열 수 있습니다.',
+    description: 'AI 수체 결과를 시점끼리, 모델끼리, 정답 자료와 비교합니다. 결과는 원본 데이터의 Viewer ‘결과 비교’에 쌓입니다.',
     step: { type: '무엇을 비교할까요', inputs: '데이터와 시점', run: '확인하고 실행' },
     types: {
       TIME_CHANGE: { name: '시점 간 변화', text: '한 AI 결과의 두 시점을 비교해 물이 새로 생긴 곳과 사라진 곳, 면적 증감을 봅니다.' },
@@ -128,6 +128,7 @@ const koFx = {
     result: {
       title: '비교 결과',
       viewer: 'Viewer에서 보기',
+      where: "결과는 원본 '{name}'을 Viewer로 열고 ‘결과 비교’에서 볼 수 있습니다.",
       reference: '정답 {ref}',
       progress: '비교 진행률',
       working: '비교하는 중입니다. 이 화면을 떠나도 서버에서 계속합니다.',

@@ -154,6 +154,8 @@ const enApp: AppTranslation = {
     toList: 'Back to data',
     sourceData: 'Source data:',
     viewSource: 'View #{id}',
+    comparisons: '{count} comparison results',
+    comparisonsView: 'View in Viewer',
     deleteLabel: 'Delete data',
     tabsLabel: 'Data details',
     tabs: {

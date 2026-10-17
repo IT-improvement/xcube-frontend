@@ -61,7 +61,7 @@ describe('Viewer chrome in English', () => {
     // UX2: the tool rail names every tool in words.
     const rail = screen.getByRole('navigation', { name: 'Tools' });
     expect(within(rail).getAllByRole('button').map((button) => button.querySelector('.vx-rail__label')?.textContent)).toEqual(['Layers', 'Area stats', 'AI water', 'Compare', 'Export']); // eslint-disable-line testing-library/no-node-access
-    expect(await screen.findByLabelText('2 AI results')).toBeInTheDocument();
+    expect(await screen.findByLabelText(/^2 AI results/)).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'On the map now' })).toHaveTextContent(/Band\s*RGB composite.*Date\s*2025\.07\.03|Band.*Date/);
     expect(screen.getByRole('button', { name: 'Feature tour' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'User account menu' })).toBeInTheDocument();
@@ -276,11 +276,11 @@ describe('Legends and AI in English', () => {
 
   test('result panel: threshold estimate and metrics', async () => {
     await openViewer('landsat');
-    await screen.findByLabelText('2 AI results');
+    await screen.findByLabelText(/^2 AI results/);
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Tools' })).getByRole('button', { name: /^Compare/ }));
     const drawer = screen.getByRole('complementary', { name: 'Compare results' });
     expect(within(drawer).getByRole('heading', { level: 2, name: 'Compare results' })).toBeInTheDocument();
-    expect(within(drawer).getByRole('link', { name: /Make a comparison/ })).toHaveAttribute('href', expect.stringMatching(/^\/app\/analysis\/compare\?source=landsat&result=/));
+    expect(within(drawer).getByRole('link', { name: /Make a comparison/ })).toHaveAttribute('href', expect.stringMatching(/^\/app\/analysis\/compare\?resultId=/));
     const slider = await within(drawer).findByRole('slider', { name: 'Estimate threshold' });
     expect(slider).toHaveAttribute('aria-valuetext', 'Threshold 0.50, estimated area 38.20 km²');
     expect(within(drawer).getByText('Estimated area, 2025.07.03')).toBeInTheDocument();
@@ -288,7 +288,7 @@ describe('Legends and AI in English', () => {
     fireEvent.change(slider, { target: { value: '13' } });
     expect(within(drawer).getByRole('button', { name: 'Run again with threshold 0.70' })).toBeEnabled();
     expect(within(drawer).getByText('Accuracy against ground truth (water_gt)')).toBeInTheDocument();
-    for (const label of ['IoU', 'F1', 'Precision', 'Recall']) expect(within(drawer).getByText(label)).toBeInTheDocument();
+    for (const label of ['IoU', 'F1', 'Precision', 'Recall']) expect(within(drawer).getAllByText(label).length).toBeGreaterThan(0);
     expect(within(drawer).getByText(/^Research only/)).toBeInTheDocument();
     expect(within(drawer).getByText(/Best threshold 0\.90/)).toBeInTheDocument();
     expect(within(drawer).getByRole('button', { name: 'Export area by time (CSV)' })).toBeEnabled();
@@ -299,7 +299,7 @@ describe('Legends and AI in English', () => {
 test('no Hangul is left in the English Viewer chrome (data names aside)', async () => {
   const timeline = await openViewer('landsat');
   // Result drawer (the layer sheet closes for it on this narrow window), then the AI run tab of the same drawer.
-  await screen.findByLabelText('2 AI results');
+  await screen.findByLabelText(/^2 AI results/);
   const rail = screen.getByRole('navigation', { name: 'Tools' });
   // Area stats and export stay in the page (hidden) once opened, so their words are checked too.
   fireEvent.click(within(rail).getByRole('button', { name: 'Area stats' }));

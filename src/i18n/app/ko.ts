@@ -158,6 +158,9 @@ const koApp = {
     toList: '데이터 목록으로',
     sourceData: '원본 데이터:',
     viewSource: '#{id} 보기',
+    /** CMP2: comparison results of an original, read in its Viewer 결과 비교. */
+    comparisons: '비교 결과 {count}개',
+    comparisonsView: 'Viewer에서 보기',
     deleteLabel: '데이터 삭제',
     tabsLabel: '데이터 상세',
     tabs: {

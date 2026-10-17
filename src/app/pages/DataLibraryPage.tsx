@@ -49,9 +49,10 @@ export function RoleBadge({ role }: { role?: string }) {
 
 const SCOPES: Scope[] = ['all', 'owned', 'shared', 'example'];
 const SORTS: Sort[] = ['recent', 'name', 'period'];
-const KINDS: Kind[] = ['', 'original', 'fusion', 'ai', 'compare'];
+// CMP2: comparison results are not listed here (they are read in the original's Viewer 결과 비교), so no 비교 filter.
+const KINDS: Kind[] = ['', 'original', 'fusion', 'ai'];
 const pick = <T extends string>(value: string | null, allowed: T[], fallback: T) => (allowed.includes(value as T) ? (value as T) : fallback);
-const kindOf = (item: ZarrDataset): Kind => (item.kind === 'FUSION' ? 'fusion' : item.kind === 'AI_RESULT' ? 'ai' : item.kind === 'COMPARISON' ? 'compare' : 'original');
+const kindOf = (item: ZarrDataset): Kind => (item.kind === 'FUSION' ? 'fusion' : item.kind === 'AI_RESULT' ? 'ai' : 'original');
 /** Example data (UX1) is its own group: not mine (even for its owner's eyes it is shared with everyone) and not "shared with me". */
 const scopeOf = (item: ZarrDataset): Exclude<Scope, 'all'> => (isExample(item) ? 'example' : isOwned(item) ? 'owned' : 'shared');
 
@@ -153,7 +154,6 @@ export default function DataLibraryPage() {
           </label>
           <Segmented label={t('data.kindLabel')} value={kind} onChange={setKind} items={[
             { id: '', label: t('app.all') }, { id: 'original', label: t('kinds.original') }, { id: 'fusion', label: t('kinds.fusion') }, { id: 'ai', label: t('kinds.ai') },
-            ...(items.some((item) => item.kind === 'COMPARISON') ? [{ id: 'compare' as const, label: t('datasetFacts.kinds.compare') }] : []),
           ]} />
           <Segmented label={t('datasetFacts.filter.label')} value={time} onChange={setTime} items={[
             { id: '', label: t('datasetFacts.filter.all') }, { id: 'series', label: t('datasetFacts.filter.series') }, { id: 'single', label: t('datasetFacts.filter.single') },
@@ -236,7 +236,6 @@ export default function DataLibraryPage() {
                             {isExample(item) ? <Badge>{t('examples.tag')}</Badge> : !isOwned(item) && <Badge tone="water">{t('app.shared')}</Badge>}
                             {item.kind === 'FUSION' && <Badge tone="water">{t('kinds.fusion')}</Badge>}
                             {item.kind === 'AI_RESULT' && <Badge tone="result">{t('kinds.ai')}</Badge>}
-                            {item.kind === 'COMPARISON' && <Badge tone="result">{t('datasetFacts.kinds.compare')}</Badge>}
                             <DatasetStatus dataset={item} quiet />
                             {/* ≤767px the 시점 column is hidden: single date or series stays readable under the name (FB1). */}
                             <span className="only-sm data-times">{timeText(item)}</span>

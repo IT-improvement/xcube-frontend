@@ -163,7 +163,7 @@ test('다시 그리다 취소하면 앞서 그린 도형이 그대로 남는다(
 test('결과 비교를 닫기 버튼이나 Esc로 닫아도 도구 막대로 닫을 때처럼 AI 결과 레이어·범례가 내려간다', async () => {
   render(<Viewer initialDatasetId="landsat" />);
   await screen.findByRole('heading', { name: /Landsat-8 · 2024/ });
-  await screen.findByLabelText(/AI 결과 \d+개/);
+  await screen.findByLabelText(/AI 결과 [1-9]\d*개/);
   const aiLegend = () => screen.queryByRole('group', { name: 'AI 결과 범례' });
   fireEvent.click(rail().getByRole('button', { name: /결과 비교/ }));
   await waitFor(() => expect(aiLegend()).toBeInTheDocument());

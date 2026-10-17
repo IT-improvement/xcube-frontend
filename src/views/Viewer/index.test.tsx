@@ -55,7 +55,7 @@ test('연결된 infer 결과가 있는 Zarr에서만 결과 UI를 표시하고 �
   const selector = await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ });
   fireEvent.click(selector);
   fireEvent.click(await screen.findByRole('option', { name: /Landsat-8/ }));
-  expect(await screen.findByLabelText('AI 결과 2개')).toBeInTheDocument();
+  expect(await screen.findByLabelText(/^AI 결과 2개/)).toBeInTheDocument();
   expect(screen.queryByRole('img', { name: /시계열 그래프/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '테스트 지도' }));
   expect(screen.queryByRole('img', { name: /시계열 그래프/ })).not.toBeInTheDocument();

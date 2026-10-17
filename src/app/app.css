@@ -444,3 +444,6 @@ a.app-account__item { text-decoration: none; }
   .onboard__action { grid-column: 2; }
 }
 .job-export { color: var(--fb-ink-2) !important; }
+.dataset-comparisons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; color: var(--fb-ink); font: 400 14px/1.55 var(--fb-font); }
+.dataset-comparisons svg { color: var(--fb-ink-2); }
+.dataset-comparisons a { display: inline-flex; align-items: center; gap: 4px; }

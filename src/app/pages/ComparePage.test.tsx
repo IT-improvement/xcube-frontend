@@ -63,7 +63,8 @@ test('Viewer에서 넘긴 값으로 채우고, 확인 결과(시점·격자·크
   expect(within(result).getByText('-2.60 km²')).toBeInTheDocument();
   expect(within(result).getByText('3.33 km²', { selector: '.class-key__area' })).toBeInTheDocument();
   expect(within(result).getByText('투명: 변화 없음(물 아님)')).toBeInTheDocument();
-  expect(within(result).getByRole('link', { name: /Viewer에서 보기/ })).toHaveAttribute('href', '/app/viewer?dataset=101');
+  expect(within(result).getByRole('link', { name: /Viewer에서 보기/ })).toHaveAttribute('href', '/app/viewer?dataset=86&tool=result&comparison=101');
+  expect(within(result).getByText("결과는 원본 'test_GEE'을 Viewer로 열고 ‘결과 비교’에서 볼 수 있습니다.")).toBeInTheDocument();
 });
 
 test('모델 간: B는 같은 원본의 다른 결과만, 서버 오류 코드는 고칠 방법을 말한다', async () => {
@@ -109,4 +110,12 @@ test('FIX4: 다른 비교를 열다 실패하면 앞 비교의 지표를 그대�
   fireEvent.click(await screen.findByRole('button', { name: '다른 비교 결과 보기' }));
   expect(await screen.findByRole('alert')).toBeInTheDocument();
   expect(screen.queryByRole('region', { name: 'U-Net 결과 시점 변화' })).not.toBeInTheDocument();
+});
+
+test('CMP2: ?resultId=로 미리 채우고, 지난 비교의 Viewer 링크는 작업의 originDatacubeId로 원본의 결과 비교를 연다', async () => {
+  compare.listJobs.mockResolvedValue([{ ...done, id: 'c9', name: '예전 비교', originDatacubeId: 55, input: { type: 'TIME_CHANGE', resultId: 999, t1, t2 }, registration: { datacubeId: 120 } }]);
+  renderAt('/app/analysis/compare?resultId=88');
+  await waitFor(() => expect(screen.getByLabelText('AI 결과')).toHaveValue('88'));
+  expect(screen.getByText(/결과는 원본 데이터의 Viewer ‘결과 비교’에 쌓입니다/)).toBeInTheDocument();
+  expect(await screen.findByRole('link', { name: '예전 비교 결과를 Viewer에서 보기' })).toHaveAttribute('href', '/app/viewer?dataset=55&tool=result&comparison=120');
 });
