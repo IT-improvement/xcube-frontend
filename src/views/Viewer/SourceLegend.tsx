@@ -101,6 +101,14 @@ export function swatchBackground(variable: string, colorBarName?: string): strin
   return `linear-gradient(90deg, ${(colorBar!.reversed ? [...stops].reverse() : stops).join(", ")})`;
 }
 
+/** Colour stops of a colour map in drawing order (reversed maps reversed), for the map PNG legend; null when unknown. */
+export function rampStops(colorBarName?: string): string[] | null {
+  const colorBar = parseColorBar(colorBarName);
+  const stops = colorBar ? STOPS[colorBar.base] : undefined;
+  if (!stops) return null;
+  return colorBar!.reversed ? [...stops].reverse() : [...stops];
+}
+
 export const legendValue = (value: number, lang: Lang = getLanguage()) => formatNumber(value, { maximumSignificantDigits: 4 }, lang);
 const CHANNELS = ["red", "green", "blue"] as const;
 

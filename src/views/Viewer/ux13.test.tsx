@@ -44,7 +44,7 @@ beforeEach(() => {
 });
 afterAll(() => setWidth(1024));
 
-const sheet = () => screen.queryByRole('complementary', { name: '레이어 및 AI 작업 패널' });
+const panel = () => screen.queryByRole('complementary');
 const counter = () => within(screen.getByRole('region', { name: '시계열 탐색기' })).getByText(/\d+ \/ \d+/);
 
 describe('지도 키보드', () => {
@@ -76,73 +76,73 @@ describe('지도 키보드', () => {
 });
 
 describe('나란히 비교 공간', () => {
-  test('나란히를 켜면 레이어 시트와 분석 drawer를 접고, 끄면 시트를 되돌린다', async () => {
+  test('나란히를 켜면 도구 창을 닫고, 끄면 열려 있던 도구를 되돌린다 (UX2)', async () => {
     setWidth(1440);
     render(<Viewer initialDatasetId="landsat" />);
     await screen.findByRole('region', { name: '시계열 탐색기' });
-    expect(sheet()).toBeInTheDocument(); // wide screens start with the sheet open
-    fireEvent.click(screen.getByRole('button', { name: /AI 수체 추출/ }));
-    expect(screen.getByRole('complementary', { name: 'AI 수체 추출 설정' })).toBeInTheDocument();
+    expect(panel()).not.toBeInTheDocument(); // UX2: the tool panel starts closed on every width
+    fireEvent.click(screen.getByRole('button', { name: 'AI 수체 추출' }));
+    expect(screen.getByRole('complementary', { name: 'AI 수체 추출' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /나란히/ }));
-    await waitFor(() => expect(sheet()).not.toBeInTheDocument());
-    expect(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' })).toBeInTheDocument();
-    expect(screen.queryByRole('complementary', { name: 'AI 수체 추출 설정' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'AI 작업 열기' })).toBeInTheDocument(); // the rail
+    await waitFor(() => expect(panel()).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'AI 수체 추출' })).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('region', { name: /비교 지도 B/ })).toBeInTheDocument();
 
-    // One sheet at a time while side by side: opening the layer sheet folds the drawer again.
-    fireEvent.click(screen.getByRole('button', { name: 'AI 작업 열기' }));
-    expect(screen.getByRole('complementary', { name: 'AI 수체 추출 설정' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
-    expect(sheet()).toBeInTheDocument();
-    expect(screen.queryByRole('complementary', { name: 'AI 수체 추출 설정' })).not.toBeInTheDocument();
-    fireEvent.click(within(sheet()!).getByRole('button', { name: '패널 닫기' }));
-
     fireEvent.click(screen.getByRole('button', { name: /단일/ }));
-    await waitFor(() => expect(sheet()).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('complementary', { name: 'AI 수체 추출' })).toBeInTheDocument());
+
+    // A tool opened during side by side stays when side by side ends.
+    fireEvent.click(screen.getByRole('button', { name: /나란히/ }));
+    await waitFor(() => expect(panel()).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: '레이어' }));
+    expect(screen.getByRole('complementary', { name: '레이어' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /단일/ }));
+    expect(screen.getByRole('complementary', { name: '레이어' })).toBeInTheDocument();
   });
 });
 
 describe('Esc와 초점 되돌리기', () => {
-  test('레이어 시트: 열면 선택된 탭으로, Esc로 닫으면 여는 버튼으로 초점이 간다', async () => {
+  test('도구 창: 열면 제목으로 초점이 가고, Esc로 닫으면 연 버튼으로 돌아간다', async () => {
     render(<Viewer initialDatasetId="landsat" />);
     await screen.findByRole('region', { name: '시계열 탐색기' });
-    fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
-    const layersTab = within(sheet()!).getByRole('tab', { name: '레이어' });
-    await waitFor(() => expect(layersTab).toHaveFocus());
-    fireEvent.keyDown(layersTab, { key: 'Escape' });
-    expect(sheet()).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' })).toHaveFocus());
+    const layers = screen.getByRole('button', { name: '레이어' });
+    layers.focus();
+    fireEvent.click(layers);
+    const heading = within(panel()!).getByRole('heading', { level: 2, name: '레이어' });
+    await waitFor(() => expect(heading).toHaveFocus());
+    fireEvent.keyDown(heading, { key: 'Escape' });
+    expect(panel()).not.toBeInTheDocument();
+    await waitFor(() => expect(layers).toHaveFocus());
   });
 
-  test('분석 drawer: Esc는 닫고 연 버튼으로, 접기는 rail로, 다시 누르면 닫힌다', async () => {
+  test('도구 막대: 다른 도구를 누르면 창이 바뀌고(한 번에 한 창), 열린 도구를 다시 누르면 닫힌다', async () => {
     render(<Viewer initialDatasetId="landsat" />);
     await screen.findByRole('region', { name: '시계열 탐색기' });
-    const aiButton = screen.getByRole('button', { name: /AI 수체 추출/ });
+    const aiButton = screen.getByRole('button', { name: 'AI 수체 추출' });
     aiButton.focus();
     fireEvent.click(aiButton);
     expect(aiButton).toHaveAttribute('aria-expanded', 'true');
-    const drawer = screen.getByRole('complementary', { name: 'AI 수체 추출 설정' });
-    await waitFor(() => expect(within(drawer).getByRole('tab', { name: /AI 작업/ })).toHaveFocus());
-    fireEvent.keyDown(within(drawer).getByRole('tab', { name: /AI 작업/ }), { key: 'Escape' });
-    expect(screen.queryByRole('complementary', { name: 'AI 수체 추출 설정' })).not.toBeInTheDocument();
-    await waitFor(() => expect(aiButton).toHaveFocus());
+    expect(aiButton).toHaveAttribute('aria-controls', 'vx-drawer');
+    expect(screen.getByRole('complementary', { name: 'AI 수체 추출' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '영역 통계' }));
+    expect(screen.getAllByRole('complementary')).toHaveLength(1);
+    expect(screen.getByRole('complementary', { name: '영역 통계' })).toBeInTheDocument();
     expect(aiButton).toHaveAttribute('aria-expanded', 'false');
-
+    expect(aiButton).not.toHaveAttribute('aria-controls');
+    fireEvent.click(screen.getByRole('button', { name: '영역 통계' }));
+    expect(panel()).not.toBeInTheDocument();
+    // The close button and Esc go back to what opened the panel.
     fireEvent.click(aiButton);
-    fireEvent.click(screen.getByRole('button', { name: '분석 패널 접기' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'AI 작업 열기' })).toHaveFocus());
-    fireEvent.click(screen.getByRole('button', { name: 'AI 작업 열기' }));
-    expect(screen.getByRole('complementary', { name: 'AI 수체 추출 설정' })).toBeInTheDocument();
-    fireEvent.click(aiButton); // the open tab's button closes it again
-    expect(screen.queryByRole('complementary', { name: 'AI 수체 추출 설정' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '패널 닫기' }));
+    await waitFor(() => expect(aiButton).toHaveFocus());
   });
 
-  test('결과 버튼을 다시 눌러 닫으면 창만 닫는 게 아니라 AI 수체 결과 레이어도 끈다', async () => {
+  test('결과 비교를 다시 눌러 닫으면 창만 닫는 게 아니라 AI 수체 결과 레이어도 끈다', async () => {
     render(<Viewer initialDatasetId="landsat" />);
     await screen.findByRole('region', { name: '시계열 탐색기' });
-    const results = await screen.findByRole('button', { name: '결과' });
+    await screen.findByLabelText(/AI 결과 \d+개/);
+    const results = screen.getByRole('button', { name: /^결과 비교/ });
     fireEvent.click(results);
     expect(screen.getByRole('complementary', { name: '결과 비교' })).toBeInTheDocument();
     expect(await screen.findByText(/물로 판정 · AI 결과/)).toBeInTheDocument();
@@ -152,20 +152,14 @@ describe('Esc와 초점 되돌리기', () => {
     fireEvent.click(results); // opening it again shows the layer again
     expect(await screen.findByText(/물로 판정 · AI 결과/)).toBeInTheDocument();
   });
-  test('탭은 ←/→로 옮겨 고르고, 고르지 않은 탭은 Tab 순서에서 빠진다', async () => {
+
+  test('도구 막대 버튼에 초점이 있어도 ←/→는 시점을 넘긴다', async () => {
     render(<Viewer initialDatasetId="landsat" />);
     await screen.findByRole('region', { name: '시계열 탐색기' });
-    fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
-    const layersTab = within(sheet()!).getByRole('tab', { name: '레이어' });
-    expect(layersTab).toHaveAttribute('aria-controls', 'vx-panel-body');
-    expect(within(sheet()!).getByRole('tab', { name: /AI 작업/ })).toHaveAttribute('tabindex', '-1');
-    layersTab.focus();
-    fireEvent.keyDown(layersTab, { key: 'ArrowRight' });
-    const jobsTab = within(sheet()!).getByRole('tab', { name: /AI 작업/ });
-    expect(jobsTab).toHaveAttribute('aria-selected', 'true');
-    expect(jobsTab).toHaveFocus();
-    expect(within(sheet()!).getByRole('tabpanel')).toHaveAccessibleName(/AI 작업/);
-    expect(counter()).toHaveTextContent(/^1 \//); // the tabs keep the arrows
+    const layers = screen.getByRole('button', { name: '레이어' });
+    layers.focus();
+    fireEvent.keyDown(layers, { key: 'ArrowRight' });
+    expect(counter()).toHaveTextContent(/^2 \//);
   });
 });
 
@@ -227,7 +221,7 @@ test('굵은 포인터(손가락)에서는 Viewer 조작부가 모두 44px 이�
   expect(start).toBeGreaterThan(-1);
   const block = css.slice(start);
   expect(block).toMatch(/--vx-hit:\s*44px/);
-  for (const selector of ['.vx-btn', '.vx-icon-btn', '.vx-play', '.vx-tools button', '.vx-drawer-rail button', '.vx-chips button', '.vx-modes button', '.vx-seg button', '.vx-btime select', ".vx-tabs [role='tab']", '.vx-layer', '.vx-popt__toggle', '.vx .dataset-trigger', '.vx-crumb select', '.vx-swipe__handle'])
+  for (const selector of ['.vx-btn', '.vx-icon-btn', '.vx-play', '.vx-tools button', '.vx-drawer-rail button', '.vx-rail__tool', '.vx-chips button', '.vx-modes button', '.vx-seg button', '.vx-btime select', ".vx-tabs [role='tab']", '.vx-layer', '.vx-popt__toggle', '.vx .dataset-trigger', '.vx-crumb select', '.vx-swipe__handle'])
     expect(block).toContain(selector);
   // Mouse sizes are not touched: the desktop rules keep their 32/34 px.
   expect(css.slice(0, start)).toMatch(/\.vx-icon-btn \{\s*width: 32px; height: 32px;/);

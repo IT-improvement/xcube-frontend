@@ -58,8 +58,11 @@ describe('Viewer chrome in English', () => {
     const add = screen.getByRole('link', { name: 'Upload or build a Zarr' });
     expect(add).toHaveTextContent('Add data');
     expect(add).toHaveAttribute('title', 'Add data (new tab)');
-    expect(screen.getByRole('button', { name: 'AI water extraction' })).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Results' })).toBeInTheDocument();
+    // UX2: the tool rail names every tool in words.
+    const rail = screen.getByRole('navigation', { name: 'Tools' });
+    expect(within(rail).getAllByRole('button').map((button) => button.querySelector('.vx-rail__label')?.textContent)).toEqual(['Layers', 'Area stats', 'AI water', 'Compare', 'Export']); // eslint-disable-line testing-library/no-node-access
+    expect(await screen.findByLabelText('2 AI results')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'On the map now' })).toHaveTextContent(/Band\s*RGB composite.*Date\s*2025\.07\.03|Band.*Date/);
     expect(screen.getByRole('button', { name: 'Feature tour' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'User account menu' })).toBeInTheDocument();
     const tools = screen.getByRole('toolbar', { name: 'Map tools' });
@@ -69,9 +72,8 @@ describe('Viewer chrome in English', () => {
 
   test('layer sheet: layer names, band chips and data info, with dates in English', async () => {
     await openViewer('pair');
-    fireEvent.click(screen.getByRole('button', { name: 'Open layers and AI jobs panel' }));
-    const sheet = screen.getByRole('complementary', { name: 'Layers and AI jobs panel' });
-    expect(within(sheet).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Layers', 'AI jobs']);
+    fireEvent.click(screen.getByRole('button', { name: 'Layers' }));
+    const sheet = screen.getByRole('complementary', { name: 'Layers' });
     expect(within(sheet).getByRole('heading', { name: 'Band to show' })).toBeInTheDocument();
     expect(within(sheet).getAllByRole('button', { pressed: false }).map((chip) => chip.textContent)).toEqual(expect.arrayContaining(['B3', 'B2']));
     expect(within(sheet).getByRole('checkbox', { name: 'Source imagery' })).toBeChecked();
@@ -83,9 +85,10 @@ describe('Viewer chrome in English', () => {
     expect(info).toEqual({ Name: 'Daecheong pair', Times: '2', Period: 'Aug 14, 2024 – Sep 1, 2024', Bands: '3', CRS: 'EPSG:4326' });
     // The time staff and the current time use the same English dates.
     expect(screen.getByRole('slider', { name: 'Acquisition time' })).toHaveAttribute('aria-valuetext', 'Aug 14, 2024, 1 / 2');
-    fireEvent.click(within(sheet).getByRole('tab', { name: 'AI jobs' }));
-    expect(within(sheet).getByRole('heading', { name: 'AI results for this data' })).toBeInTheDocument();
-    expect(await within(sheet).findByText('No AI results for this data yet.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'AI water' }));
+    const ai = screen.getByRole('complementary', { name: 'AI water extraction' });
+    expect(within(ai).getByRole('heading', { name: 'AI results for this data' })).toBeInTheDocument();
+    expect(await within(ai).findByText('No AI results for this data yet.')).toBeInTheDocument();
   });
 
   test('dock: play, playback options and compare modes', async () => {
@@ -159,8 +162,8 @@ describe('Legends and AI in English', () => {
 
   test('AI drawer: model list and input check wording', async () => {
     await openViewer('nakdong');
-    fireEvent.click(screen.getByRole('button', { name: 'AI water extraction' }));
-    const drawer = screen.getByRole('complementary', { name: 'AI water extraction settings' });
+    fireEvent.click(screen.getByRole('button', { name: 'AI water' }));
+    const drawer = screen.getByRole('complementary', { name: 'AI water extraction' });
     expect(within(drawer).getByRole('heading', { name: 'AI water extraction' })).toBeInTheDocument();
     const radios = await within(drawer).findAllByRole('radio');
     expect(radios.map((radio) => radio.closest('label')!.querySelector('strong')!.textContent)) // eslint-disable-line testing-library/no-node-access
@@ -202,8 +205,8 @@ describe('Legends and AI in English', () => {
       ],
     });
     await openViewer('nakdong');
-    fireEvent.click(screen.getByRole('button', { name: 'AI water extraction' }));
-    const drawer = screen.getByRole('complementary', { name: 'AI water extraction settings' });
+    fireEvent.click(screen.getByRole('button', { name: 'AI water' }));
+    const drawer = screen.getByRole('complementary', { name: 'AI water extraction' });
     expect(await within(drawer).findByText('The S1 and S2 acquisition dates are far apart (up to 12 days).')).toBeInTheDocument();
     expect(within(drawer).getByText('Something went wrong (code NEW_AI_WARNING).')).toBeInTheDocument();
     expect(within(drawer).queryByText(/DN retained/)).not.toBeInTheDocument();
@@ -273,9 +276,11 @@ describe('Legends and AI in English', () => {
 
   test('result panel: threshold estimate and metrics', async () => {
     await openViewer('landsat');
-    fireEvent.click(await screen.findByRole('button', { name: 'Results' }));
+    await screen.findByLabelText('2 AI results');
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Tools' })).getByRole('button', { name: /^Compare/ }));
     const drawer = screen.getByRole('complementary', { name: 'Compare results' });
-    expect(within(drawer).getByRole('heading', { name: 'Result vs. source' })).toBeInTheDocument();
+    expect(within(drawer).getByRole('heading', { level: 2, name: 'Compare results' })).toBeInTheDocument();
+    expect(within(drawer).getByRole('link', { name: /Make a comparison/ })).toHaveAttribute('href', expect.stringMatching(/^\/app\/analysis\/compare\?source=landsat&result=/));
     const slider = await within(drawer).findByRole('slider', { name: 'Estimate threshold' });
     expect(slider).toHaveAttribute('aria-valuetext', 'Threshold 0.50, estimated area 38.20 km²');
     expect(within(drawer).getByText('Estimated area, 2025.07.03')).toBeInTheDocument();
@@ -294,17 +299,18 @@ describe('Legends and AI in English', () => {
 test('no Hangul is left in the English Viewer chrome (data names aside)', async () => {
   const timeline = await openViewer('landsat');
   // Result drawer (the layer sheet closes for it on this narrow window), then the AI run tab of the same drawer.
-  fireEvent.click(await screen.findByRole('button', { name: 'Results' }));
+  await screen.findByLabelText('2 AI results');
+  const rail = screen.getByRole('navigation', { name: 'Tools' });
+  // Area stats and export stay in the page (hidden) once opened, so their words are checked too.
+  fireEvent.click(within(rail).getByRole('button', { name: 'Area stats' }));
+  fireEvent.click(within(rail).getByRole('button', { name: 'Export' }));
+  fireEvent.click(within(rail).getByRole('button', { name: /^Compare/ }));
   await screen.findByRole('slider', { name: 'Estimate threshold' });
-  fireEvent.click(within(screen.getByRole('complementary', { name: 'Compare results' })).getByRole('tab', { name: 'AI jobs' }));
-  const drawer = screen.getByRole('complementary', { name: 'AI water extraction settings' });
+  fireEvent.click(within(rail).getByRole('button', { name: 'AI water' }));
+  const drawer = screen.getByRole('complementary', { name: 'AI water extraction' });
   await within(drawer).findByRole('radio', { name: /NDWI baseline/ });
   await waitFor(() => expect(within(drawer).queryByText('Checking…')).not.toBeInTheDocument());
-  // Layer sheet with its AI results list, the AI comparison and the playback options.
-  fireEvent.click(screen.getByRole('button', { name: 'Open layers and AI jobs panel' }));
-  const sheet = screen.getByRole('complementary', { name: 'Layers and AI jobs panel' });
-  fireEvent.click(within(sheet).getByRole('tab', { name: /AI jobs/ }));
-  await within(sheet).findAllByText(/Water extraction result #/);
+  await within(drawer).findAllByText(/Water extraction result #/);
   fireEvent.click(within(timeline).getByRole('button', { name: 'Swipe' }));
   fireEvent.click(within(screen.getByRole('group', { name: 'Compare' })).getByRole('button', { name: 'AI result' }));
   fireEvent.click(within(timeline).getByRole('button', { name: /Playback options/ }));

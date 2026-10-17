@@ -59,6 +59,9 @@ export default async function addDynamicXcubeLayer({
   const layer = new TileLayer({
     source: source = new XYZ({
       url: tileUrl,
+      // Tiles loaded as plain images (public main xcube) are read back by the map PNG export (UR-63 F2); without CORS
+      // mode they would taint the canvas. xcube answers with Access-Control-Allow-Origin: *.
+      crossOrigin: 'anonymous',
       minZoom: 0,
       maxZoom: 23,
       tileLoadFunction: (tile, src) => {

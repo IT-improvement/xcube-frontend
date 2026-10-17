@@ -30,6 +30,7 @@ const en: Translation = {
       original: 'Original',
       fusion: 'Band math',
       ai: 'AI',
+      compare: 'Comparison',
     },
     filter: {
       label: 'Dates',
