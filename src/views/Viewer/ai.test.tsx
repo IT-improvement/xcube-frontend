@@ -133,7 +133,8 @@ test('비교 대상을 “AI 결과”로 바꾸면 같은 시점의 원본 ↔ 
   expect(screen.queryByRole('combobox', { name: '비교 시점 B' })).not.toBeInTheDocument();
   expect(screen.getByText('원본 ↔ AI 결과')).toBeInTheDocument();
   await waitFor(() => expect(window.location.search).toContain('cmp=ai'));
-  expect(window.location.search).toContain('ai=ai-demo-1');
+  // FIX2: the address names the result by its datacube id (the same for owner and reader).
+  expect(window.location.search).toContain('ai=landsat-infer-024');
   fireEvent.click(screen.getByRole('button', { name: /나란히/ }));
   expect(screen.getByRole('region', { name: /비교 지도 · 원본과 AI 결과/ })).toBeInTheDocument();
   fireEvent.click(within(screen.getByRole('group', { name: '비교 대상' })).getByRole('button', { name: '시점' }));

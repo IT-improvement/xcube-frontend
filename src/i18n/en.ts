@@ -165,8 +165,8 @@ const en: Translation = {
       csv: { title: 'Area graph and CSV', text: 'See the water area for each date as a graph, and download the table for your report.' },
       fine: 'The IoU and F1 shown compare this one scene with the reference data. They are not a guarantee for other areas or periods.',
       link: 'View the Daecheong Lake result in the Viewer',
-      alt: 'The actual original-vs-result panel. AI water result (blue, 90% opacity) and the original layer (100%); at threshold 0.50 the estimated area is 54.60 km², and against the reference data IoU 0.854, F1 0.922, precision 0.873, recall 0.975.',
-      caption: 'Original-vs-result panel · right side of the same screen',
+      alt: 'The actual Compare results panel. AI water result (blue, 90% opacity) and the original layer (100%); at threshold 0.50 the estimated area is 54.60 km², and against the reference data IoU 0.854, F1 0.922, precision 0.873, recall 0.975.',
+      caption: 'Compare results panel · right side of the same screen',
     },
     features: {
       title: 'What you can do today',

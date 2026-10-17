@@ -176,6 +176,14 @@ export function createAiDemo(loadDatasets: () => Promise<ZarrDataset[]>) {
       if (!job) throw missingJob();
       return { ...(await advance(job)) };
     },
+    /** FIX2: the job that registered this result datacube. */
+    async getResult(datacubeId: string | number) {
+      await seed();
+      await wait(150);
+      const job = store.find((item) => String(item.registration?.datacubeId ?? '') === String(datacubeId));
+      if (!job) throw missingJob();
+      return { ...job };
+    },
     async cancel(jobId: string) {
       await wait();
       const job = store.find((item) => item.id === jobId);

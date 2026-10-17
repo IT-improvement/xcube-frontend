@@ -122,7 +122,7 @@ const cubeId = (id: string) => (/^\d+$/.test(id) ? Number(id) : id);
  * results the AI service does not list for this user, such as the example AI result of an example source (UX1): its
  * job belongs to another account. They carry the result's own name from the dataset detail.
  */
-function resultEntries(aiJobs: AiWaterJob[], linked: AiJob[], lang: Lang): ResultEntry[] {
+function resultEntries(aiJobs: AiWaterJob[], linked: AiJob[], lang: Lang, linkedInfo: Record<string, AiWaterJob | null> = {}): ResultEntry[] {
   const entries: ResultEntry[] = aiJobs.map((job) => ({
     key: job.id,
     name: job.name,
@@ -137,8 +137,23 @@ function resultEntries(aiJobs: AiWaterJob[], linked: AiJob[], lang: Lang): Resul
     timeEnd: job.result?.times?.length ? job.result.times[job.result.times.length - 1].time : typeof job.input?.timeEnd === "string" ? job.input.timeEnd : undefined,
   }));
   for (const link of linked)
-    if (link.outputDatacubeId && !entries.some((entry) => entry.datacubeId === link.outputDatacubeId))
-      entries.push({ key: `link:${link.outputDatacubeId}`, name: link.name || translate(lang, "viewer.ai.list.linkedName", { id: link.id }), status: link.status, datacubeId: link.outputDatacubeId });
+    if (link.outputDatacubeId && !entries.some((entry) => entry.datacubeId === link.outputDatacubeId)) {
+      // FIX2: the AI service answers readers of a result with its public statistics (model, threshold, period).
+      const info = linkedInfo[link.outputDatacubeId];
+      entries.push({
+        key: `link:${link.outputDatacubeId}`,
+        name: link.name || translate(lang, "viewer.ai.list.linkedName", { id: link.id }),
+        status: link.status,
+        datacubeId: link.outputDatacubeId,
+        ...(info ? {
+          modelId: info.input?.modelId ? String(info.input.modelId) : info.result?.modelId,
+          threshold: typeof info.input?.threshold === "number" ? info.input.threshold : info.result?.threshold,
+          createdAt: info.createdAt,
+          timeStart: info.result?.times?.[0]?.time,
+          timeEnd: info.result?.times?.length ? info.result.times[info.result.times.length - 1].time : undefined,
+        } : {}),
+      });
+    }
   return entries;
 }
 
@@ -231,7 +246,11 @@ export default function Viewer({
   // M7: AI jobs of the shown dataset, the selected result and the latest run.
   const [aiJobs, setAiJobs] = useState<AiWaterJob[]>([]);
   const [aiTick, setAiTick] = useState(0);
+  /** FIX2: AI job info of linked results (by result datacube id); null once asked and not available. */
+  const [linkedInfo, setLinkedInfo] = useState<Record<string, AiWaterJob | null>>({});
   const [resultKey, setResultKey] = useState("");
+  /** Result datacube of the chosen result, so a link entry replaced by its job entry stays chosen. */
+  const resultCubeRef = useRef<string | undefined>(undefined);
   const wantedResultRef = useRef<string | undefined>(
     new URLSearchParams(window.location.search).get("ai") ?? undefined,
   );
@@ -347,14 +366,20 @@ export default function Viewer({
             (job.outputType === "AI_RESULT" || job.outputType === "INFER_ZARR"),
         ),
         lang,
+        linkedInfo,
       ),
-    [aiJobs, jobs, selected?.id, lang],
+    [aiJobs, jobs, selected?.id, lang, linkedInfo],
   );
   const readyEntries = useMemo(
     () => entries.filter((entry) => entry.status === "SUCCEEDED" && (!!entry.datacubeId || !!entry.job?.result)),
     [entries],
   );
-  const selectedResult = readyEntries.find((entry) => entry.key === resultKey) ?? null;
+  // A link entry replaced by the AI job of the same result is still the chosen result while the key catches up
+  // (FIX2: otherwise one render without a result drops a one-time 원본 ↔ AI comparison back to 단일).
+  const selectedResult =
+    readyEntries.find((entry) => entry.key === resultKey) ??
+    (resultKey.startsWith("link:") ? readyEntries.find((entry) => entry.datacubeId === resultKey.slice(5)) : undefined) ??
+    null;
   const hasInference = !!selected && readyEntries.length > 0;
   // Time labels come from the catalogue in Korean form (2024. 8. 14.); other languages re-label from the ISO time.
   const times = useMemo(
@@ -548,14 +573,35 @@ export default function Viewer({
       setResultVisible(true);
       return;
     }
-    setResultKey((current) =>
-      readyEntries.some((entry) => entry.key === current) ? current : readyEntries[0]?.key ?? "",
-    );
+    setResultKey((current) => {
+      if (readyEntries.some((entry) => entry.key === current)) return current;
+      // A Backoffice link replaced by the AI job of the same result (or the reverse) stays the chosen result.
+      const cube = current.startsWith("link:") ? current.slice(5) : resultCubeRef.current;
+      const same = cube ? readyEntries.find((entry) => entry.datacubeId === cube) : undefined;
+      return same?.key ?? readyEntries[0]?.key ?? "";
+    });
   }, [readyEntries]);
   const selectedResultKey = selectedResult?.key;
   const selectedResultJob = selectedResult?.job;
+  resultCubeRef.current = selectedResult?.datacubeId;
+  // FIX2: a linked result (no AI job of this user) asks the AI service by result id once; readers get its statistics.
+  const askedInfoRef = useRef(new Set<string>());
+  // Answers are kept even when the list changed meanwhile (each result is asked only once).
   useEffect(() => {
-    setResultStats(selectedResultJob?.result ?? null);
+    for (const entry of entries) {
+      const cube = entry.datacubeId;
+      if (entry.job || !cube || askedInfoRef.current.has(cube)) continue;
+      askedInfoRef.current.add(cube);
+      // Deferred so an older AI service (no lookup) or a missing method only means "no statistics".
+      Promise.resolve()
+        .then(() => ai.getResult(cube))
+        .then((job) => setLinkedInfo((current) => ({ ...current, [cube]: job })))
+        .catch(() => setLinkedInfo((current) => ({ ...current, [cube]: null })));
+    }
+  }, [entries]);
+  const linkedStats = !selectedResultJob && selectedResult?.datacubeId ? linkedInfo[selectedResult.datacubeId]?.result ?? null : null;
+  useEffect(() => {
+    setResultStats(selectedResultJob?.result ?? linkedStats);
     setResultStatsLoading(false);
     if (!selectedResultKey || !selectedResultJob || selectedResultJob.result) return;
     let cancelled = false;
@@ -567,7 +613,7 @@ export default function Viewer({
     return () => {
       cancelled = true;
     };
-  }, [selectedResultKey, selectedResultJob]);
+  }, [selectedResultKey, selectedResultJob, linkedStats]);
   // The result dataset's own xcube id and server (owner pod) for its tiles, as for the main layer.
   const resultCubeId = selectedResult?.datacubeId;
   // A finished AI result is registered, then the owner's xcube pod restarts to serve it (10–60 s measured).
@@ -656,15 +702,19 @@ export default function Viewer({
       const a = pending.time ? times.findIndex((time) => time.iso === pending.time) : -1;
       if (a >= 0) setTimeIndex(a);
       const b = pending.compare ? times.findIndex((time) => time.iso === pending.compare) : -1;
-      if (pending.mode && (times.length > 1 || pending.target === "ai")) {
+      // FIX2: 원본 ↔ AI 결과 needs the result chosen; with one time the comparison would otherwise fall back to
+      // 단일 before the AI list arrives, so the mode waits (in the address state) until the asked result is there.
+      const waitForResult = !!pending.mode && pending.target === "ai" && !selectedResult;
+      if (pending.mode && !waitForResult && (times.length > 1 || pending.target === "ai")) {
         setDisplayMode(pending.mode);
         setCompareIndex(b >= 0 ? b : a > 0 ? a - 1 : 1);
         if (pending.target === "ai") setCompareTarget("ai");
       }
-      next.time = next.compare = next.mode = next.target = undefined;
+      next.time = undefined;
+      if (!waitForResult) next.compare = next.mode = next.target = undefined;
     }
     urlStateRef.current = next;
-  }, [selected, times]);
+  }, [selected, times, selectedResult]);
   // Layer a dataset opens with (FB1 §1): `?var=` > RGB > first band, re-applied while the layer is still the
   // rule's choice (the catalog entry may learn its RGB bands from the detail), never over a band the user picked.
   useEffect(() => {
@@ -695,8 +745,9 @@ export default function Viewer({
       if (aiCompare) params.set("cmp", "ai");
       else if (times[compareIndex]) params.set("b", times[compareIndex].iso);
     }
-    if (datasetId && resultKey && !resultKey.startsWith("link:")) params.set("ai", resultKey);
-    else if (datasetId && selectedResult?.datacubeId) params.set("ai", selectedResult.datacubeId);
+    // The result's datacube id when known (same for owner and reader, FIX2); else the AI job id.
+    if (datasetId && selectedResult?.datacubeId) params.set("ai", selectedResult.datacubeId);
+    else if (datasetId && resultKey && !resultKey.startsWith("link:")) params.set("ai", resultKey);
     const query = params.toString();
     const next = `${window.location.pathname}${query ? `?${query}` : ""}`;
     if (next !== `${window.location.pathname}${window.location.search}`)
