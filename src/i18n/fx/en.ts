@@ -106,6 +106,7 @@ const enFx: FxTranslation = {
       shapefileHelp: 'Values above 0 count as water. The grid must match.',
       name: 'Result name (optional)',
       nameHelp: 'Left empty, a name such as “result change 2026-04-26→2026-05-31” is made.',
+      nameHelpAuto: 'Left empty, it is named “{name}”.',
       noResults: 'There is no AI water result to compare yet. Run AI water extraction in the Viewer first.',
       toViewer: 'Open Viewer',
     },

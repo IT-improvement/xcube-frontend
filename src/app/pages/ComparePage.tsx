@@ -82,6 +82,15 @@ export default function ComparePage() {
 
   // Live check (POST /compare/check) whenever the request is complete; stale answers are dropped.
   const request = toRequest(form);
+  // The name Data Analysis gives when the field is left empty (CompareService defaultName), shown as the hint.
+  const day = (value: string) => value.slice(0, 10);
+  const autoName = !request
+    ? ''
+    : form.type === 'TIME_CHANGE'
+      ? `${nameOf(form.resultId)} 시점 변화 ${day(form.t1)}→${day(form.t2)}`
+      : form.type === 'MODEL_COMPARE'
+        ? `${nameOf(form.aId)} ↔ ${nameOf(form.bId)} ${day(form.time)}`
+        : `${nameOf(form.resultId)} 참조(${form.reference === 'water_gt' ? 'water_gt' : nameOf(form.shapefileId)}) 비교 ${day(form.time)}`;
   const requestKey = request ? JSON.stringify({ ...request, name: undefined }) : '';
   const [check, setCheck] = useState<{ key: string; data?: CompareCheck; error?: unknown } | null>(null);
   useEffect(() => {
@@ -229,7 +238,7 @@ export default function ComparePage() {
                       </div>
                     </>}
                     <div className="compare-grid__wide">
-                      <TextField label={t('compare.form.name')} help={t('compare.form.nameHelp')} value={form.name} maxLength={150} onChange={(event) => set({ name: event.target.value })} autoComplete="off" />
+                      <TextField label={t('compare.form.name')} help={autoName ? t('compare.form.nameHelpAuto', { name: autoName }) : t('compare.form.nameHelp')} value={form.name} maxLength={150} onChange={(event) => set({ name: event.target.value })} autoComplete="off" />
                     </div>
                   </div>
                 )}

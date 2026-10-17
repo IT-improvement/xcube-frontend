@@ -106,6 +106,7 @@ const koFx = {
       shapefileHelp: '값이 0보다 큰 곳을 물로 봅니다. 격자가 같아야 합니다.',
       name: '결과 이름 (선택)',
       nameHelp: '비우면 "결과 이름 시점 변화 2026-04-26→2026-05-31"처럼 자동으로 붙습니다.',
+      nameHelpAuto: '비우면 "{name}"(으)로 붙습니다.',
       noResults: '비교할 AI 수체 결과가 아직 없습니다. Viewer에서 AI 수체 추출을 먼저 실행하세요.',
       toViewer: 'Viewer 열기',
     },
