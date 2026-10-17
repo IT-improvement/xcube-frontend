@@ -124,7 +124,13 @@ export default function DatasetPicker({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, []);
+  // Only the keyboard scrolls the list to the active item; a pointer hovering an item must not move the list under it.
+  const hoverActiveRef = useRef(false);
   useEffect(() => {
+    if (hoverActiveRef.current) {
+      hoverActiveRef.current = false;
+      return;
+    }
     itemRefs.current[active]?.scrollIntoView?.({ block: "nearest" });
   }, [active]);
   const choose = (item: ZarrDataset) => {
@@ -227,7 +233,11 @@ export default function DatasetPicker({
           itemRefs.current[index] = node;
         }}
         className={`dataset-option dataset-option--${view} ${index === active ? "active-option" : ""}`}
-        onMouseEnter={() => setActive(index)}
+        onMouseEnter={() => {
+          if (index === active) return;
+          hoverActiveRef.current = true;
+          setActive(index);
+        }}
         onClick={() => choose(item)}
       >
         {view === "grid" ? (
