@@ -5,6 +5,8 @@ import { Alert, Button, ButtonAnchor, ButtonLink, LockedButton } from '../../com
 import { NEEDS, useRoleGate } from '../../auth/roles';
 import { Badge, BadgeTone, Card, ConfirmDialog, EmptyState, PageHeader, Skeleton, TabPanel, Tabs, useToast } from '../../components/ui/kit';
 import { isExample } from '../../api/examples';
+import { comparisonViewerHref, originComparisonsApi } from '../../api/originComparisons';
+import { GitCompareArrows } from 'lucide-react';
 import { ai, aiViewerHref, appApi, canEditProject, formatDateTime, fusion, generation, isOwned, periodLabel, Project, viewerHref, ZarrDataset } from '../api';
 import { AiFacts, aiFactsOf, aiPeriod, shortDateTime, thresholdText } from '../aiFacts';
 import { asFusionRequest } from '../fusion';
@@ -130,7 +132,9 @@ export default function DatasetDetailPage() {
   // Example data (UX1) is read-only for everyone: no project link, no delete.
   const example = isExample(item);
   const isAiResult = item.kind === 'AI_RESULT';
-  const viewerLink = isAiResult && item.sourceDatacubeId ? aiViewerHref(item.sourceDatacubeId, item.id) : viewerHref(item.id);
+  // CMP2: a comparison result opens in its original's 결과 비교.
+  const viewerLink = isAiResult && item.sourceDatacubeId ? aiViewerHref(item.sourceDatacubeId, item.id) : item.kind === 'COMPARISON' && item.originDatacubeId ? comparisonViewerHref(item.originDatacubeId, item.id) : viewerHref(item.id);
+  const isOriginal = !isAiResult && item.kind !== 'COMPARISON';
   return (
     <div className="page-stack">
       <PageHeader
@@ -149,6 +153,7 @@ export default function DatasetDetailPage() {
           </>
         }
       />
+      {isOriginal && <ComparisonsLine datasetId={item.id} />}
       <Card>
         <div className="sheet-tabs">
           <Tabs label={t('dataset.tabsLabel')} idPrefix="dataset-detail" value={tab} onChange={setTab} items={[
@@ -429,5 +434,23 @@ function AiResults({ datasetId }: { datasetId: string }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** S5 (CMP2): one line on an original — how many comparison results it has and where to see them. */
+function ComparisonsLine({ datasetId }: { datasetId: string }) {
+  const { t } = useLanguage();
+  const list = useLoad(() => originComparisonsApi.list(datasetId), [datasetId]);
+  const items = list.data;
+  if (!items?.length) return null;
+  return (
+    <p className="dataset-comparisons">
+      <GitCompareArrows size={16} aria-hidden />
+      <span className="tabular">{t('dataset.comparisons', { count: items.length })}</span>
+      <span aria-hidden>·</span>
+      <a href={`/app/viewer?dataset=${encodeURIComponent(datasetId)}&tool=result`} target="_blank" rel="noopener noreferrer">
+        {t('dataset.comparisonsView')}<ExternalLink size={13} aria-hidden /><span className="sr-only">{t('shell.newTab')}</span>
+      </a>
+    </p>
   );
 }

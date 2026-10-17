@@ -2,6 +2,7 @@ import { ArrowRight, ExternalLink, GitCompareArrows, RotateCcw, Square } from 'l
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { COMPARISON_CLASSES, COMPARISON_TYPES, COMPARISON_ZERO, compareApi } from '../../api/compare';
+import { comparisonViewerHref } from '../../api/originComparisons';
 import type { CompareCheck, CompareJob, CompareRequest, ComparisonType } from '../../api/compare';
 import { isExample } from '../../api/examples';
 import { userMessage } from '../../api/httpClient';
@@ -50,11 +51,25 @@ export default function ComparePage() {
   const originals = useMemo(() => (datasets.data ?? []).filter((item) => item.kind !== 'AI_RESULT' && item.kind !== 'COMPARISON' && item.kind !== 'FUSION'), [datasets.data]);
   const nameOf = (id?: string | number | null) => (id == null ? '' : (datasets.data ?? []).find((item) => item.id === String(id))?.name ?? `#${id}`);
   const locked = useRoleGate().reason(NEEDS.createData);
+  // CMP2: a comparison is read in its original's Viewer 결과 비교. The job tells its original (null before CMP2); else
+  // the original of the compared AI result; else (unknown) the comparison itself opens, as before.
+  const originOf = (job: CompareJob) => {
+    if (job.originDatacubeId != null) return String(job.originDatacubeId);
+    const input = (job.input ?? {}) as Record<string, unknown>;
+    const resultId = input.resultId ?? input.aId;
+    return resultId == null ? undefined : results.find((item) => item.id === String(resultId))?.sourceDatacubeId;
+  };
+  const viewerOf = (job: CompareJob) => {
+    const registered = job.registration?.datacubeId;
+    if (registered == null) return undefined;
+    const origin = originOf(job);
+    return { href: origin ? comparisonViewerHref(origin, String(registered)) : viewerHref(String(registered)), originName: origin ? nameOf(origin) : undefined };
+  };
 
-  // The Viewer hands over ?type=&source=&result=&t= (compareHref); a notification may open ?job=.
+  // The Viewer hands over ?type=&resultId=&t= (compareHref; older links `result`, `source`); a notification may open ?job=.
   const [form, setForm] = useState<Form>(() => ({
     type: isType(params.get('type')) ? (params.get('type') as ComparisonType) : 'TIME_CHANGE',
-    resultId: params.get('result') ?? '', aId: params.get('result') ?? '', bId: '',
+    resultId: params.get('resultId') ?? params.get('result') ?? '', aId: params.get('resultId') ?? params.get('result') ?? '', bId: '',
     t1: '', t2: params.get('t') ?? '', time: params.get('t') ?? '',
     reference: 'water_gt', shapefileId: '', name: '',
   }));
@@ -261,7 +276,7 @@ export default function ComparePage() {
       {(job || jobError) && (
         <section id="compare-result" className="compare-result" aria-labelledby="compare-result-title" aria-live="polite">
           <Card>
-            {jobError && !job ? <Alert tone="danger">{jobError}</Alert> : job ? <JobResult job={job} nameOf={nameOf} onCancel={cancel} /> : null}
+            {jobError && !job ? <Alert tone="danger">{jobError}</Alert> : job ? <JobResult job={job} nameOf={nameOf} viewer={viewerOf(job)} onCancel={cancel} /> : null}
           </Card>
         </section>
       )}
@@ -288,7 +303,7 @@ export default function ComparePage() {
                                 <div className="row-actions">
                                   <Button size="sm" variant="quiet" onClick={() => show(String(item.id))} aria-label={t('compare.history.showNamed', { name: item.name })}>{t('compare.history.show')}</Button>
                                   {item.registration?.datacubeId != null && item.status === 'SUCCEEDED' && (
-                                    <a className="xc-btn xc-btn--ghost xc-btn--sm" href={viewerHref(String(item.registration.datacubeId))} target="_blank" rel="noopener noreferrer" aria-label={t('jobs.compare.viewNamed', { name: item.name })}>Viewer<ExternalLink size={13} aria-hidden /></a>
+                                    <a className="xc-btn xc-btn--ghost xc-btn--sm" href={viewerOf(item)!.href} target="_blank" rel="noopener noreferrer" aria-label={t('jobs.compare.viewNamed', { name: item.name })}>Viewer<ExternalLink size={13} aria-hidden /></a>
                                   )}
                                 </div>
                               </td>
@@ -371,7 +386,7 @@ function metricRows(type: ComparisonType, m: Metrics, lang: Lang, t: (key: TKey)
   ];
 }
 
-function JobResult({ job, nameOf, onCancel }: { job: CompareJob; nameOf: (id?: string | number | null) => string; onCancel: () => void }) {
+function JobResult({ job, nameOf, viewer, onCancel }: { job: CompareJob; nameOf: (id?: string | number | null) => string; viewer?: { href: string; originName?: string }; onCancel: () => void }) {
   const { lang, t } = useLanguage();
   const type = typeOf(job);
   const input = (job.input ?? {}) as Record<string, any>;
@@ -388,8 +403,8 @@ function JobResult({ job, nameOf, onCancel }: { job: CompareJob; nameOf: (id?: s
         <JobStatusBadge job={job} />
         <span className="compare-out__spacer" />
         {isActive(job) && <Button size="sm" variant="quiet" onClick={onCancel}><Square size={14} aria-hidden />{t('jobs.cancel')}</Button>}
-        {registered != null && job.status === 'SUCCEEDED' && (
-          <a className="xc-btn xc-btn--ink xc-btn--sm" href={viewerHref(String(registered))} target="_blank" rel="noopener noreferrer">{t('compare.result.viewer')}<ExternalLink size={13} aria-hidden /><span className="sr-only">{t('shell.newTab')}</span></a>
+        {registered != null && job.status === 'SUCCEEDED' && viewer && (
+          <a className="xc-btn xc-btn--ink xc-btn--sm" href={viewer.href} target="_blank" rel="noopener noreferrer">{t('compare.result.viewer')}<ExternalLink size={13} aria-hidden /><span className="sr-only">{t('shell.newTab')}</span></a>
         )}
       </div>
       <p className="compare-out__facts">
@@ -430,6 +445,9 @@ function JobResult({ job, nameOf, onCancel }: { job: CompareJob; nameOf: (id?: s
           </div>
         </div>
       ) : <p className="xc-hint">{t('compare.result.noMetrics')}</p>}
+      {registered != null && job.status === 'SUCCEEDED' && viewer?.originName && (
+        <p className="compare-out__where">{t('compare.result.where', { name: viewer.originName })}</p>
+      )}
       {registrationError && job.status === 'SUCCEEDED' && <Alert tone="warning">{t('compare.result.notRegistered')}</Alert>}
       {job.status === 'FAILED' && <p><Link to="/app/jobs?type=COMPARE" className="xc-btn xc-btn--line xc-btn--sm"><RotateCcw size={14} aria-hidden />{t('compare.result.toJobs')}</Link></p>}
     </div>

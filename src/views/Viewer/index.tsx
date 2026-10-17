@@ -51,7 +51,7 @@ import {
   SwipeDivider,
   useCompareLayer,
 } from "./CompareView";
-import { ai, formatDate } from "../../app/api";
+import { ai, appApi, formatDate } from "../../app/api";
 import { translate, useLanguage } from "../../i18n";
 import type { Lang, TKey } from "../../i18n";
 import "../../i18n/viewer";
@@ -83,6 +83,9 @@ import { metersPerPixel, niceScale, pngFileName, settled, sheetPng, snapshotMap 
 import type { LegendSpec } from "./mapPng";
 import { comparisonForDataset, comparisonInfo, comparisonStyle, comparisonTypeFromColorBar, COMPARISON_CLASSES } from "../../api/compare";
 import { setAreaStatsDemoContext } from "../../api/areaStats";
+import { comparisonViewerHref, originComparisonsApi } from "../../api/originComparisons";
+import type { OriginComparison } from "../../api/originComparisons";
+import { ComparisonBanner, ComparisonGroup, ComparisonMapLegend, markComparisonsSeen, seenComparisons } from "./ComparisonList";
 import { saveBlob } from "../../api/exports";
 
 /** The one tool panel on the right (UX2): its tabs are the tool rail's buttons. */
@@ -169,6 +172,10 @@ type UrlState = {
   target?: CompareTarget;
   /** AI result to show: AI job id or result datacube id. */
   ai?: string;
+  /** Tool panel to open (CMP2: `result`). */
+  tool?: string;
+  /** Comparison result (COMPARISON id) to show on the map in 결과 비교 (CMP2). */
+  comparison?: string;
 };
 const VIEWER_PATH = "/app/viewer";
 function readUrlState(): UrlState {
@@ -183,13 +190,15 @@ function readUrlState(): UrlState {
     compare: params.get("b") ?? undefined,
     target: params.get("cmp") === "ai" ? "ai" : undefined,
     ai: params.get("ai") ?? undefined,
+    tool: params.get("tool") ?? undefined,
+    comparison: params.get("comparison") ?? undefined,
   };
 }
 /** Keys typed into fields, buttons and dialogs keep their own meaning. */
 function ownsKeys(target: EventTarget | null, key: string) {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
-  const fields = "input, textarea, select, [role='slider'], [role='combobox'], [role='listbox'], [role='dialog'], [role='menu'], [role='tablist'], [role='application']";
+  const fields = "input, textarea, select, [role='slider'], [role='combobox'], [role='listbox'], [role='dialog'], [role='alertdialog'], [role='menu'], [role='tablist'], [role='application']";
   return !!target.closest(key === " " ? `${fields}, button, a, summary` : fields);
 }
 
@@ -251,8 +260,9 @@ export default function Viewer({
   const [resultKey, setResultKey] = useState("");
   /** Result datacube of the chosen result, so a link entry replaced by its job entry stays chosen. */
   const resultCubeRef = useRef<string | undefined>(undefined);
+  // A comparison asked for in the address (CMP2) wins over the AI layer, so its `ai` does not turn that layer on.
   const wantedResultRef = useRef<string | undefined>(
-    new URLSearchParams(window.location.search).get("ai") ?? undefined,
+    new URLSearchParams(window.location.search).get("comparison") ? undefined : new URLSearchParams(window.location.search).get("ai") ?? undefined,
   );
   const [resultStats, setResultStats] = useState<AiResult | null>(null);
   const [resultStatsLoading, setResultStatsLoading] = useState(false);
@@ -381,6 +391,61 @@ export default function Viewer({
     (resultKey.startsWith("link:") ? readyEntries.find((entry) => entry.datacubeId === resultKey.slice(5)) : undefined) ??
     null;
   const hasInference = !!selected && readyEntries.length > 0;
+  // ── CMP2 (UR-64): comparison results of the shown original, listed in 결과 비교 next to the AI results ──
+  // `items` undefined while loading, null when they cannot be read (Backoffice without the API yet): AI results only.
+  const [comparisons, setComparisons] = useState<{ originId: string; items: OriginComparison[] | null } | null>(null);
+  const [comparisonTick, setComparisonTick] = useState(0);
+  const deletedComparisonsRef = useRef(new Set<string>());
+  const comparisonOrigin = selected && selected.kind !== "AI_RESULT" && selected.kind !== "COMPARISON" ? selected.id : "";
+  useEffect(() => {
+    if (!comparisonOrigin) {
+      setComparisons(null);
+      return;
+    }
+    const controller = new AbortController();
+    originComparisonsApi.list(comparisonOrigin, controller.signal).then((items) => {
+      // An answer that left before a delete here still lists the deleted one: drop it.
+      if (!controller.signal.aborted) setComparisons({ originId: comparisonOrigin, items: items && items.filter((item) => !deletedComparisonsRef.current.has(item.id)) });
+    });
+    return () => controller.abort();
+  }, [comparisonOrigin, comparisonTick]);
+  const comparisonItems = comparisonOrigin && comparisons?.originId === comparisonOrigin ? comparisons.items : undefined;
+  const comparisonList = useMemo(() => comparisonItems ?? [], [comparisonItems]);
+  /** The one comparison on the map (never together with the AI water layer or a swipe/split comparison). */
+  const [shownComparisonId, setShownComparisonId] = useState<string | null>(null);
+  const shownComparisonRef = useRef(shownComparisonId);
+  shownComparisonRef.current = shownComparisonId;
+  const shownComparison = shownComparisonId ? comparisonList.find((item) => item.id === shownComparisonId) ?? null : null;
+  const [comparisonNews, setComparisonNews] = useState("");
+  const showComparison = useCallback(
+    (item: OriginComparison | null, announce = true) => {
+      setShownComparisonId(item?.id ?? null);
+      if (item) {
+        setResultVisible(false);
+        setDisplayMode("single");
+        setCompareTarget((target) => (target === "ai" ? "time" : target));
+      }
+      if (announce) setComparisonNews(item ? t("viewer.cmps.announceOn", { name: item.name }) : t("viewer.cmps.announceOff"));
+    },
+    [t],
+  );
+  // Turning the AI layer on or starting swipe/side by side takes the comparison off the map (one thing at a time).
+  const conflictRef = useRef({ resultVisible, displayMode });
+  useEffect(() => {
+    const before = conflictRef.current;
+    conflictRef.current = { resultVisible, displayMode };
+    if (!shownComparisonId) return;
+    if ((resultVisible && !before.resultVisible) || (displayMode !== "single" && before.displayMode === "single")) showComparison(null);
+  }, [resultVisible, displayMode, shownComparisonId, showComparison]);
+  // A comparison that left the list (deleted elsewhere) leaves the map too.
+  useEffect(() => {
+    if (shownComparisonId && comparisonItems !== undefined && !shownComparison) setShownComparisonId(null);
+  }, [shownComparisonId, comparisonItems, shownComparison]);
+  // "새 결과" dot on the rail: comparisons this browser has not listed yet.
+  const [seenIds, setSeenIds] = useState<Set<string>>(() => seenComparisons());
+  const hasNewComparison = comparisonList.some((item) => !seenIds.has(item.id));
+  /** Opened from the address without a comparison: the AI layer comes on once the AI results are known (as the rail does). */
+  const wantAiLayerRef = useRef(false);
   // Time labels come from the catalogue in Korean form (2024. 8. 14.); other languages re-label from the ISO time.
   const times = useMemo(
     () => (lang === "ko" ? selected?.times ?? [] : (selected?.times ?? []).map((time) => (Number.isFinite(Date.parse(time.iso)) ? { ...time, label: formatDate(time.iso, lang) } : time))),
@@ -504,11 +569,11 @@ export default function Viewer({
       activeViewerAdapter
         .getDatasets()
         .then((items) =>
-          setDatasets((current) =>
-            items.map(
-              (item) => current.find((known) => known.id === item.id) ?? item,
-            ),
-          ),
+          setDatasets((current) => {
+            const next = items.map((item) => current.find((known) => known.id === item.id) ?? item);
+            // A comparison opened from an old link (original unknown) is not listed; it stays while shown.
+            return [...next, ...current.filter((known) => known.kind === "COMPARISON" && !next.some((item) => item.id === known.id))];
+          }),
         )
         .catch(() => undefined);
       const currentProject = projectIdRef.current;
@@ -669,12 +734,61 @@ export default function Viewer({
     // t only words the toast; a language switch must not restart the poll.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiRun]);
+  const datasetsRef = useRef(datasets);
+  datasetsRef.current = datasets;
+  const resolvingRef = useRef(false);
+  const [, setInitialResolved] = useState(false);
   useEffect(() => {
     // Preselect the dataset passed in the URL once, after the list arrives.
     if (initialAppliedRef.current || !initialDatasetId || !datasets.length) return;
-    initialAppliedRef.current = true;
-    if (datasets.some((item) => item.id === initialDatasetId))
+    if (datasets.some((item) => item.id === initialDatasetId && item.kind !== "COMPARISON")) {
+      initialAppliedRef.current = true;
       setDatasetId(initialDatasetId);
+      return;
+    }
+    // CMP2: comparison results are not listed. An old link `?dataset={comparison}` becomes the original's 결과 비교
+    // with that comparison on the map (address replaced); when the original is unknown it opens as data, as before.
+    if (resolvingRef.current) return;
+    resolvingRef.current = true;
+    const finish = (id?: string) => {
+      initialAppliedRef.current = true;
+      if (id) setDatasetId(id);
+      setInitialResolved(true);
+    };
+    const ensure = async (id: string) => {
+      if (datasetsRef.current.some((item) => item.id === id)) return true;
+      try {
+        const detail = await originComparisonsApi.detail(id);
+        setDatasets((current) => (current.some((item) => item.id === id) ? current : [...current, detail]));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    (async () => {
+      let detail: ZarrDataset;
+      try {
+        detail = await originComparisonsApi.detail(initialDatasetId);
+      } catch {
+        finish();
+        return;
+      }
+      if (detail.kind !== "COMPARISON") {
+        // Not in the list (e.g. not readable as a list item): nothing is chosen, as before.
+        finish();
+        return;
+      }
+      const origin = await originComparisonsApi.originOf(detail);
+      if (origin && (await ensure(origin))) {
+        window.history.replaceState(window.history.state, "", comparisonViewerHref(origin, detail.id));
+        urlStateRef.current = { dataset: origin, tool: "result", comparison: detail.id };
+        wantedResultRef.current = undefined;
+        finish(origin);
+        return;
+      }
+      setDatasets((current) => (current.some((item) => item.id === detail.id) ? current : [...current, detail]));
+      finish(detail.id);
+    })();
   }, [datasets, initialDatasetId]);
   /** FIX4: each pixel query counts up; an answer for an older query (another dataset, band or pixel) is dropped. */
   const pixelRunRef = useRef(0);
@@ -689,6 +803,9 @@ export default function Viewer({
     layerAutoRef.current = true; // a new dataset opens with the default-layer rule
     detailLoadedRef.current = "";
     setCompareIndex(-1);
+    // CMP2: a comparison belongs to its original; another dataset takes it (and its banner and legend) away.
+    setShownComparisonId(null);
+    wantAiLayerRef.current = false;
     if (urlStateRef.current.dataset && urlStateRef.current.dataset !== datasetId && datasetId)
       urlStateRef.current = {}; // the user picked another dataset: the address no longer applies
   }, [datasetId]);
@@ -751,18 +868,21 @@ export default function Viewer({
       else if (times[compareIndex]) params.set("b", times[compareIndex].iso);
     }
     // The result's datacube id when known (same for owner and reader, FIX2); else the AI job id.
-    if (datasetId && selectedResult?.datacubeId) params.set("ai", selectedResult.datacubeId);
+    // A comparison on the map replaces the AI layer (CMP2), so the address names the comparison instead.
+    if (datasetId && shownComparisonId) params.set("comparison", shownComparisonId);
+    else if (datasetId && selectedResult?.datacubeId) params.set("ai", selectedResult.datacubeId);
     else if (datasetId && resultKey && !resultKey.startsWith("link:")) params.set("ai", resultKey);
+    if (datasetId && drawer === "result") params.set("tool", "result");
     const query = params.toString();
     const next = `${window.location.pathname}${query ? `?${query}` : ""}`;
     if (next !== `${window.location.pathname}${window.location.search}`)
       window.history.replaceState(window.history.state, "", next);
-  }, [loading, initialDatasetId, datasetId, projectId, activeVariable, times, timeIndex, displayMode, compareIndex, aiCompare, resultKey, selectedResult?.datacubeId]);
+  }, [loading, initialDatasetId, datasetId, projectId, activeVariable, times, timeIndex, displayMode, compareIndex, aiCompare, resultKey, selectedResult?.datacubeId, shownComparisonId, drawer]);
   // ←/→ step through times, Space plays or pauses, unless a field, button or dialog has focus.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (tourOpen || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented) return;
-      if (ownsKeys(event.target, event.key) || document.querySelector("[role='dialog'][aria-modal='true']")) return;
+      if (ownsKeys(event.target, event.key) || document.querySelector("[role='dialog'][aria-modal='true'], [role='alertdialog'][aria-modal='true']")) return;
       if (times.length < 1) return;
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
@@ -949,6 +1069,39 @@ export default function Viewer({
     opacity: resultOpacity,
     zIndex: 6,
   });
+  // CMP2: the comparison's class map over the original (0 transparent, F3 colours). Its catalog entry gives the exact
+  // time coordinate and serving xcube; until it answers (or if it cannot) the list item's values are used.
+  const [comparisonCube, setComparisonCube] = useState<{ id: string; cube: ZarrDataset | null } | null>(null);
+  useEffect(() => {
+    if (!shownComparisonId || useMockApi) return;
+    let alive = true;
+    originComparisonsApi
+      .detail(shownComparisonId)
+      .then((cube) => alive && setComparisonCube({ id: shownComparisonId, cube }))
+      .catch(() => alive && setComparisonCube({ id: shownComparisonId, cube: null }));
+    return () => {
+      alive = false;
+    };
+  }, [shownComparisonId]);
+  const shownCube = shownComparison && comparisonCube?.id === shownComparison.id ? comparisonCube : null;
+  const comparisonTileUrl =
+    !useMockApi && shownComparison && shownCube && (shownCube.cube?.xcubeDatasetId || shownComparison.xcubeDatasetId)
+      ? backofficeAdapter.tileUrl(
+          shownCube.cube?.xcubeDatasetId || shownComparison.xcubeDatasetId,
+          "class",
+          shownCube.cube?.times[0]?.iso ?? shownComparison.mapTime,
+          shownCube.cube?.tileBaseUrl ?? shownComparison.tileBaseUrl,
+          shownComparison.type ? comparisonStyle(shownComparison.type) : undefined,
+        )
+      : null;
+  useCompareLayer({
+    map,
+    tileUrl: comparisonTileUrl,
+    bbox: shownComparison?.bbox ?? selectedBbox,
+    visible: true,
+    opacity: 90,
+    zIndex: 7,
+  });
   const changeSwipe = useCallback(
     (value: number) => {
       swipeRef.current = value;
@@ -1014,6 +1167,62 @@ export default function Viewer({
   const toggleRightPanel = (type: Tool) => {
     if (drawer === type) closeRightPanel();
     else openRightPanel(type, true);
+  };
+  // CMP2: `?tool=result` opens 결과 비교; `&comparison={id}` (notification link) puts that comparison on the map once
+  // the original's comparisons are known. Without a comparison the AI layer comes on as from the rail.
+  useEffect(() => {
+    const pending = urlStateRef.current;
+    if (!selected || pending.dataset !== selected.id || !pending.tool) return;
+    if (pending.tool !== "result") {
+      urlStateRef.current = { ...pending, tool: undefined, comparison: undefined };
+      return;
+    }
+    if (drawerRef.current !== "result") openRightPanel("result");
+    if (pending.comparison && comparisonItems === undefined) return;
+    urlStateRef.current = { ...urlStateRef.current, tool: undefined, comparison: undefined };
+    const match = pending.comparison ? comparisonItems?.find((item) => item.id === pending.comparison) : undefined;
+    if (match) {
+      showComparison(match);
+      // The AI group comes first in the panel: bring the shown card into view (no focus move).
+      window.setTimeout(() => document.querySelector(`[data-cmp-show="${match.id.replace(/["\\]/g, "\\$&")}"]`)?.scrollIntoView?.({ block: "nearest" }), 120);
+    } else wantAiLayerRef.current = true;
+  }, [selected, comparisonItems, openRightPanel, showComparison]);
+  useEffect(() => {
+    if (!wantAiLayerRef.current || drawer !== "result" || !readyEntries.length || shownComparisonRef.current) return;
+    wantAiLayerRef.current = false;
+    setResultVisible(true);
+  }, [drawer, readyEntries.length]);
+  // Leaving 결과 비교 (closing it in any way, another tool) takes the comparison, its legend and banner off (FIX4 rule).
+  useEffect(() => {
+    if (drawer === "result") return;
+    wantAiLayerRef.current = false;
+    if (shownComparisonRef.current) showComparison(null);
+  }, [drawer, showComparison]);
+  // Comparisons listed in an open 결과 비교 count as seen in this browser (the rail dot goes).
+  const comparisonIds = comparisonList.map((item) => item.id).join(",");
+  useEffect(() => {
+    if (drawer !== "result" || !comparisonIds) return;
+    const ids = comparisonIds.split(",");
+    markComparisonsSeen(ids);
+    setSeenIds((current) => (ids.every((id) => current.has(id)) ? current : new Set([...Array.from(current), ...ids])));
+  }, [drawer, comparisonIds]);
+  const canDeleteComparison = (item: OriginComparison) =>
+    !addLocked && !item.isExample && (item.accessType ? item.accessType === "OWNED" : !!user && item.ownerUserId === String(user.id));
+  const deleteComparison = async (item: OriginComparison) => {
+    await appApi.deleteDataset(item.id);
+    deletedComparisonsRef.current.add(item.id);
+    if (shownComparisonRef.current === item.id) showComparison(null, false);
+    setComparisons((current) => (current?.items ? { ...current, items: current.items.filter((entry) => entry.id !== item.id) } : current));
+    setComparisonNews(t("viewer.cmps.removed", { name: item.name }));
+    // The card is gone: focus goes to the group heading once the dialog has handed focus back (same commit).
+    focusNextRef.current = () => document.getElementById("vx-cmps-title");
+  };
+  const toggleComparison = (item: OriginComparison) => showComparison(shownComparisonRef.current === item.id ? null : item);
+  /** 비교 끄기 on the banner: focus goes to the card's 지도에 보기 so the keyboard does not lose its place. */
+  const comparisonOff = () => {
+    const id = shownComparisonRef.current;
+    showComparison(null);
+    focusNextRef.current = () => (id ? document.querySelector<HTMLElement>(`[data-cmp-show="${id.replace(/["\\]/g, "\\$&")}"]`) : null) ?? drawerTitleRef.current;
   };
   /** Time series at a map coordinate: from a click with the pixel tool, the keyboard reticle or the focused map's centre. */
   const queryPixel = useCallback(
@@ -1525,6 +1734,8 @@ export default function Viewer({
   return (
     <main className="viewer vx" aria-label={t("viewer.top.main")}>
       <h1 className="vx-sr">{selected ? t("viewer.top.heading", { name: selected.name }) : t("viewer.top.main")}</h1>
+      {/* CMP2: says when a comparison goes on or off the map, or is deleted. */}
+      <p className="vx-sr" role="status" aria-live="polite">{comparisonNews}</p>
       <header className="vx-top">
         <a className="vx-brand" href="/" aria-label={t("viewer.top.home")}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1883,8 +2094,11 @@ export default function Viewer({
             />
           )}
           {/* Legends stack bottom-left in one place (UX2): drawn area, AI result, comparison classes, source colour bar. */}
+          {/* CMP2: the comparison on the map — what, when, and how to turn it off. */}
+          {shownComparison && <ComparisonBanner item={shownComparison} labelOf={labelOf} onOff={comparisonOff} />}
           {selected && (
             <div className="vx-legends">
+              {shownComparison && <ComparisonMapLegend key={shownComparison.id} item={shownComparison} />}
               {area.shape && !area.drawing && (
                 <div className="vx-legend" role="group" aria-label={t("viewer.stats.legendAria", { area: legendValue(area.shape.areaKm2, lang) })}>
                   <span className="vx-legend__row"><i className="vx-shape__swatch" aria-hidden="true" /><strong>{t("viewer.stats.legend")}</strong></span>
@@ -1975,6 +2189,8 @@ export default function Viewer({
                     if (open) closeRightPanel();
                     else {
                       if (hasInference) setResultVisible(true);
+                      // Comparisons made meanwhile (S9 in another tab) show up when the panel opens.
+                      if (comparisonOrigin) setComparisonTick((value) => value + 1);
                       openRightPanel("result", true);
                     }
                     return;
@@ -1985,7 +2201,12 @@ export default function Viewer({
                 <Icon size={18} aria-hidden="true" />
                 <span className="vx-rail__label">{t(`viewer.tools.${tool}`)}</span>
                 {tool === "ai" && isRunning(aiRunHere) && <i className="vx-pulse" aria-hidden="true" />}
-                {tool === "result" && hasInference && <span className="vx-rail__count tabular" aria-label={t("viewer.tools.resultCount", { count: readyEntries.length })}>{readyEntries.length}</span>}
+                {tool === "result" && (hasInference || comparisonList.length > 0) && (
+                  <span className="vx-rail__count tabular" aria-label={t("viewer.tools.resultCounts", { ai: readyEntries.length, cmp: comparisonList.length })}>
+                    {readyEntries.length + comparisonList.length}
+                  </span>
+                )}
+                {tool === "result" && hasNewComparison && <i className="vx-rail__new" role="img" aria-label={t("viewer.tools.newResult")} />}
               </button>
             );
           })}
@@ -2140,6 +2361,9 @@ export default function Viewer({
               )}
               {drawer === "result" && selected && (
                 <>
+                  {!comparison && (
+                    <h3 className="vx-resgroup__head" id="vx-ai-results-title">{t("viewer.cmps.aiGroup")}</h3>
+                  )}
                   {comparison ? (
                     <ComparisonPanel info={comparison} labelOf={labelOf} datasetName={selected.name} />
                   ) : selectedResult ? (
@@ -2178,11 +2402,24 @@ export default function Viewer({
                   ) : (
                     <p className="vx-section__hint vx-form__pad">{t(selected.kind === "AI_RESULT" ? "viewer.drawer.noResult" : "viewer.drawer.noResultYet")}</p>
                   )}
-                  <CompareEntry
-                    source={comparison ? comparison.sourceDatacubeId : selected.id}
-                    result={comparison ? comparison.resultId ?? comparison.aId : resultDatacubeId}
-                    time={times[timeIndex]?.iso}
-                  />
+                  {comparisonOrigin ? (
+                    <ComparisonGroup
+                      items={comparisonItems}
+                      shownId={shownComparisonId}
+                      canDelete={canDeleteComparison}
+                      labelOf={labelOf}
+                      onShow={toggleComparison}
+                      onDelete={deleteComparison}
+                      resultId={resultDatacubeId ?? readyEntries.find((entry) => entry.datacubeId)?.datacubeId}
+                      onGoAi={() => openRightPanel("ai", true)}
+                    />
+                  ) : (
+                    <CompareEntry
+                      source={comparison ? comparison.sourceDatacubeId : selected.id}
+                      result={comparison ? comparison.resultId ?? comparison.aId : resultDatacubeId}
+                      time={times[timeIndex]?.iso}
+                    />
+                  )}
                 </>
               )}
               {selected && visited.includes("export") && (

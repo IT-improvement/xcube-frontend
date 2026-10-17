@@ -64,7 +64,7 @@ test('실행하면 datacubeId·modelId·임계값을 보내고 진행 상황을 
   expect(create.mock.calls[0][0]).not.toHaveProperty('timeEnd');
   expect(await within(drawer).findByRole('progressbar', { name: '수체 추출 진행률' })).toBeInTheDocument();
   // The run finishes, becomes a result of this dataset and opens the result button.
-  expect(await screen.findByLabelText(/AI 결과 \d+개/, {}, { timeout: 6000 })).toBeInTheDocument();
+  expect(await screen.findByLabelText(/AI 결과 [1-9]\d*개/, {}, { timeout: 6000 })).toBeInTheDocument();
 }, 10000);
 
 test('실행을 여러 번 눌러도 요청은 한 번만 가고, 응답 전까지 "입력 확인 중…"으로 막힌다', async () => {
@@ -86,7 +86,7 @@ test('실행을 여러 번 눌러도 요청은 한 번만 가고, 응답 전까�
 
 test('결과 패널: 임계값 슬라이더는 thresholdCurve로 면적을 바로 추정하고 지도는 바꾸지 않는다', async () => {
   render(<Viewer initialDatasetId="landsat" />);
-  await screen.findByLabelText(/AI 결과 \d+개/);
+  await screen.findByLabelText(/AI 결과 [1-9]\d*개/);
   fireEvent.click(screen.getByRole('button', { name: /^결과 비교/ }));
   const drawer = screen.getByRole('complementary', { name: '결과 비교' });
   const slider = await within(drawer).findByRole('slider', { name: '추정 임계값' });
@@ -111,18 +111,19 @@ test('결과 패널: 임계값 슬라이더는 thresholdCurve로 면적을 바�
 
 test('정답(water_gt) 지표가 있으면 IoU·F1·정밀도·재현율과 연구용 표시를 보여 준다', async () => {
   render(<Viewer initialDatasetId="landsat" />);
-  await screen.findByLabelText(/AI 결과 \d+개/);
+  await screen.findByLabelText(/AI 결과 [1-9]\d*개/);
   fireEvent.click(screen.getByRole('button', { name: /^결과 비교/ }));
   const drawer = screen.getByRole('complementary', { name: '결과 비교' });
   expect(await within(drawer).findByText('연구용(정답 기준 보정, 점수가 실제보다 높게 나올 수 있음)')).toBeInTheDocument();
   expect(within(drawer).getByText(/최적 임계값 0.90/)).toBeInTheDocument();
-  for (const label of ['IoU', 'F1', '정밀도', '재현율']) expect(within(drawer).getByText(label)).toBeInTheDocument();
+  // The comparison cards below (CMP2) may carry IoU/F1 too: at least the AI metrics block has each label.
+  for (const label of ['IoU', 'F1', '정밀도', '재현율']) expect(within(drawer).getAllByText(label).length).toBeGreaterThan(0);
   expect(within(drawer).getByText('0.845')).toBeInTheDocument();
 });
 
 test('비교 대상을 “AI 결과”로 바꾸면 같은 시점의 원본 ↔ AI 결과를 스와이프하고, “시점”으로 돌아온다', async () => {
   render(<Viewer initialDatasetId="landsat" />);
-  await screen.findByLabelText(/AI 결과 \d+개/);
+  await screen.findByLabelText(/AI 결과 [1-9]\d*개/);
   fireEvent.click(screen.getByRole('button', { name: /스와이프/ }));
   const target = screen.getByRole('group', { name: '비교 대상' });
   expect(within(target).getByRole('button', { name: '시점' })).toHaveAttribute('aria-pressed', 'true');

@@ -14,6 +14,7 @@ import { authApi, ProfileUpdate, User } from '../api/authApi';
 import { StorageUsage, storageApi } from '../api/backofficeApi';
 import { accountDemo } from './accountDemo';
 import { compareApi } from '../api/compare';
+import { withoutComparisons } from '../api/originComparisons';
 import { askOnceOnJobStart } from './browserNotify';
 import { formatDate as i18nFormatDate, getLanguage, translate } from '../i18n';
 import type { Lang } from '../i18n';
@@ -31,7 +32,8 @@ const manage = useMockApi ? demoManagement : backofficeAdapter;
 
 export const appApi = {
   demo: useMockApi,
-  listDatasets: () => activeViewerAdapter.getDatasets(),
+  // CMP2: comparison results are read through their original; an older Backoffice answer that still lists them is filtered.
+  listDatasets: () => activeViewerAdapter.getDatasets().then(withoutComparisons),
   getDataset: (id: string) => manage.getDatasetDetail(id),
   getAiResults: (id: string) => activeViewerAdapter.getJobs(id),
   deleteDataset: (id: string) => (useMockApi ? demoAdapter : backofficeAdapter).deleteDatacube(id),

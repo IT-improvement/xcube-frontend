@@ -141,7 +141,7 @@ describe('Esc와 초점 되돌리기', () => {
   test('결과 비교를 다시 눌러 닫으면 창만 닫는 게 아니라 AI 수체 결과 레이어도 끈다', async () => {
     render(<Viewer initialDatasetId="landsat" />);
     await screen.findByRole('region', { name: '시계열 탐색기' });
-    await screen.findByLabelText(/AI 결과 \d+개/);
+    await screen.findByLabelText(/AI 결과 [1-9]\d*개/);
     const results = screen.getByRole('button', { name: /^결과 비교/ });
     fireEvent.click(results);
     expect(screen.getByRole('complementary', { name: '결과 비교' })).toBeInTheDocument();

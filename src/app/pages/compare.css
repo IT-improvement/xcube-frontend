@@ -72,3 +72,4 @@
   .compare-pair { grid-template-columns: minmax(0, 1fr); }
   .compare-pair__arrow { display: none; }
 }
+.compare-out__where { margin: 0; color: var(--fb-ink); font: 400 14px/1.55 var(--fb-font); }

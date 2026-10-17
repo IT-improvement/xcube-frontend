@@ -309,7 +309,7 @@ const koViewer = {
         },
         ai: {
           title: 'AI 수체 추출',
-          body: "선택한 데이터셋으로 수체 추출을 실행하고, 결과가 있으면 '결과 비교'에서 원본과 겹쳐 비교합니다.",
+          body: "선택한 데이터셋으로 수체 추출을 실행하고, 결과가 있으면 '결과 비교'에서 원본과 겹쳐 비교합니다. '결과 비교'에는 AI 결과와 비교 분석 결과가 함께 모입니다.",
           fallback: '데이터셋을 고르면 쓸 수 있습니다.',
         },
         add: {
@@ -350,6 +350,9 @@ const koViewer = {
       needData: '데이터를 먼저 고르세요.',
       aiNotHere: 'AI 수체 추출은 원본 데이터에서 실행합니다.',
       resultCount: 'AI 결과 {count}개',
+      /** CMP2: the 결과 비교 count reads both numbers. */
+      resultCounts: 'AI 결과 {ai}개, 비교 결과 {cmp}개',
+      newResult: '새 비교 결과 있음',
     },
     /** UR-63 F1: area statistics. */
     stats: {
@@ -553,6 +556,48 @@ const koViewer = {
       makeHint: '모델 간·시점 간·정답 대비 비교 지도를 만듭니다. 지금 보는 데이터와 시점이 채워진 채로 열립니다.',
       make: '비교 분석 만들기',
       newTab: '(새 탭)',
+    },
+    /** CMP2 (UR-64): comparison results listed under the original's 결과 비교. */
+    cmps: {
+      aiGroup: 'AI 수체 결과',
+      group: '비교 분석 결과 ({count}개)',
+      groupPlain: '비교 분석 결과',
+      loading: '비교 분석 결과를 불러오는 중…',
+      tag: {
+        TIME_CHANGE: '시점 변화',
+        MODEL_COMPARE: '모델 간',
+        REFERENCE: '정답 대비',
+        unknown: '비교',
+      },
+      shared: '공유받음',
+      example: '예시',
+      onMap: '지도에 표시 중',
+      keyChange: '물 면적 증감',
+      show: '지도에 보기',
+      shown: '지도에서 끄기',
+      showAria: '{name} 지도에 보기',
+      details: '지표 자세히',
+      detailsAria: '{name} 지표 자세히',
+      inputs: '입력: {names}',
+      csv: '지표 CSV 내려받기',
+      csvSuffix: '_지표',
+      remove: '삭제',
+      removeAria: '{name} 삭제',
+      removeTitle: '비교 결과를 삭제할까요?',
+      removeText: '"{name}"을(를) 지웁니다. 클래스 지도와 지표가 함께 사라지고 되돌릴 수 없습니다. 원본과 AI 결과는 그대로 남습니다.',
+      removeBusy: '삭제하는 중…',
+      removed: '"{name}" 비교 결과를 삭제했습니다.',
+      empty: 'AI 결과 둘을 시점·모델·정답과 비교하면 여기에 쌓입니다.',
+      make: '비교 분석 만들기',
+      needAi: '먼저 AI 수체 추출을 하세요. 비교는 AI 결과로 만듭니다.',
+      toAi: 'AI 수체 추출로',
+      bannerLabel: '비교 보는 중',
+      timeFree: 'T1→T2 결과(시간자와 무관)',
+      off: '비교 끄기',
+      announceOn: '"{name}" 비교를 지도에 올렸습니다. AI 수체 레이어와 스와이프 비교는 껐습니다.',
+      announceOff: '비교를 지도에서 껐습니다.',
+      legendHide: '범례 접기',
+      legendShow: '범례 펼치기',
     },
     /** AI water extraction (S8) and the result comparison (S9). */
     ai: {

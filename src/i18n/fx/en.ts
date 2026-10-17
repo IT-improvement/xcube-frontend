@@ -73,7 +73,7 @@ const enFx: FxTranslation = {
   },
   compare: {
     title: 'Compare',
-    description: 'Compare AI water results between dates, between models, or against reference data. The result is saved as a class map you can open in the Viewer.',
+    description: 'Compare AI water results between dates, between models, or against reference data. Results collect under “Compare” in the Viewer of the source data.',
     step: { type: 'What to compare', inputs: 'Data and dates', run: 'Check and run' },
     types: {
       TIME_CHANGE: { name: 'Change between dates', text: 'Two dates of one AI result: where water appeared or disappeared, and how the area changed.' },
@@ -128,6 +128,7 @@ const enFx: FxTranslation = {
     result: {
       title: 'Comparison result',
       viewer: 'View in Viewer',
+      where: 'Open the source “{name}” in the Viewer and find the result under “Compare”.',
       reference: 'reference {ref}',
       progress: 'Comparison progress',
       working: 'Comparing. It keeps running on the server if you leave.',
