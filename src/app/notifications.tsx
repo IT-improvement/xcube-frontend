@@ -144,7 +144,12 @@ export function NotificationBell({ useDismiss }: { useDismiss: (open: boolean, c
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, [panel, button], button);
   const load = state?.load;
-  useEffect(() => { if (open) load?.(); }, [open, load]);
+  // Each opening starts clean: a "mark all read" failure from an earlier opening is not shown again (FIX4).
+  useEffect(() => {
+    if (!open) return;
+    setError('');
+    load?.();
+  }, [open, load]);
   if (!state) return null;
   const count = state.unread ?? 0;
   const label = count ? t('notify.bellUnread', { count }) : t('notify.bell');

@@ -105,6 +105,9 @@ export default function ComparePage() {
   const history = useLoad(() => compareApi.listJobs());
   useEffect(() => {
     if (!jobId) { setJob(null); return undefined; }
+    // FIX4: another job drops the one shown before (and its error), so a failed load never shows the old metrics.
+    setJob((current) => (current && String(current.id) === jobId ? current : null));
+    setJobError('');
     let alive = true;
     let timer: number | undefined;
     const poll = () => compareApi.get(jobId).then((next) => {

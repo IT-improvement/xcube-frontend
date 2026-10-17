@@ -37,8 +37,8 @@ export default function ExportPanel({
   /** Current view as [w, s, e, n] (EPSG:4326), asked for when the job starts. */
   viewBbox: () => [number, number, number, number] | null;
   datasetName: string;
-  /** Makes and saves the map PNG; rejects with a reason. */
-  onPng: (title: string) => Promise<void>;
+  /** Makes and saves the map PNG; rejects with a reason. `signal` aborts when the panel goes away (no late file). */
+  onPng: (title: string, signal?: AbortSignal) => Promise<void>;
 }) {
   const { lang, t } = useLanguage();
   const [title, setTitle] = useState(datasetName);
@@ -47,6 +47,9 @@ export default function ExportPanel({
     if (!titleTouched.current) setTitle(datasetName);
   }, [datasetName]);
   const [pngBusy, setPngBusy] = useState(false);
+  // FIX4: a map PNG still being drawn when the panel closes (or the dataset changes) is not saved afterwards.
+  const pngAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => pngAbort.current?.abort(), []);
   const [pngFailure, setPngFailure] = useState<string>("");
   const [kind, setKind] = useState<ExportKind>("GEOTIFF");
   const [targetKey, setTargetKey] = useState(targets[0]?.key ?? "");
@@ -160,8 +163,10 @@ export default function ExportPanel({
   const makePng = async () => {
     setPngBusy(true);
     setPngFailure("");
+    const controller = new AbortController();
+    pngAbort.current = controller;
     try {
-      await onPng(title.trim() || datasetName);
+      await onPng(title.trim() || datasetName, controller.signal);
     } catch (cause: any) {
       setPngFailure(cause?.code === "TAINTED" || cause?.message === "TAINTED" ? t("viewer.export.png.tainted") : t("viewer.export.png.failed"));
     } finally {

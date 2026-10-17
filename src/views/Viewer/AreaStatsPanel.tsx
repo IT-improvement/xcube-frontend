@@ -86,6 +86,9 @@ export default function AreaStatsPanel({
   const [failure, setFailure] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const runRef = useRef(0);
+  /** The query in flight; a new shape, target or variable, or the panel going away, aborts it (FIX4). */
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
   useEffect(() => {
     if (!targets.some((item) => item.key === targetKey)) setTargetKey(targets[0]?.key ?? "");
   }, [targets, targetKey]);
@@ -98,6 +101,8 @@ export default function AreaStatsPanel({
   // A new shape, target or variable makes an old answer wrong.
   useEffect(() => {
     runRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
     setResult(null);
     setFailure(null);
     setBusy(false);
@@ -114,15 +119,18 @@ export default function AreaStatsPanel({
   const run = async () => {
     if (!shape || !target || !variable) return;
     const id = (runRef.current += 1);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setBusy(true);
     setFailure(null);
     try {
       const current = times[currentIndex]?.iso;
-      const answer = await areaStatsApi.get(target.datasetId, {
-        geometry: shape.geometry,
-        variable,
-        times: scope === "current" && current ? [current] : timesFor(isos),
-      });
+      const answer = await areaStatsApi.get(
+        target.datasetId,
+        { geometry: shape.geometry, variable, times: scope === "current" && current ? [current] : timesFor(isos) },
+        controller.signal,
+      );
       if (runRef.current === id) setResult(answer);
     } catch (cause) {
       if (runRef.current === id) setFailure(cause ?? new Error());

@@ -170,11 +170,16 @@ function AdminPanel({ area, set }: { area: AreaState; set: Patch }) {
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [query, level]);
 
+  // FIX4: only the last area asked for counts; a slower answer for an earlier click does not replace it.
+  const asked = useRef('');
   const choose = async (item: AdminArea) => {
+    asked.current = item.code;
     setLoadingCode(item.code); setFailure(null);
-    try { set({ admin: await generation.getAdminArea(item.code) }); }
-    catch (cause) { setFailure({ cause }); }
-    finally { setLoadingCode(''); }
+    try {
+      const admin = await generation.getAdminArea(item.code);
+      if (asked.current === item.code) set({ admin });
+    } catch (cause) { if (asked.current === item.code) setFailure({ cause }); }
+    finally { if (asked.current === item.code) setLoadingCode(''); }
   };
   return (
     <div className="area-panel">

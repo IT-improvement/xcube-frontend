@@ -1,5 +1,5 @@
 import { ArrowLeft, Database, ExternalLink, HelpCircle, Link2, Lock, Pencil, Plus, Search, SearchX, Trash2, Unlink } from 'lucide-react';
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { userMessage } from '../../api/httpClient';
 import { Alert, Button, ButtonLink, LockedButton, TextField } from '../../components/ui';
@@ -82,6 +82,11 @@ export function ProjectsPage() {
   const [params, setParams] = useSearchParams();
   const scope = (SCOPES.includes(params.get('scope') as Scope) ? params.get('scope') : 'all') as Scope;
   const [query, setQueryState] = useState(() => params.get('q') ?? '');
+  // FIX4: the address can change without the box (the menu's 프로젝트 link, back/forward): the box follows it.
+  const urlQuery = params.get('q') ?? '';
+  useEffect(() => {
+    setQueryState((current) => (current.trim() === urlQuery.trim() ? current : urlQuery));
+  }, [urlQuery]);
   const setParam = (key: string, value: string, fallback: string) =>
     setParams((current) => {
       const next = new URLSearchParams(current);

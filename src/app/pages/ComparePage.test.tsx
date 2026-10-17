@@ -99,3 +99,14 @@ test('유저(USER)는 실행이 꺼지고 이유를 본다', async () => {
   expect(screen.getByRole('button', { name: /비교 실행/ })).toHaveAttribute('aria-disabled', 'true');
   expect(compare.check).not.toHaveBeenCalled();
 });
+
+test('FIX4: 다른 비교를 열다 실패하면 앞 비교의 지표를 그대로 두지 않고 오류를 보인다', async () => {
+  const other = { ...done, id: 'c2', name: '다른 비교' };
+  compare.listJobs.mockResolvedValue([done, other]);
+  compare.get.mockImplementation((id: string) => (id === 'c1' ? Promise.resolve(done) : Promise.reject(new ApiError(404, 'JOB_NOT_FOUND', '작업을 찾을 수 없습니다.'))));
+  renderAt('/app/analysis/compare?job=c1');
+  expect(await screen.findByRole('region', { name: 'U-Net 결과 시점 변화' })).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole('button', { name: '다른 비교 결과 보기' }));
+  expect(await screen.findByRole('alert')).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'U-Net 결과 시점 변화' })).not.toBeInTheDocument();
+});
