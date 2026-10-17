@@ -284,7 +284,7 @@ function StorageReport({ usage, lang }: { usage: StorageUsage; lang: 'ko' | 'en'
           aria-valuenow={Math.min(100, Math.round(ratio * 100))}
           aria-valuetext={t('settings.storage.meterValue', { used, quota, percent })}
         >
-          <span className="storage__fill" style={{ width: `${Math.min(100, ratio * 100)}%` }} />
+          <span className="storage__fill" style={{ transform: `scaleX(${Math.min(1, ratio)})` }} />
         </div>
       )}
       {level !== 'ok' && (

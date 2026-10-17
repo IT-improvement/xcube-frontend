@@ -388,7 +388,7 @@ function JobResult({ job, nameOf, onCancel }: { job: CompareJob; nameOf: (id?: s
       </p>
       {isActive(job) ? (
         <div className="compare-out__progress" role="status">
-          <svg className="job-progress" role="progressbar" aria-valuenow={percentDone} aria-valuemin={0} aria-valuemax={100} aria-label={t('compare.result.progress')}><rect width={`${percentDone}%`} height="100%" /></svg>
+          <svg className="job-progress" role="progressbar" aria-valuenow={percentDone} aria-valuemin={0} aria-valuemax={100} aria-label={t('compare.result.progress')}><rect width="100%" height="100%" transform={`scale(${percentDone / 100} 1)`} /></svg>
           <span className="xc-hint">{t('compare.result.working')}</span>
         </div>
       ) : job.status === 'FAILED' ? (

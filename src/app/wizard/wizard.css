@@ -82,10 +82,10 @@
 .product-row.is-skipped .product-row__name { color: var(--fb-ink-2); }
 .product-row__skip { overflow-wrap: anywhere; }
 /* UPL2: files the server left out (visual images), under the inspection table. */
-.product-skipped { display: grid; gap: 4px; font-size: 13.5px; color: var(--fb-ink-2); }
-.product-skipped ul { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
+.product-skipped { display: grid; gap: 4px; font-size: 13px; color: var(--fb-ink-2); }
+.product-skipped ul { margin: 0; padding-left: 20px; overflow-wrap: anywhere; }
 .product-skipped strong { color: var(--fb-ink); font-weight: 600; }
-.product-row__name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font: 500 13.5px/1.35 var(--font-sans); font-variant-numeric: tabular-nums; }
+.product-row__name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font: 500 13px/1.4 var(--font-sans); font-variant-numeric: tabular-nums; }
 .product-table__note { font-size: 13px; color: var(--fb-ink-2); min-width: 16ch; }
 
 /* GEE "자료": the preset as the large first choice, then "직접 고르기" with the whole list (no inner scroll). */
@@ -125,9 +125,9 @@
 .wizard-result__icon.is-failed { color: var(--fb-bad); }
 .wizard-result__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-3); }
 .wizard-result__progress { display: grid; justify-items: center; gap: 6px; width: min(320px, 100%); }
-.wizard-progress { width: 100%; height: 4px; appearance: none; border: 0; border-radius: 2px; background: var(--fb-sunken); box-shadow: inset 0 0 0 1px var(--fb-rule); overflow: hidden; }
+.wizard-progress { width: 100%; height: 4px; appearance: none; border: 0; border-radius: var(--fb-radius-hair); background: var(--fb-sunken); box-shadow: inset 0 0 0 1px var(--fb-rule); overflow: hidden; }
 .wizard-progress::-webkit-progress-bar { background: var(--fb-sunken); }
-.wizard-progress::-webkit-progress-value { background: var(--fb-ink); transition: width 400ms var(--fb-ease-out); }
+.wizard-progress::-webkit-progress-value { background: var(--fb-ink); }
 .wizard-progress::-moz-progress-bar { background: var(--fb-ink); }
 
 /* Variable style editor */
@@ -190,7 +190,7 @@
 .area-caption { margin: 0; font-size: 13px; color: var(--fb-ink-2); }
 .area-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 /* Chips: 30px, 6px corners, input-border frame (3:1 on surface); selected fills with ink. */
-.area-chip { min-width: 44px; height: 30px; padding: 0 11px; border: 1px solid var(--fb-input-border); border-radius: var(--fb-radius); background: var(--fb-surface); color: var(--fb-ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; cursor: pointer; transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out; }
+.area-chip { min-width: 44px; height: 30px; padding: 0 11px; border: 1px solid var(--fb-input-border); border-radius: var(--fb-radius); background: var(--fb-surface); color: var(--fb-ink); font: var(--fb-text-control); white-space: nowrap; cursor: pointer; transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out; }
 .area-chip:hover:not(.is-on) { background: var(--fb-sunken); }
 .area-chip.is-on { border-color: var(--fb-ink); background: var(--fb-ink); color: var(--fb-on-ink); }
 .area-chip:focus-visible, .area-item:focus-visible { outline: 2px solid var(--fb-focus); outline-offset: 2px; }
@@ -268,7 +268,7 @@
 .date-pick__sel { display: inline-flex; gap: 4px; }
 /* sort: one segmented control (bordered box, pressed = ink), segments of equal width */
 .date-pick__order { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; margin-left: auto; padding: 1px; border: 1px solid var(--fb-rule-strong); border-radius: var(--fb-radius); background: var(--fb-surface); }
-.date-pick__order button { height: 26px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--fb-ink-2); font: 600 13px/1 var(--fb-font); cursor: pointer; white-space: nowrap; }
+.date-pick__order button { height: 26px; padding: 0 10px; border: 0; border-radius: var(--fb-radius-mark); background: transparent; color: var(--fb-ink-2); font: var(--fb-text-control); cursor: pointer; white-space: nowrap; }
 .date-pick__order button:hover { background: var(--fb-sunken); color: var(--fb-ink); }
 .date-pick__order button[aria-pressed='true'] { background: var(--fb-ink); color: var(--fb-on-ink); }
 .date-pick__order button:focus-visible { outline: 2px solid var(--fb-focus); outline-offset: 1px; }
