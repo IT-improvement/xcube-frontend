@@ -20,8 +20,9 @@ const SOURCE_TYPE_LABEL: Record<string, string> = {
   LANDSAT_C2L2: 'Landsat C2 L2',
 };
 /** "GEE", "수식 융합" / "Band math", "AI 수체 추출" / "AI water extraction"; unknown types as given. */
+const TRANSLATED_TYPES = ['FUSION', 'AI_WATER', 'COMPARE', 'EXPORT_GEOTIFF', 'EXPORT_ANIMATION', 'EXPORT_REPORT'];
 export const jobTypeLabel = (type: string, lang: Lang = getLanguage()) =>
-  type === 'FUSION' || type === 'AI_WATER' ? translate(lang, `jobType.${type}`) : SOURCE_TYPE_LABEL[type] ?? type;
+  TRANSLATED_TYPES.includes(type) ? translate(lang, `jobType.${type}` as TKey) : SOURCE_TYPE_LABEL[type] ?? type;
 
 /**
  * Model names for job rows when the model list is not loaded (ids from the M7 contract). The Viewer has its
@@ -61,6 +62,15 @@ export function elapsed(job: JobSummary, now = Date.now(), lang: Lang = getLangu
 type StepState = 'done' | 'current' | 'failed' | 'todo';
 /** 검사 → 변환 → 검증 → 등록 → XCube 반영, derived from status, stage and the Backoffice registration. */
 export function jobSteps(job: JobSummary, lang: Lang = getLanguage()): Array<{ label: string; state: StepState }> {
+  // Exports (F2) end with a file, comparisons (F3) with a registered dataset: three steps each.
+  if (job.type.startsWith('EXPORT_') || job.type === 'COMPARE') {
+    const work: StepState = job.status === 'RUNNING' ? 'current' : job.status === 'SUCCEEDED' ? 'done' : job.status === 'FAILED' ? 'failed' : 'todo';
+    const last: StepState = job.type === 'COMPARE'
+      ? (job.registration?.datacubeId != null ? 'done' : job.registration?.error || job.registration?.errorCode ? 'failed' : job.status === 'SUCCEEDED' ? 'current' : 'todo')
+      : job.status === 'SUCCEEDED' ? 'done' : 'todo';
+    const keys: TKey[] = job.type === 'COMPARE' ? ['jobs.steps.checkInputs', 'jobs.steps.compute', 'jobs.steps.register'] : ['jobs.steps.checkInputs', 'jobs.steps.render', 'jobs.steps.ready'];
+    return keys.map((key, index) => ({ label: translate(lang, key), state: [job.status === 'QUEUED' ? 'todo' : 'done', work, last][index] as StepState }));
+  }
   const registered = !!job.registration?.datacubeId || !!job.registration?.xcubeDatasetId;
   const registrationFailed = !!job.registration?.error || !!job.registration?.errorCode;
   const converting = job.status === 'RUNNING' && job.stage !== 'validate';
@@ -142,12 +152,46 @@ export function FusionRequestSummary({ request, names }: { request: Partial<Fusi
   );
 }
 
+type Words = (key: TKey, vars?: Record<string, string | number>) => string;
+const timesText = (times: unknown, t: Words) => (Array.isArray(times) ? t('jobs.export.timesCount', { count: times.length }) : t('jobs.input.allTimes'));
+/** An export job's request (F2): data, format, variable, dates, extent. */
+function exportRows(input: Record<string, unknown>, t: Words): Array<[string, string]> {
+  const rows: Array<[string, string]> = [[t('jobs.input.inputData'), String(input.datasetName ?? (input.datasetId != null ? `#${input.datasetId}` : '—'))]];
+  if (input.variable) rows.push([t('jobs.input.variable'), input.variable === 'rgb' ? 'RGB' : String(input.variable)]);
+  rows.push([t('jobs.input.period'), timesText(input.times, t)]);
+  if (input.format) rows.push([t('jobs.export.format'), String(input.format).toUpperCase() + (input.fps ? ` · ${t('jobs.export.fps', { fps: Number(input.fps) })}` : '')]);
+  rows.push([t('jobs.export.extent'), Array.isArray(input.bbox) ? (input.bbox as number[]).map((value) => Number(value).toFixed(3)).join(', ') : input.hasGeometry ? t('jobs.export.drawnArea') : t('jobs.export.wholeData')]);
+  return rows;
+}
+/** A comparison job's request (F3). */
+function compareRows(input: Record<string, unknown>, t: Words): Array<[string, string]> {
+  const type = String(input.type ?? '');
+  const rows: Array<[string, string]> = [[t('jobs.compare.type'), ['TIME_CHANGE', 'MODEL_COMPARE', 'REFERENCE'].includes(type) ? t(`compare.types.${type}.name` as TKey) : type || '—']];
+  if (input.resultId != null) rows.push([t('jobs.compare.result'), `#${input.resultId}`]);
+  if (input.aId != null) rows.push([t('jobs.compare.a'), `#${input.aId}`]);
+  if (input.bId != null) rows.push([t('jobs.compare.b'), `#${input.bId}`]);
+  if (input.t1) rows.push([t('jobs.compare.times'), `${String(input.t1).slice(0, 10)} → ${String(input.t2 ?? '').slice(0, 10)}`]);
+  if (input.time) rows.push([t('jobs.compare.time'), String(input.time).slice(0, 10)]);
+  if (input.reference) rows.push([t('jobs.compare.reference'), typeof input.reference === 'string' ? input.reference : `#${(input.reference as { shapefileDatasetId?: unknown }).shapefileDatasetId ?? '—'}`]);
+  return rows;
+}
+
 /** What the job was asked to do: inputs, chosen variables with colour range, parameters. */
 export function JobInputSummary({ job }: { job: JobSummary }) {
   const { lang, t } = useLanguage();
   const fusionRequest = job.type === 'FUSION' ? asFusionRequest(job.input) : null;
   if (fusionRequest) return <FusionRequestSummary request={fusionRequest} />;
   const input = job.input ?? {};
+  if (job.type.startsWith('EXPORT_') || job.type === 'COMPARE') {
+    const rows: Array<[string, string]> = job.type === 'COMPARE' ? compareRows(input, t) : exportRows(input, t);
+    return (
+      <div className="job-input">
+        <dl className="meta-list meta-list--flush">
+          {rows.map(([label, value]) => (<Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>))}
+        </dl>
+      </div>
+    );
+  }
   if (job.type === 'AI_WATER') {
     const modelId = String(input.modelId ?? '');
     const rows: Array<[string, string]> = [
@@ -308,4 +352,14 @@ export function useActiveJobCount() {
   const shared = useContext(FeedContext);
   const own = useFeedSource(!shared, false);
   return (shared ? shared.feed : own).activeCount;
+}
+
+/**
+ * Increases on every answer of the shell's jobs poller, without asking for the full list. The notification bell
+ * (UR-63 F4) checks for new notifications on each tick, so it rides the same timer (10 s while jobs run, else 60 s).
+ * Null outside the shell.
+ */
+export function useJobsFeedTick(): number | null {
+  const shared = useContext(FeedContext);
+  return shared ? shared.feed.tick : null;
 }

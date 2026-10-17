@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Alert, Button, ButtonAnchor, ButtonLink, LockedButton } from '../../components/ui';
 import { NEEDS, useRoleGate } from '../../auth/roles';
 import { Badge, BadgeTone, Card, ConfirmDialog, EmptyState, PageHeader, Skeleton, TabPanel, Tabs, useToast } from '../../components/ui/kit';
+import { isExample } from '../../api/examples';
 import { ai, aiViewerHref, appApi, canEditProject, formatDateTime, fusion, generation, isOwned, periodLabel, Project, viewerHref, ZarrDataset } from '../api';
 import { AiFacts, aiFactsOf, aiPeriod, shortDateTime, thresholdText } from '../aiFacts';
 import { asFusionRequest } from '../fusion';
@@ -126,6 +127,8 @@ export default function DatasetDetailPage() {
 
   const item: ZarrDataset = dataset.data;
   const owned = isOwned(item);
+  // Example data (UX1) is read-only for everyone: no project link, no delete.
+  const example = isExample(item);
   const isAiResult = item.kind === 'AI_RESULT';
   const viewerLink = isAiResult && item.sourceDatacubeId ? aiViewerHref(item.sourceDatacubeId, item.id) : viewerHref(item.id);
   return (
@@ -133,14 +136,14 @@ export default function DatasetDetailPage() {
       <PageHeader
         back={back}
         title={item.name}
-        description={<span className="head-tags">{!owned && <Badge tone="water">{t('app.shared')}</Badge>}{item.kind === 'FUSION' ? <Badge tone="water">{t('kinds.fusion')}</Badge> : item.kind === 'AI_RESULT' ? <Badge tone="result">{t('kinds.ai')}</Badge> : <Badge>{t('kinds.original')}</Badge>}<DatasetStatus dataset={item} quiet /><span className="xc-hint">{item.xcubeDatasetId}</span>{isAiResult && item.sourceDatacubeId && <span>{t('dataset.sourceData')} <Link to={`/app/data/${encodeURIComponent(item.sourceDatacubeId)}`}>{t('dataset.viewSource', { id: item.sourceDatacubeId })}</Link></span>}</span>}
+        description={<span className="head-tags">{example ? <Badge>{t('examples.tag')}</Badge> : !owned && <Badge tone="water">{t('app.shared')}</Badge>}{item.kind === 'FUSION' ? <Badge tone="water">{t('kinds.fusion')}</Badge> : item.kind === 'AI_RESULT' ? <Badge tone="result">{t('kinds.ai')}</Badge> : item.kind === 'COMPARISON' ? <Badge tone="result">{t('datasetFacts.kinds.compare')}</Badge> : <Badge>{t('kinds.original')}</Badge>}<DatasetStatus dataset={item} quiet /><span className="xc-hint">{item.xcubeDatasetId}</span>{isAiResult && item.sourceDatacubeId && <span>{t('dataset.sourceData')} <Link to={`/app/data/${encodeURIComponent(item.sourceDatacubeId)}`}>{t('dataset.viewSource', { id: item.sourceDatacubeId })}</Link></span>}</span>}
         actions={
           <>
             <ButtonAnchor href={viewerLink} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} aria-hidden />{isAiResult ? t('app.compareInViewer') : t('app.openInViewer')}<span className="sr-only">{t('shell.newTab')}</span></ButtonAnchor>
-            {locked
+            {!example && (locked
               ? <LockedButton variant="secondary" reason={locked}><FolderPlus size={16} aria-hidden />{t('app.linkToProject')}</LockedButton>
-              : <Button variant="secondary" onClick={() => setLinking(true)}><FolderPlus size={16} aria-hidden />{t('app.linkToProject')}</Button>}
-            {owned && (locked
+              : <Button variant="secondary" onClick={() => setLinking(true)}><FolderPlus size={16} aria-hidden />{t('app.linkToProject')}</Button>)}
+            {owned && !example && (locked
               ? <LockedButton variant="ghost" reason={locked} label={t('dataset.deleteLabel')}><Trash2 size={16} aria-hidden />{t('app.delete')}</LockedButton>
               : <Button variant="ghost" onClick={() => setDeleting(true)} aria-label={t('dataset.deleteLabel')}><Trash2 size={16} aria-hidden />{t('app.delete')}</Button>)}
           </>
@@ -200,7 +203,7 @@ function Overview({ item }: { item: ZarrDataset }) {
       {item.bbox && <BBoxMap bbox={item.bbox} lang={lang} basemap />}
       <dl className="meta-list">
         {/* The kind is the tag in the header; here it is who owns it. */}
-        <dt>{t('dataset.owner')}</dt><dd>{isOwned(item) ? t('dataset.ownerMe') : t('dataset.ownerOther')}</dd>
+        <dt>{t('dataset.owner')}</dt><dd>{isExample(item) ? t('examples.owner') : isOwned(item) ? t('dataset.ownerMe') : t('dataset.ownerOther')}</dd>
         <dt>{t('app.period')}</dt><dd className="tabular">{periodLabel(item, lang)}</dd>
         <dt>{t('dataset.timeCount')}</dt><dd className="tabular">{item.times.length}</dd>
         <dt>{t('dataset.method')}</dt><dd>{pending ? fromJob('') : method || <NoValue label={t('app.noValue')} />}</dd>
@@ -247,9 +250,9 @@ function DatasetProjects({ dataset, reloadKey, onLink, onToast }: { dataset: Zar
   return (
     <>
       <div className="toolbar">
-        <span className="xc-hint">{t('dataset.shareHint')}</span>
+        <span className="xc-hint">{isExample(dataset) ? t('examples.noLink') : t('dataset.shareHint')}</span>
         <span className="toolbar__spacer" />
-        {locked
+        {isExample(dataset) ? null : locked
           ? <LockedButton size="sm" variant="secondary" showReason reason={locked}><FolderPlus size={16} aria-hidden />{t('app.linkToProject')}</LockedButton>
           : <Button size="sm" variant="secondary" onClick={onLink}><FolderPlus size={16} aria-hidden />{t('app.linkToProject')}</Button>}
       </div>

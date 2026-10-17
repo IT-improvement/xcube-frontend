@@ -37,6 +37,12 @@
 .auth__form .xc-btn { margin-top: var(--space-2); }
 .auth__switch { text-align: center; color: var(--fb-ink-2); }
 .auth__switch a { font-weight: 600; color: var(--fb-ink); text-decoration: underline; text-underline-offset: 2px; }
+/* UR-63 F6: "비밀번호를 잊었나요?" right under the login button; the reset pages reuse the auth form. */
+.auth__forgot { margin-top: calc(-1 * var(--space-2)); text-align: right; font: var(--text-caption); }
+.auth__forgot a { color: var(--fb-ink-2); text-decoration: underline; text-underline-offset: 2px; }
+.auth__forgot a:hover { color: var(--fb-ink); }
+.auth__note { color: var(--fb-ink-2); word-break: keep-all; }
+.auth__actions { display: grid; gap: var(--space-3); }
 
 @media (max-width: 767px) {
   .auth { grid-template-columns: 1fr; }

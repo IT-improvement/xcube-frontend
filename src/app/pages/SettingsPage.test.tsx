@@ -8,7 +8,7 @@ import { hasHangul, LanguageProvider } from '../../i18n';
 const mockUpdateUser = jest.fn();
 const mockUser = { id: 1, email: 'hong', name: '홍길동', role: 'USER', status: 'ACTIVE', language: null };
 jest.mock('../../auth/AuthProvider', () => ({ useAuth: () => ({ user: mockUser, signOut: jest.fn(), updateUser: mockUpdateUser }) }));
-jest.mock('../jobs', () => ({ useActiveJobCount: () => 0, JobsFeedProvider: ({ children }: { children: unknown }) => children }));
+jest.mock('../jobs', () => ({ useActiveJobCount: () => 0, useJobsFeedTick: () => null, JobsFeedProvider: ({ children }: { children: unknown }) => children }));
 const mockAccount = { updateProfile: jest.fn(), changePassword: jest.fn(), storageUsage: jest.fn() };
 jest.mock('../api', () => ({ ...jest.requireActual('../api'), account: mockAccount }));
 
@@ -46,7 +46,7 @@ test('/app/settings는 앱 셸 안에서 계정 설정을 지연 로딩하고 �
   expect(await screen.findByRole('heading', { level: 1, name: '계정 설정' })).toBeInTheDocument();
   expect(screen.getByRole('navigation', { name: '주 메뉴' })).toBeInTheDocument();
   expect(document.title).toBe('계정 설정 · XCube');
-  expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)).toEqual(['프로필', '언어', '비밀번호', '저장 용량']);
+  expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)).toEqual(['프로필', '언어', '비밀번호', '연락 이메일', '알림', '저장 용량', '계정 탈퇴']);
   await screen.findByRole('meter');
 });
 

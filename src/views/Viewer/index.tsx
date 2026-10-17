@@ -117,7 +117,11 @@ const noop = () => undefined;
 /** Numeric catalog ids go to the services as numbers; demo ids stay strings. */
 const cubeId = (id: string) => (/^\d+$/.test(id) ? Number(id) : id);
 
-/** AI service jobs first; Backoffice links (older results) only when no job already points at them. */
+/**
+ * AI service jobs first; Backoffice links only when no job already points at them. The links cover older results and
+ * results the AI service does not list for this user, such as the example AI result of an example source (UX1): its
+ * job belongs to another account. They carry the result's own name from the dataset detail.
+ */
 function resultEntries(aiJobs: AiWaterJob[], linked: AiJob[], lang: Lang): ResultEntry[] {
   const entries: ResultEntry[] = aiJobs.map((job) => ({
     key: job.id,
@@ -134,7 +138,7 @@ function resultEntries(aiJobs: AiWaterJob[], linked: AiJob[], lang: Lang): Resul
   }));
   for (const link of linked)
     if (link.outputDatacubeId && !entries.some((entry) => entry.datacubeId === link.outputDatacubeId))
-      entries.push({ key: `link:${link.outputDatacubeId}`, name: translate(lang, "viewer.ai.list.linkedName", { id: link.id }), status: link.status, datacubeId: link.outputDatacubeId });
+      entries.push({ key: `link:${link.outputDatacubeId}`, name: link.name || translate(lang, "viewer.ai.list.linkedName", { id: link.id }), status: link.status, datacubeId: link.outputDatacubeId });
   return entries;
 }
 

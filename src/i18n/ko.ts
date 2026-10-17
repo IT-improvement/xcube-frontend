@@ -69,6 +69,8 @@ const ko = {
     addData: '데이터 추가',
     viewer: 'Viewer',
     settings: '계정 설정',
+    forgotPassword: '비밀번호 찾기',
+    resetPassword: '새 비밀번호',
   },
   notFound: {
     text: '주소를 확인하거나 홈으로 이동해 주세요.',
@@ -83,6 +85,7 @@ const ko = {
       projects: '프로젝트',
       jobs: '작업',
       fusion: '수식 융합',
+      compare: '비교 분석',
       admin: '관리자',
     },
     newTab: '(새 탭)',
@@ -97,6 +100,8 @@ const ko = {
     menuItems: '메뉴 항목',
     userFallback: '사용자',
     settings: '계정 설정',
+    /** UX1: brings the dashboard's "시작하기" checklist back. */
+    startGuide: '시작 안내 다시 보기',
     /** Why a disabled top-bar action is off (also its tooltip). */
     addDataLocked: '데이터 추가 (지금 등급에서는 쓸 수 없음)',
   },
@@ -123,6 +128,7 @@ const ko = {
       main: '주요 메뉴',
       mobile: '모바일 메뉴',
       case: '사례',
+      features: '기능',
       customers: '쓰는 곳',
       adopt: '도입 안내',
     },
@@ -168,6 +174,19 @@ const ko = {
       link: '대청호 결과를 Viewer에서 보기',
       alt: '원본 대비 결과 패널 실제 화면. AI 수체 결과(파란 물색, 불투명도 90%)와 원본 레이어(100%), 임계값 0.50에서 추정 면적 54.60 km², 참조 자료 대비 IoU 0.854, F1 0.922, 정밀도 0.873, 재현율 0.975.',
       caption: '원본 대비 결과 패널 · 같은 화면의 오른쪽',
+    },
+    /** UX5 (UR-63): only what works now; no performance numbers. */
+    features: {
+      title: '지금 할 수 있는 일',
+      lead: '데이터를 만든 다음에 필요한 일까지 한 곳에서 합니다. 아래는 모두 지금 쓰는 기능입니다.',
+      alt: '실제 Viewer 화면. 대청호 U-Net 수체 결과를 두 시점으로 비교해 계속 물인 곳은 파랑, 새로 생긴 곳은 초록, 사라진 곳은 빨강으로 칠했고, 왼쪽 아래 범례에 클래스별 면적이 있습니다.',
+      caption: '실제 화면 · 대청호 Sentinel-2, 2026년 4월 26일 → 5월 31일 · U-Net 수체 결과의 시점 간 변화. 면적은 이 한 장면의 값입니다.',
+      pictures: { title: '그림으로 고르기', text: '데이터 목록과 Viewer에서 미리보기 그림을 보고 고릅니다. 그림 보기와 목록 보기 가운데 편한 쪽을 쓰면 브라우저가 기억합니다.' },
+      area: { title: '영역 통계', text: '지도에 다각형이나 사각형을 그리면 그 안의 평균·최솟값·최댓값을 시점별 그래프로 보여 줍니다. AI 결과는 물 면적과 비율로 보고, CSV로 받습니다.' },
+      export: { title: '내보내기', text: '보고 있는 지도를 범례·축척·날짜가 들어간 PNG로 저장합니다. GeoTIFF(원본 값 그대로), GIF·MP4 애니메이션, PDF 보고서도 만들어 7일 동안 내려받을 수 있습니다.' },
+      compare: { title: '비교 분석', text: 'AI 수체 결과를 두 시점끼리, 두 모델끼리, 정답 자료와 비교합니다. 결과는 색으로 나눈 지도와 면적·IoU·F1 같은 지표로 남습니다.' },
+      notify: { title: '작업 알림', text: '오래 걸리는 작업이 끝나면 상단 바의 종과 브라우저 알림으로 알려 줍니다. 서버에 메일이 설정되어 있으면 메일로도 받습니다.' },
+      operator: { title: '운영자용', text: '관리자 콘솔에서 사용자 등급·데이터·작업·접속 기록을 관리하고, 서버 상태는 모니터링 대시보드로 봅니다.' },
     },
     customers: {
       title: '이런 곳에서 씁니다',
@@ -216,6 +235,9 @@ const ko = {
       busy: '로그인하는 중…',
       noAccount: '계정이 없나요?',
       toSignup: '회원가입',
+      forgot: '비밀번호를 잊었나요?',
+      passwordReset: '비밀번호를 바꿨습니다. 새 비밀번호로 로그인하세요.',
+      deleted: '계정을 탈퇴했습니다. 그동안 이용해 주셔서 고맙습니다.',
     },
     signup: {
       title: '회원가입',
@@ -230,6 +252,9 @@ const ko = {
       done: '회원가입이 완료되었습니다. 로그인해 주세요.',
       haveAccount: '이미 계정이 있나요?',
       toLogin: '로그인',
+      contactEmail: '연락 이메일 (선택)',
+      contactEmailHelp: '비밀번호를 잊었을 때 쓰는 주소입니다. 넣으면 인증 코드를 보냅니다.',
+      codeSent: '{email}로 인증 코드를 보냈습니다. 로그인한 뒤 계정 설정에서 코드를 입력하세요.',
     },
     errors: {
       usernameRequired: '아이디를 입력하세요.',
@@ -239,6 +264,7 @@ const ko = {
       passwordShort: '비밀번호는 8자 이상이어야 합니다.',
       confirmRequired: '비밀번호를 한 번 더 입력하세요.',
       mismatch: '비밀번호가 일치하지 않습니다.',
+      emailInvalid: '이메일 주소 형식을 확인하세요.',
       invalidCredentials: '아이디 또는 비밀번호가 맞지 않습니다.',
       usernameTaken: '이미 쓰고 있는 아이디입니다. 다른 아이디를 입력하세요.',
       network: '서버에 연결할 수 없습니다. 실행 상태를 확인해 주세요.',

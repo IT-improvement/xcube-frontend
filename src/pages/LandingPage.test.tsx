@@ -22,16 +22,27 @@ test('소개 홈은 캡처 hero와 줄인 섹션을 순서대로 보여준다', 
   render(<App />);
   expect(screen.getByRole('heading', { level: 1, name: '위성 영상은 작게 보관하고, 필요한 곳과 날짜만 지도에서 봅니다' })).toBeInTheDocument();
   expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent))
-    .toEqual(['무엇이 달라지나', '대청호, 한 장면을 끝까지', '이런 곳에서 씁니다', '도입 안내']);
+    .toEqual(['무엇이 달라지나', '대청호, 한 장면을 끝까지', '지금 할 수 있는 일', '이런 곳에서 씁니다', '도입 안내']);
   const nav = screen.getByRole('navigation', { name: '주요 메뉴' });
-  expect(within(nav).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual(['#case', '#customers', '#adopt']);
-  for (const [id, name] of [['case', '대청호, 한 장면을 끝까지'], ['customers', '이런 곳에서 씁니다'], ['adopt', '도입 안내']]) {
+  expect(within(nav).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual(['#case', '#features', '#customers', '#adopt']);
+  for (const [id, name] of [['case', '대청호, 한 장면을 끝까지'], ['features', '지금 할 수 있는 일'], ['customers', '이런 곳에서 씁니다'], ['adopt', '도입 안내']]) {
     expect(screen.getByRole('region', { name })).toHaveAttribute('id', id);
   }
   // Two customer columns, no tabs.
   expect(screen.getByRole('heading', { level: 3, name: '기업' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { level: 3, name: '시·군·구' })).toBeInTheDocument();
   expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+});
+
+test('지금 할 수 있는 일: 실제 비교 지도 캡처와 지금 되는 기능 여섯 줄(UX5)', () => {
+  render(<App />);
+  const section = screen.getByRole('region', { name: '지금 할 수 있는 일' });
+  const shot = within(section).getByRole('img', { name: /시점으로 비교/ });
+  expect(shot).toHaveAttribute('src', expect.stringContaining('/landing/daecheong-change.webp'));
+  expect(shot).toHaveAttribute('loading', 'lazy');
+  expect(within(section).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent))
+    .toEqual(['그림으로 고르기', '영역 통계', '내보내기', '비교 분석', '작업 알림', '운영자용']);
+  expect(within(section).getByText(/이 한 장면의 값/)).toBeInTheDocument();
 });
 
 test('hero는 실제 Viewer 캡처를 크기와 우선순위를 정해 불러온다', () => {
@@ -47,7 +58,8 @@ test('hero는 실제 Viewer 캡처를 크기와 우선순위를 정해 불러온
 test('구현하지 않은 기능은 소개하지 않는다', () => {
   const { container } = render(<App />);
   const text = container.textContent ?? '';
-  for (const word of ['Kubernetes', '차이 지도', '변화 지도', '일치도', '이미지 내보내기', '모델 간', '시점 간', '사내 구축', 'Docker']) {
+  // Comparison, exports and the rest are real since UR-63 (UX5); deployment details and unmeasured numbers stay out.
+  for (const word of ['Kubernetes', '사내 구축', 'Docker', '정확도 9', '배 빠른', '고객 수']) {
     expect(text).not.toContain(word);
   }
   // Tile security is named as planned, not as done.

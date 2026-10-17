@@ -13,8 +13,13 @@ import { createAiDemo } from './aiDemo';
 import { authApi, ProfileUpdate, User } from '../api/authApi';
 import { StorageUsage, storageApi } from '../api/backofficeApi';
 import { accountDemo } from './accountDemo';
+import { compareApi } from '../api/compare';
+import { askOnceOnJobStart } from './browserNotify';
 import { formatDate as i18nFormatDate, getLanguage, translate } from '../i18n';
 import type { Lang } from '../i18n';
+
+/** Starting a job asks once for browser notifications (UR-63 F4), then runs it. */
+const startJob = <T,>(run: () => Promise<T>): Promise<T> => { askOnceOnJobStart(); return run(); };
 
 export type { Project, ZarrDataset, ProjectMember };
 export type MemberRole = 'EDITOR' | 'VIEWER';
@@ -196,7 +201,7 @@ export const generation = {
   /** Upload and check a file; `options` reports progress and cancels (audit W9). */
   inspect: (type: InspectType, file: File, options: UploadOptions = {}): Promise<SpatialInspection> =>
     (useMockApi ? demoUpload(file, options, () => demoInspection(type, file)) : generationApi.inspectSpatialFile(type, file, options)),
-  createGeeJob: (input: Parameters<typeof generationApi.createGeeJob>[0]): Promise<GenerationJob> => (useMockApi ? pause().then(() => demoJob(input.name, 'GEE_TO_ZARR')) : generationApi.createGeeJob(input)),
+  createGeeJob: (input: Parameters<typeof generationApi.createGeeJob>[0]): Promise<GenerationJob> => startJob(() => (useMockApi ? pause().then(() => demoJob(input.name, 'GEE_TO_ZARR')) : generationApi.createGeeJob(input))),
   estimateGee: (body: GeeJobBody, signal?: AbortSignal): Promise<GeeEstimate> => (useMockApi ? areaDemo.estimate(body) : generationApi.estimateGee(body, signal)),
   searchAdminAreas: (query: string, level?: AdminLevel): Promise<AdminSearch> => (useMockApi ? areaDemo.searchAdmin(query, level) : generationApi.searchAdminAreas(query, level)),
   getAdminArea: (code: string): Promise<AdminArea> => (useMockApi ? areaDemo.getAdmin(code) : generationApi.getAdminArea(code)),
@@ -205,7 +210,7 @@ export const generation = {
   deleteArea: (id: string | number): Promise<unknown> => (useMockApi ? areaDemo.remove(id) : generationApi.deleteArea(id)),
   uploadArea: (file: File, name: string, pick?: AreaPick): Promise<AreaUpload> => (useMockApi ? areaDemo.upload(file, name, pick) : generationApi.uploadArea(file, name, pick)),
   areaFromJob: (jobId: string | number, name: string, pick?: AreaPick): Promise<AreaUpload> => (useMockApi ? areaDemo.fromJob(jobId, name, pick) : generationApi.areaFromJob(jobId, name, pick)),
-  createFileJob: (input: FileJobInput): Promise<GenerationJob> => (useMockApi ? pause().then(() => demoJob(input.name, input.type)) : generationApi.createFileJob(input)),
+  createFileJob: (input: FileJobInput): Promise<GenerationJob> => startJob(() => (useMockApi ? pause().then(() => demoJob(input.name, input.type)) : generationApi.createFileJob(input))),
   getJob: (id: string | number): Promise<GenerationJob> => (useMockApi ? pause().then(() => ({ id, status: 'RUNNING' as const })) : generationApi.getJob(id)),
   listJobs: (filter: { status?: string; type?: string } = {}): Promise<JobSummary[]> =>
     useMockApi
@@ -225,7 +230,7 @@ export const fusion = {
     useMockApi ? pause(120).then(() => validateFormula(formula, variables)) : analysisApi.validate({ formula, variables }),
   dryRun: (request: FusionRequest): Promise<DryRun> =>
     useMockApi ? pause(250).then(() => demoAdapter.getDatasets()).then((datasets) => dryRunDemo(request, datasets)) : analysisApi.dryRun(request),
-  createJob: (request: FusionRequest): Promise<JobSummary> => (useMockApi ? fusionJobsDemo.create(request) : analysisApi.createJob(request)),
+  createJob: (request: FusionRequest): Promise<JobSummary> => startJob(() => (useMockApi ? fusionJobsDemo.create(request) : analysisApi.createJob(request))),
   listJobs: (filter: { status?: string } = {}): Promise<JobSummary[]> => (useMockApi ? fusionJobsDemo.list(filter) : analysisApi.listJobs(filter)),
   getJob: (id: string): Promise<JobSummary> => (useMockApi ? fusionJobsDemo.get(id) : analysisApi.getJob(id)),
   cancelJob: (id: string): Promise<unknown> => (useMockApi ? fusionJobsDemo.cancel(id) : analysisApi.cancelJob(id)),
@@ -237,7 +242,7 @@ const aiDemo = createAiDemo(() => demoAdapter.getDatasets());
 export const ai = {
   models: (): Promise<AiModel[]> => (useMockApi ? aiDemo.models() : aiApi.listModels()),
   check: (datacubeId: string, modelId: string): Promise<AiCheck> => (useMockApi ? aiDemo.check(datacubeId, modelId) : aiApi.check({ datacubeId, modelId })),
-  createJob: (input: AiJobRequest): Promise<AiWaterJob> => (useMockApi ? aiDemo.create(input) : aiApi.createJob(input)),
+  createJob: (input: AiJobRequest): Promise<AiWaterJob> => startJob(() => (useMockApi ? aiDemo.create(input) : aiApi.createJob(input))),
   listJobs: (filter: { status?: string; datacubeId?: string } = {}): Promise<AiWaterJob[]> => (useMockApi ? aiDemo.list(filter) : aiApi.listJobs(filter)),
   getJob: (id: string): Promise<AiWaterJob> => (useMockApi ? aiDemo.get(id) : aiApi.getJob(id)),
   cancelJob: (id: string): Promise<unknown> => (useMockApi ? aiDemo.cancel(id) : aiApi.cancelJob(id)),
@@ -255,14 +260,19 @@ export const account = {
 
 export const isFusionJob = (job: Pick<JobSummary, 'type'>) => job.type === 'FUSION';
 export const isAiJob = (job: Pick<JobSummary, 'type'>) => job.type === 'AI_WATER';
-const SERVICE_TYPES = ['FUSION', 'AI_WATER'];
+/** Comparison jobs (UR-63 F3, Data Analysis). */
+export const isCompareJob = (job: Pick<JobSummary, 'type'>) => job.type === 'COMPARE';
+/** Result exports (UR-63 F2) are Data Generation jobs with these types. */
+export const EXPORT_TYPES = ['EXPORT_GEOTIFF', 'EXPORT_ANIMATION', 'EXPORT_REPORT'];
+export const isExportJob = (job: Pick<JobSummary, 'type'>) => EXPORT_TYPES.includes(job.type);
+const SERVICE_TYPES = ['FUSION', 'AI_WATER', 'COMPARE'];
 const newestFirst = (a: JobSummary, b: JobSummary) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
 
-export type JobListResult = { items: JobSummary[]; unavailable: Array<'FUSION' | 'AI_WATER'> };
+export type JobListResult = { items: JobSummary[]; unavailable: Array<'FUSION' | 'AI_WATER' | 'COMPARE'> };
 /** Notice for services whose jobs are missing from the merged list. */
 export const unavailableJobsNotice = (unavailable: JobListResult['unavailable'], lang: Lang = getLanguage()) => {
   if (!unavailable.length) return '';
-  const services = unavailable.map((type) => translate(lang, type === 'FUSION' ? 'jobs.serviceFusion' : 'jobs.serviceAi')).join(translate(lang, 'jobs.serviceSeparator'));
+  const services = unavailable.map((type) => translate(lang, type === 'FUSION' ? 'jobs.serviceFusion' : type === 'COMPARE' ? 'jobs.serviceCompare' : 'jobs.serviceAi')).join(translate(lang, 'jobs.serviceSeparator'));
   return translate(lang, 'jobs.unavailable', { services });
 };
 /** Job center view: generation, fusion and AI jobs together, routed to the service that owns each job. */
@@ -281,19 +291,21 @@ export const jobs: { list(filter?: { status?: string; type?: string }): Promise<
     const wantsGeneration = !types.length || types.some((type) => !SERVICE_TYPES.includes(type));
     const generationFilter = { ...filter, type: types.filter((type) => !SERVICE_TYPES.includes(type)).join(',') };
     const none = Promise.resolve([] as JobSummary[]);
-    const [generated, fused, inferred] = await Promise.allSettled([
+    const [generated, fused, inferred, compared] = await Promise.allSettled([
       wantsGeneration ? generation.listJobs(generationFilter) : none,
       wants('FUSION') ? fusion.listJobs({ status: filter.status }) : none,
       wants('AI_WATER') ? ai.listJobs({ status: filter.status }) : none,
+      // Data Analysis takes one status at a time, so comparisons are filtered here.
+      wants('COMPARE') ? compareApi.listJobs().then((list) => (list as JobSummary[]).filter((job) => !filter.status || filter.status.split(',').includes(job.status))) : none,
     ]);
     if (generated.status === 'rejected') throw generated.reason;
-    const requested = [wants('FUSION') ? fused : null, wants('AI_WATER') ? inferred : null].filter((outcome): outcome is PromiseSettledResult<JobSummary[]> => !!outcome);
+    const requested = [wants('FUSION') ? fused : null, wants('AI_WATER') ? inferred : null, wants('COMPARE') ? compared : null].filter((outcome): outcome is PromiseSettledResult<JobSummary[]> => !!outcome);
     if (!wantsGeneration && requested.every((outcome) => outcome.status === 'rejected')) throw (requested[0] as PromiseRejectedResult).reason;
-    const items = [generated, fused, inferred].flatMap((outcome) => (outcome.status === 'fulfilled' ? outcome.value : []));
-    const unavailable = ([['FUSION', fused], ['AI_WATER', inferred]] as const).filter(([, outcome]) => outcome.status === 'rejected').map(([type]) => type);
+    const items = [generated, fused, inferred, compared].flatMap((outcome) => (outcome.status === 'fulfilled' ? outcome.value : []));
+    const unavailable = ([['FUSION', fused], ['AI_WATER', inferred], ['COMPARE', compared]] as const).filter(([, outcome]) => outcome.status === 'rejected').map(([type]) => type);
     return { items: items.sort(newestFirst), unavailable };
   },
-  cancel: (job: JobSummary) => (isFusionJob(job) ? fusion.cancelJob(job.id) : isAiJob(job) ? ai.cancelJob(job.id) : generation.cancelJob(job.id)),
+  cancel: (job: JobSummary) => (isFusionJob(job) ? fusion.cancelJob(job.id) : isAiJob(job) ? ai.cancelJob(job.id) : isCompareJob(job) ? compareApi.cancel(job.id) : generation.cancelJob(job.id)),
   retry: (job: JobSummary) => (isFusionJob(job) ? fusion.retryJob(job.id) : isAiJob(job) ? ai.retryJob(job.id) : generation.retryJob(job.id)),
 };
 

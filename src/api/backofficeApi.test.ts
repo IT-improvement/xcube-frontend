@@ -166,3 +166,13 @@ test('UPL3: an RGB the user picked (R=coastal) counts as RGB, though Backoffice 
   const item = await backofficeAdapter.getDatasetDetail('94');
   expect(item).toMatchObject({ rgbAvailable: true, rgbBands: ['coastal', 'green', 'blue'] });
 });
+
+test('예시 데이터(UX1): 목록·상세의 isExample을 옮기고, 상세의 연결된 AI 결과는 이름과 함께 결과 목록이 된다', async () => {
+  jest.spyOn(global, 'fetch').mockImplementation((input) => Promise.resolve(String(input).includes('/datasets/86')
+    ? json({ datacubeId: 86, xcubeDatasetId: 'u4-d86', ownerUserId: 4, accessType: 'SHARED', name: 'test_GEE', kind: 'ORIGINAL', integrationStatus: 'REGISTERED', availabilityStatus: 'AVAILABLE', isExample: true, linkedSuccessfulInferResults: [{ datacubeId: 87, xcubeDatasetId: 'u4-d87', name: 'test_GEE_수체_U-Net', status: 'READY' }] })
+    : json({ content: [{ datacubeId: 86, xcubeDatasetId: 'u4-d86', ownerUserId: 4, accessType: 'SHARED', name: 'test_GEE', kind: 'ORIGINAL', integrationStatus: 'REGISTERED', availabilityStatus: 'AVAILABLE', isExample: true }, { datacubeId: 70, xcubeDatasetId: 'u8-d70', ownerUserId: 8, accessType: 'OWNED', name: 'mine', kind: 'ORIGINAL', integrationStatus: 'REGISTERED', availabilityStatus: 'AVAILABLE' }], page: 0, size: 100, totalElements: 2, totalPages: 1 })));
+  const items = await backofficeAdapter.getDatasets();
+  expect(items.map((item) => (item as { isExample?: boolean }).isExample === true)).toEqual([true, false]);
+  expect(await backofficeAdapter.getDatasetDetail('86')).toMatchObject({ id: '86', isExample: true });
+  expect(await backofficeAdapter.getJobs('86')).toEqual([{ id: '87', inputDatacubeId: '86', outputDatacubeId: '87', outputType: 'INFER_ZARR', status: 'SUCCEEDED', period: 'Backend 결과', name: 'test_GEE_수체_U-Net' }]);
+});

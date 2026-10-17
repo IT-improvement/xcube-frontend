@@ -4,6 +4,9 @@ import type koWizard from './wizard/ko';
 import type koViewer from './viewer/ko';
 import type koAiCodes from './codes/ai/ko';
 import type koDataCodes from './codes/data/ko';
+import type koFxCodes from './codes/fx/ko';
+import type koFx from './fx/ko';
+import type koReset from './reset/ko';
 
 export type Lang = 'ko' | 'en';
 
@@ -14,7 +17,7 @@ export type Lang = 'ko' | 'en';
  * (./wizard/), loaded and registered with the wizard (stage 3), and the Viewer a fourth (./viewer/, stage 4).
  * Server message codes (stage 5) come in two more: ./codes/ai (Viewer and app) and ./codes/data (app, wizard).
  */
-export type Dict = typeof ko & typeof koApp & typeof koWizard & typeof koViewer & typeof koAiCodes & typeof koDataCodes;
+export type Dict = typeof ko & typeof koApp & typeof koWizard & typeof koViewer & typeof koAiCodes & typeof koDataCodes & typeof koFxCodes & typeof koFx & typeof koReset;
 
 /** English-style count forms. `one` is used when the plural rule says "one" (count 1 in English). */
 export type Plural = { one: string; other: string };
@@ -35,6 +38,12 @@ export type ViewerTranslation = DeepStringify<typeof koViewer>;
 export type AiCodesTranslation = DeepStringify<typeof koAiCodes>;
 /** Shape of codes/data/en.ts (Data Generation and Analysis message codes). */
 export type DataCodesTranslation = DeepStringify<typeof koDataCodes>;
+/** Shape of codes/fx/en.ts (UR-63 server codes). */
+export type FxCodesTranslation = DeepStringify<typeof koFxCodes>;
+/** Shape of fx/en.ts (UR-63 screens). */
+export type FxTranslation = DeepStringify<typeof koFx>;
+/** Shape of reset/en.ts (password reset pages). */
+export type ResetTranslation = DeepStringify<typeof koReset>;
 
 /** Dot paths to the texts in `T`, e.g. "landing.hero.title". */
 type Path<T> = { [K in keyof T & string]: T[K] extends string ? K : `${K}.${Path<T[K]>}` }[keyof T & string];

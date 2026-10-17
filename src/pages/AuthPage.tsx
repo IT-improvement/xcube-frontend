@@ -9,6 +9,7 @@ import './auth.css';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { Lang, TFunction, useLanguage } from '../i18n';
 import { caseDate } from './caseDate';
+import { EMAIL_RULE, mailStatus, MailStatus } from '../api/mailStatus';
 
 const DEFAULT_REDIRECT = '/app';
 const USERNAME_RULE = /^[A-Za-z0-9_.-]{3,50}$/;
@@ -24,7 +25,7 @@ export function safeRedirect(value: string | null) {
 }
 
 /** `notice: 'signedUp'` shows the sign-up confirmation (a key, so it follows the language). */
-type LoginState = { username?: string; notice?: 'signedUp' } | null;
+type LoginState = { username?: string; notice?: 'signedUp' | 'passwordReset'; pendingEmail?: string | null } | null;
 type Errors<K extends string> = Partial<Record<K, string>>;
 
 /**
@@ -32,7 +33,7 @@ type Errors<K extends string> = Partial<Record<K, string>>;
  * (or after leaving a filled field), the submit button stays enabled, and a failed submit moves focus
  * to the first field with an error.
  */
-function useFormErrors<K extends string>(validate: () => Errors<K>) {
+export function useFormErrors<K extends string>(validate: () => Errors<K>) {
   const formRef = useRef<HTMLFormElement>(null);
   const [submitted, setSubmitted] = useState(false);
   const [touched, setTouched] = useState<Partial<Record<K, boolean>>>({});
@@ -67,7 +68,7 @@ function authError(cause: unknown, t: TFunction, lang: Lang) {
   return lang === 'ko' ? userMessage(cause) : t('auth.errors.unexpected');
 }
 
-function AuthLayout({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
+export function AuthLayout({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   const { lang, t } = useLanguage();
   return (
     <div className="xc auth">
@@ -145,7 +146,9 @@ export function LoginPage() {
   return (
     <AuthLayout title={t('auth.login.title')} subtitle={t('auth.login.subtitle')}>
       {params.get('reason') === 'idle' && <Alert tone="warning">{t('auth.login.idle')}</Alert>}
-      {state?.notice === 'signedUp' && <Alert tone="success">{t('auth.signup.done')}</Alert>}
+      {params.get('reason') === 'deleted' && <Alert tone="info">{t('auth.login.deleted')}</Alert>}
+      {state?.notice === 'signedUp' && <Alert tone="success">{t('auth.signup.done')}{state.pendingEmail ? ` ${t('auth.signup.codeSent', { email: state.pendingEmail })}` : ''}</Alert>}
+      {state?.notice === 'passwordReset' && <Alert tone="success">{t('auth.login.passwordReset')}</Alert>}
       {error && <Alert tone="danger">{error}</Alert>}
       <form ref={form.formRef} className="auth__form" onSubmit={submit} aria-labelledby="auth-title" noValidate>
         <TextField
@@ -170,6 +173,7 @@ export function LoginPage() {
         />
         <Button type="submit" size="lg" block disabled={busy}>{busy ? t('auth.login.busy') : t('auth.login.submit')}</Button>
       </form>
+      <p className="auth__forgot"><Link to="/forgot-password">{t('auth.login.forgot')}</Link></p>
       <p className="auth__switch">{t('auth.login.noAccount')} <Link to={signupLink}>{t('auth.login.toSignup')}</Link></p>
     </AuthLayout>
   );
@@ -181,7 +185,10 @@ export function SignupPage() {
   const { user } = useAuth();
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const [values, setValues] = useState({ name: '', username: '', password: '', confirm: '' });
+  const [values, setValues] = useState({ name: '', username: '', password: '', confirm: '', contactEmail: '' });
+  // The optional contact e-mail (F6) is offered only when the server can send mail.
+  const [mail, setMail] = useState<MailStatus | null>(null);
+  useEffect(() => { let alive = true; mailStatus().then((status) => { if (alive) setMail(status); }, () => {}); return () => { alive = false; }; }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const form = useFormErrors<keyof typeof values>(() => ({
@@ -189,6 +196,7 @@ export function SignupPage() {
     username: !values.username ? t('auth.errors.usernameRequired') : USERNAME_RULE.test(values.username) ? undefined : t('auth.errors.usernameRule'),
     password: !values.password ? t('auth.errors.passwordRequired') : values.password.length >= 8 ? undefined : t('auth.errors.passwordShort'),
     confirm: !values.confirm ? t('auth.errors.confirmRequired') : values.confirm === values.password ? undefined : t('auth.errors.mismatch'),
+    contactEmail: !values.contactEmail.trim() || EMAIL_RULE.test(values.contactEmail.trim()) ? undefined : t('auth.errors.emailInvalid'),
   }));
 
   if (user) return <Navigate to={safeRedirect(params.get('redirect'))} replace />;
@@ -202,9 +210,10 @@ export function SignupPage() {
     setBusy(true);
     setError('');
     try {
-      await authApi.signup({ email: values.username, password: values.password, name: values.name.trim() });
+      const contactEmail = mail?.mailEnabled ? values.contactEmail.trim() : '';
+      const created = await authApi.signup({ email: values.username, password: values.password, name: values.name.trim(), ...(contactEmail ? { contactEmail } : {}) });
       const loginPath = params.get('redirect') ? `/login?redirect=${encodeURIComponent(safeRedirect(params.get('redirect')))}` : '/login';
-      navigate(loginPath, { state: { username: values.username, notice: 'signedUp' } as LoginState });
+      navigate(loginPath, { state: { username: values.username, notice: 'signedUp', pendingEmail: created?.pendingEmail ?? null } as LoginState });
     } catch (cause) {
       setError(authError(cause, t, lang));
     } finally {
@@ -253,6 +262,20 @@ export function SignupPage() {
           onBlur={form.blur('confirm', values.confirm)}
           error={form.shown('confirm')}
         />
+        {mail?.mailEnabled && (
+          <TextField
+            label={t('auth.signup.contactEmail')}
+            name="email"
+            type="email"
+            autoComplete="email"
+            {...ID_INPUT}
+            help={t('auth.signup.contactEmailHelp')}
+            value={values.contactEmail}
+            onChange={update('contactEmail')}
+            onBlur={form.blur('contactEmail', values.contactEmail)}
+            error={form.shown('contactEmail')}
+          />
+        )}
         <Button type="submit" size="lg" block disabled={busy}>{busy ? t('auth.signup.busy') : t('auth.signup.submit')}</Button>
       </form>
       <p className="auth__switch">{t('auth.signup.haveAccount')} <Link to={params.get('redirect') ? `/login?redirect=${encodeURIComponent(safeRedirect(params.get('redirect')))}` : '/login'}>{t('auth.signup.toLogin')}</Link></p>

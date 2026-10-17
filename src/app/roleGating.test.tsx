@@ -65,7 +65,7 @@ test('프로젝트 유저: 데이터 추가는 링크, 관리자: 메뉴 끝에 
   mockRole = 'ADMIN';
   renderAt('/app', <h1>본문</h1>);
   const links = within(screen.getByRole('navigation', { name: '주 메뉴' })).getAllByRole('link').map((link) => link.textContent);
-  expect(links).toEqual(['대시보드', '데이터', '프로젝트', '작업', '수식 융합', '관리자', 'Viewer(새 탭)']);
+  expect(links).toEqual(['대시보드', '데이터', '프로젝트', '작업', '수식 융합', '비교 분석', '관리자', 'Viewer(새 탭)']);
   // UR-62: 관리자 goes to the separate admin console in the same tab (dev default: port 3010 on this host).
   const adminLink = within(screen.getByRole('navigation', { name: '주 메뉴' })).getByRole('link', { name: '관리자' });
   expect(adminLink).toHaveAttribute('href', 'http://localhost:3010/admin');

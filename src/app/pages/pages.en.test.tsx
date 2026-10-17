@@ -4,6 +4,8 @@ import '@testing-library/jest-dom';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { LanguageProvider } from '../../i18n';
 
+// Comparison jobs (UR-63 F3) join the job lists; these tests do not run Data Analysis.
+jest.mock('../../api/compare', () => ({ ...jest.requireActual('../../api/compare'), compareApi: { ...jest.requireActual('../../api/compare').compareApi, listJobs: () => Promise.resolve([]) } }));
 jest.mock('../../api', () => ({ activeViewerAdapter: { getProjects: jest.fn(), getDatasets: jest.fn(), getProjectDatasets: jest.fn(), getJobs: jest.fn(), runWaterExtraction: jest.fn() }, useMockApi: false }));
 jest.mock('../../api/backofficeApi', () => ({ backofficeAdapter: { getProject: jest.fn(), createProject: jest.fn(), updateProject: jest.fn(), deleteProject: jest.fn(), getProjectMembers: jest.fn(), addProjectMember: jest.fn(), updateProjectMember: jest.fn(), removeProjectMember: jest.fn(), getProjectDatasets: jest.fn(), getLinkableDatacubes: jest.fn(), linkProjectDataset: jest.fn(), unlinkProjectDataset: jest.fn(), getDatasetDetail: jest.fn(), deleteDatacube: jest.fn(), registerDatacube: jest.fn() } }));
 jest.mock('../../api/generationApi', () => ({ generationApi: { listJobs: jest.fn(), jobSummary: jest.fn(), retryJob: jest.fn(), cancelJob: jest.fn() } }));
@@ -176,7 +178,7 @@ describe('Jobs in English', () => {
     renderAt('/app/jobs');
     expect(await screen.findByText('Ulsan Shape')).toBeInTheDocument();
     const types = screen.getByRole('group', { name: 'Job type' });
-    expect(within(types).getAllByRole('button').map((button) => button.textContent)).toEqual(['All', 'GEE', 'GeoTIFF·CAS500', 'Sentinel-2·Landsat', 'Shapefile', 'Band math', 'AI water extraction']);
+    expect(within(types).getAllByRole('button').map((button) => button.textContent)).toEqual(['All', 'GEE', 'GeoTIFF·CAS500', 'Sentinel-2·Landsat', 'Shapefile', 'Band math', 'AI water extraction', 'Comparison', 'Exports']);
     const status = screen.getByRole('combobox', { name: 'Status' });
     expect(within(status).getAllByRole('option').map((option) => option.textContent)).toEqual(['All statuses', 'In progress', 'Done', 'Failed or cancelled']);
     expect(screen.getByText('Running')).toBeInTheDocument();

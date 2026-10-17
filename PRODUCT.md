@@ -44,7 +44,8 @@ A Korean-first, practical analysis tool for public and enterprise water monitori
 - **AI water extraction (M7):** run from the Viewer drawer (NDWI baseline, U-Net, DeepLabV3+), then compare with the source in the Viewer: source ↔ AI swipe, per-date area, threshold curve, metrics against `water_gt`, CSV.
 - **Management screens:** a 48px top bar like the Viewer's; dashboard, data library, add data (5-step wizard: GeoTIFF/CAS500, Shapefile, GEE with area and date picking, Zarr path registration), dataset detail, projects and sharing by login id, job center, formula fusion.
 - **Public:** landing page (real Daecheong Lake capture, sign-in-aware actions including `Viewer 열기`) and login / sign-up with a safe `redirect`.
-- **Not built yet:** comparison types beyond source vs AI (model vs model, date vs date, change maps; S9), the analysis list (`/app/analysis`), account settings (S11), admin and monitoring (M8, monitoring via Grafana), Zarr file upload. Do not describe them as available.
+- **Added with UR-63 (2026-10-17):** area statistics, map PNG and GeoTIFF/animation/PDF exports, comparison analysis (date vs date, model vs model, against reference; S9 `/app/analysis/compare`), job notifications (top-bar bell, browser, e-mail when the server has mail), contact e-mail with password reset and self-delete (S1, S11), example data and a getting-started checklist. Account settings (S11) and the admin console with monitoring (separate app `/admin`) exist too.
+- **Not built yet:** the analysis list (`/app/analysis`), Zarr file upload, an installable on-premises bundle. Do not describe them as available.
 - Zarr is always EPSG:4326. Tiles are requested directly from xcube, and their colour range comes from the catalog.
 - No real customer data may be exposed publicly until tile security exists.
 
