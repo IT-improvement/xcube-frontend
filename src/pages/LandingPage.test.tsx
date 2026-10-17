@@ -52,7 +52,7 @@ test('hero는 실제 Viewer 캡처를 크기와 우선순위를 정해 불러온
   expect(hero).toHaveAttribute('width', '2400');
   expect(hero).toHaveAttribute('height', '1016');
   expect(hero).toHaveAttribute('fetchpriority', 'high');
-  expect(screen.getByRole('img', { name: /원본 대비 결과 패널/ })).toHaveAttribute('loading', 'lazy');
+  expect(screen.getByRole('img', { name: /결과 비교 패널/ })).toHaveAttribute('loading', 'lazy');
 });
 
 test('구현하지 않은 기능은 소개하지 않는다', () => {
@@ -92,7 +92,7 @@ test('로그인하지 않은 방문자의 Viewer 열기는 로그인을 거쳐 V
   expect(within(hero).getByRole('link', { name: 'Viewer 열기' })).not.toHaveClass('xc-btn--ink');
   const capture = screen.getByRole('link', { name: '대청호 결과를 Viewer에서 보기' });
   expect(capture).toHaveAttribute('href', '/login?redirect=%2Fapp%2Fviewer');
-  expect(within(capture).getByRole('img', { name: /원본 대비 결과 패널/ })).toBeInTheDocument();
+  expect(within(capture).getByRole('img', { name: /결과 비교 패널/ })).toBeInTheDocument();
 });
 
 test('로그인한 사용자에게는 콘솔로 이동을 주로, Viewer 열기를 곁에 둔다', async () => {

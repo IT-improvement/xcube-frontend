@@ -281,6 +281,25 @@ describe('F2 내보내기', () => {
     expect(screen.getByRole('button', { name: '내보내기 시작' })).toBeDisabled();
   });
 
+  test('FIX2: 내보내기 시작도 다른 작업처럼 브라우저 알림 허락을 한 번만 묻는다', async () => {
+    const create = jest.spyOn(exportsApi, 'create').mockResolvedValue({ id: 'n1', name: 'n', type: 'EXPORT_GEOTIFF', status: 'QUEUED' });
+    const requestPermission = jest.fn().mockResolvedValue('granted');
+    const previous = (window as any).Notification;
+    (window as any).Notification = Object.assign(function Notification() {}, { permission: 'default', requestPermission });
+    localStorage.removeItem('xcube.notify.asked');
+    localStorage.removeItem('xcube.notify.browserOff');
+    try {
+      render(<ExportPanel targets={[{ key: 'source', label: '원본', datasetId: '86', variables: ['ndwi'], variable: 'ndwi' }]} times={times} currentIndex={0} shape={null} viewBbox={() => null} datasetName="대청호" onPng={jest.fn()} />);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '내보내기 시작' })); });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '내보내기 시작' })); });
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(requestPermission).toHaveBeenCalledTimes(1);
+    } finally {
+      (window as any).Notification = previous;
+      localStorage.removeItem('xcube.notify.asked');
+    }
+  });
+
   test('PNG를 만들 수 없으면(타일 서버가 읽기를 막음) 이유를 말한다', async () => {
     const onPng = jest.fn().mockRejectedValue(Object.assign(new Error('TAINTED'), { code: 'TAINTED' }));
     render(<ExportPanel targets={[]} times={times} currentIndex={0} shape={null} viewBbox={() => null} datasetName="대청호" onPng={onPng} />);

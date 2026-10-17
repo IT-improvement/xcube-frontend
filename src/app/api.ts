@@ -245,6 +245,7 @@ export const ai = {
   createJob: (input: AiJobRequest): Promise<AiWaterJob> => startJob(() => (useMockApi ? aiDemo.create(input) : aiApi.createJob(input))),
   listJobs: (filter: { status?: string; datacubeId?: string } = {}): Promise<AiWaterJob[]> => (useMockApi ? aiDemo.list(filter) : aiApi.listJobs(filter)),
   getJob: (id: string): Promise<AiWaterJob> => (useMockApi ? aiDemo.get(id) : aiApi.getJob(id)),
+  getResult: (datacubeId: string): Promise<AiWaterJob> => (useMockApi ? aiDemo.getResult(datacubeId) : aiApi.getResult(datacubeId)),
   cancelJob: (id: string): Promise<unknown> => (useMockApi ? aiDemo.cancel(id) : aiApi.cancelJob(id)),
   retryJob: (id: string): Promise<AiWaterJob> => (useMockApi ? aiDemo.retry(id) : aiApi.retryJob(id)),
 };

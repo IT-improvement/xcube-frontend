@@ -12,6 +12,7 @@ import type { TimePoint } from "../../api/viewerAdapter";
 import { useLanguage } from "../../i18n";
 import "../../i18n/viewer";
 import type { AreaShape } from "./areaDraw";
+import { askOnceOnJobStart } from "../../app/browserNotify";
 
 export type ExportTarget = { key: string; label: string; datasetId: string; variables: string[]; variable: string };
 type TimeScope = "current" | "all" | "range";
@@ -127,6 +128,8 @@ export default function ExportPanel({
       ...(kind === "ANIMATION" ? { format, fps } : {}),
       ...(title.trim() ? { title: title.trim() } : {}),
     };
+    // Like every other job start (FX-F F4): ask for browser notifications once.
+    askOnceOnJobStart();
     try {
       const job = await exportsApi.create(body);
       setEntries((list) => [{ job, kind, format: kind === "ANIMATION" ? format : undefined }, ...list]);
