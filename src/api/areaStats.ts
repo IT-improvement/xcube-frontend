@@ -125,9 +125,10 @@ export async function demoAreaStats(datasetId: string, body: AreaStatsRequest): 
 }
 
 export const areaStatsApi = {
-  async get(datasetId: string, body: AreaStatsRequest): Promise<AreaStats> {
+  /** `signal` drops the request when the area or the panel goes away (FIX4). */
+  async get(datasetId: string, body: AreaStatsRequest, signal?: AbortSignal): Promise<AreaStats> {
     if (useMockApi) return demoAreaStats(datasetId, body);
-    const raw = await request<unknown>(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${encodeURIComponent(datasetId)}/area-stats`, { method: 'POST', body: JSON.stringify(body) });
+    const raw = await request<unknown>(BACKOFFICE_API_BASE_URL, `/api/v1/datasets/${encodeURIComponent(datasetId)}/area-stats`, { method: 'POST', body: JSON.stringify(body), signal });
     return normalizeAreaStats(raw, { datasetId, variable: body.variable });
   },
 };

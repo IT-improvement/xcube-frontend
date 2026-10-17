@@ -107,7 +107,7 @@ describe('F1 영역 통계', () => {
     expect(screen.getByText('다각형 영역')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '계산하기' }));
     await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
-    expect(get).toHaveBeenCalledWith('86', { geometry: shape.geometry, variable: 'ndwi', times: 'all' });
+    expect(get).toHaveBeenCalledWith('86', { geometry: shape.geometry, variable: 'ndwi', times: 'all' }, expect.any(AbortSignal));
     // The shown time (index 1) leads the numbers; the chart and table carry every time.
     expect(await screen.findByText('2024. 9. 1.', { selector: '.vx-stats__at' })).toBeInTheDocument();
     const grid = screen.getAllByRole('definition').map((item) => item.textContent);
@@ -135,7 +135,7 @@ describe('F1 영역 통계', () => {
     expect(screen.getByText(/물로 판정한 면적/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '지금 시점만' }));
     fireEvent.click(screen.getByRole('button', { name: '계산하기' }));
-    await waitFor(() => expect(get).toHaveBeenCalledWith('87', { geometry: shape.geometry, variable: 'water_mask', times: [times[1].iso] }));
+    await waitFor(() => expect(get).toHaveBeenCalledWith('87', { geometry: shape.geometry, variable: 'water_mask', times: [times[1].iso] }, expect.any(AbortSignal)));
     expect(await screen.findByText('물 면적')).toBeInTheDocument();
     const values = screen.getAllByRole('definition').map((item) => item.textContent);
     expect(values).toEqual(expect.arrayContaining(['12.81 km²', '41.0%']));
@@ -305,7 +305,7 @@ describe('F2 내보내기', () => {
     render(<ExportPanel targets={[]} times={times} currentIndex={0} shape={null} viewBbox={() => null} datasetName="대청호" onPng={onPng} />);
     fireEvent.change(screen.getByRole('textbox', { name: /제목/ }), { target: { value: '보고용 지도' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'PNG로 저장' })); });
-    expect(onPng).toHaveBeenCalledWith('보고용 지도');
+    expect(onPng).toHaveBeenCalledWith('보고용 지도', expect.any(AbortSignal));
     expect(screen.getByRole('alert')).toHaveTextContent('지도 서버가 그림 읽기를 허용하지 않아');
   });
 

@@ -106,8 +106,10 @@ export function useAreaDraw(map: Map | null, color: string) {
         ...(kind === "rect" ? { geometryFunction: ol.createBox() } : {}),
         style: ol.styleFor(colorRef.current),
       });
-      draw.on("drawstart", () => source.clear());
+      // The previous shape stays until the new one is finished, so cancelling a redraw leaves it (and its legend)
+      // as it was. OpenLayers adds the new feature to the source right after this event.
       draw.on("drawend", (event) => {
+        source.clear();
         const geometry = event.feature.getGeometry();
         const next = geometry ? factsOf(geometry, kind) : null;
         if (next) setShape(next);
@@ -155,7 +157,7 @@ export function useAreaDraw(map: Map | null, color: string) {
   useEffect(() => {
     if (!drawing) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       event.preventDefault();
       cancel();
     };

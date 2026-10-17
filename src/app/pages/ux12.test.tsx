@@ -1,7 +1,7 @@
 /* UX12 (audit 6, 관리 목록 보강): list information, detail and projects, perceived speed, band math header, cleanup. */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { LanguageProvider } from '../../i18n';
 
 // Comparison jobs (UR-63 F3) join the job lists; these tests do not run Data Analysis.
@@ -423,5 +423,30 @@ describe('English', () => {
     renderAt('/app/analysis/fusion', 'en');
     expect(await screen.findByRole('heading', { level: 2, name: 'Pick the data and variables to calculate with' })).toBeInTheDocument();
     expect(screen.getByText(/Calculate new data from the values of several datasets/)).toBeInTheDocument();
+  });
+});
+
+describe('FIX4. 주소와 검색 칸', () => {
+  // The menu link (or back/forward) changes the address without touching the box; the box and the list follow it.
+  test.each([
+    ['/app/data?q=zzzz', '/app/data', '대청호 S2'],
+    ['/app/projects?q=zzzz', '/app/projects', '수위 관측'],
+  ])('%s에서 메뉴 링크로 %s에 가면 검색 칸이 비고 목록이 다시 보인다', async (from, to, name) => {
+    adapter.getProjects.mockResolvedValue([{ id: '4', name: '수위 관측', accessRole: 'OWNER' }]);
+    render(
+      <MemoryRouter initialEntries={[from]}>
+        <Link to={to}>메뉴</Link>
+        <Probe />
+        <Routes>
+          <Route path="/app/data" element={<DataLibraryPage />} />
+          <Route path="/app/projects" element={<ProjectsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('searchbox')).toHaveValue('zzzz');
+    fireEvent.click(screen.getByRole('link', { name: '메뉴' }));
+    await waitFor(() => expect(screen.getByRole('searchbox')).toHaveValue(''));
+    expect(screen.getByTestId('search')).toBeEmptyDOMElement();
+    expect((await screen.findAllByRole('link', { name }))[0]).toBeInTheDocument();
   });
 });

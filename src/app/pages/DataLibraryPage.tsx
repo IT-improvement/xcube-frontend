@@ -1,5 +1,5 @@
 import { Database, ExternalLink, FolderPlus, Plus, Search, Trash2 } from 'lucide-react';
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Alert, Button, ButtonLink, LockedButton, TextField } from '../../components/ui';
 import { NEEDS, useRoleGate } from '../../auth/roles';
@@ -69,6 +69,11 @@ export default function DataLibraryPage() {
   const time = parseTimeKind(params.get('time'));
   // The search box keeps its own state (typing stays immediate) and mirrors it into the URL.
   const [query, setQueryState] = useState(() => params.get('q') ?? '');
+  // FIX4: the address can change without the box (the menu's 데이터 link, back/forward): the box follows it.
+  const urlQuery = params.get('q') ?? '';
+  useEffect(() => {
+    setQueryState((current) => (current.trim() === urlQuery.trim() ? current : urlQuery));
+  }, [urlQuery]);
   const setParam = (key: string, value: string, fallback: string) =>
     setParams((current) => {
       const next = new URLSearchParams(current);

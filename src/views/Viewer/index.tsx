@@ -676,9 +676,14 @@ export default function Viewer({
     if (datasets.some((item) => item.id === initialDatasetId))
       setDatasetId(initialDatasetId);
   }, [datasets, initialDatasetId]);
+  /** FIX4: each pixel query counts up; an answer for an older query (another dataset, band or pixel) is dropped. */
+  const pixelRunRef = useRef(0);
   useEffect(() => {
     setTimeIndex(0);
+    pixelRunRef.current += 1;
     setPixel(null);
+    setPixelLonLat(null);
+    setSeriesPoints([]);
     setPlaying(false);
     setActiveVariable("");
     layerAutoRef.current = true; // a new dataset opens with the default-layer rule
@@ -967,6 +972,11 @@ export default function Viewer({
     [times.length, timeIndex],
   );
   const compareActive = !!selected && displayMode !== "single" && canCompare;
+  // FIX4: another dataset resets time B; a comparison still on picks a B of the new dataset (else B would be "—").
+  useEffect(() => {
+    if (displayMode === "single" || times.length < 2 || (compareIndex >= 0 && compareIndex < times.length)) return;
+    setCompareIndex(timeIndex > 0 ? timeIndex - 1 : 1);
+  }, [displayMode, times.length, compareIndex, timeIndex]);
   useEffect(() => {
     if (selected && !canCompare && displayMode !== "single") setDisplayMode("single");
   }, [selected, canCompare, displayMode]);
@@ -984,6 +994,7 @@ export default function Viewer({
     next()?.focus();
   });
   const drawerBoxRef = useRef<HTMLElement>(null);
+  const tourButtonRef = useRef<HTMLButtonElement>(null);
   const drawerTitleRef = useRef<HTMLHeadingElement>(null);
   const railRefs = useRef<Partial<Record<Tool, HTMLButtonElement | null>>>({});
   const drawerReturnRef = useRef<HTMLElement | null>(null);
@@ -1008,12 +1019,16 @@ export default function Viewer({
   const queryPixel = useCallback(
     async (coordinate: [number, number]) => {
       if (!selected || (!sourceVisible && !resultVisible)) return;
+      const run = (pixelRunRef.current += 1);
       setPixelTip(false);
       setPlaying(false);
       setViewerNotice(null);
       const lonLat = toLonLat(coordinate) as [number, number];
       setPixelLonLat({ lon: lonLat[0], lat: lonLat[1] });
       if (!useMockApi && (!activeVariable || activeVariable === "rgb")) {
+        // No series for RGB: an earlier pixel's graph must not stay under the new place's name.
+        setPixel(null);
+        setSeriesPoints([]);
         setViewerNotice({ key: activeVariable === "rgb" ? "viewer.toast.rgbNoSeries" : "viewer.toast.noVariable" });
         return;
       }
@@ -1045,16 +1060,26 @@ export default function Viewer({
             maxValids: 1000,
           },
         );
+        if (pixelRunRef.current !== run) return;
         // An empty series is explained once, inside the reading row (no extra toast).
         if (!points.length) return;
         setSeriesPoints(points);
         setPixel(coordinate);
       } catch (cause) {
-        setViewerNotice({ cause });
+        if (pixelRunRef.current === run) setViewerNotice({ cause });
       }
     },
     [selected, sourceVisible, resultVisible, times, activeVariable],
   );
+  // FIX4: the graph names the shown band, so another band re-reads the chosen pixel (RGB has no series).
+  const pixelRef = useRef(pixel);
+  pixelRef.current = pixel;
+  const queryPixelRef = useRef(queryPixel);
+  queryPixelRef.current = queryPixel;
+  useEffect(() => {
+    const at = pixelRef.current;
+    if (at) queryPixelRef.current(at);
+  }, [activeVariable]);
   const onPixelSelect = useCallback(
     (coordinate: [number, number]) => {
       if (mapTool === "pixel") queryPixel(coordinate);
@@ -1064,6 +1089,8 @@ export default function Viewer({
   const selectMapTool = (tool: MapTool, fromKeyboard = false) => {
     setMapTool(tool);
     setPixelTip(tool === "pixel");
+    // The pixel tool and an area drawing would both take the map click: the pixel tool wins.
+    if (tool === "pixel" && area.drawing) area.cancel();
     if (tool !== "pixel") {
       setProbe(null);
       return;
@@ -1110,6 +1137,7 @@ export default function Viewer({
     ]);
   };
   const clearPixel = () => {
+    pixelRunRef.current += 1;
     setPixel(null);
     setPixelLonLat(null);
     setSeriesPoints([]);
@@ -1167,6 +1195,12 @@ export default function Viewer({
   function closeRightPanel() {
     const closing = drawerRef.current;
     setDrawer(null);
+    // 결과 비교 is also the switch for seeing the AI result (UX13B): however it is closed (its rail button, the close
+    // button, Esc), the AI water layer goes and an AI-result comparison goes back to comparing times (FIX4).
+    if (closing === "result" && hasInference) {
+      setResultVisible(false);
+      setCompareTarget((target) => (target === "ai" ? "time" : target));
+    }
     const back = drawerReturnRef.current;
     drawerReturnRef.current = null;
     focusNextRef.current = () => (back?.isConnected ? back : closing ? railRefs.current[closing] : null);
@@ -1332,9 +1366,25 @@ export default function Viewer({
   const markColor = useMemo(() => cssColor("--fb-overprint", theme === "dark" ? "#ff6fb3" : "#b8166f"), [theme]);
   const area = useAreaDraw(map, markColor);
   const clearArea = area.clear;
+  const cancelAreaDraw = area.cancel;
+  const areaDrawing = !!area.drawing;
   useEffect(() => {
     clearArea();
   }, [selectedId, clearArea]);
+  // FIX4: the drawn area belongs to 영역 통계 and is shared only with 내보내기. Leaving 영역 통계 always stops a
+  // drawing in progress; closing the panel or moving to another tool clears the shape, its legend and the area
+  // result (the area panel unmounts, which also drops a query still running). Side by side closes the panel by
+  // itself and brings the tool back afterwards, so that close keeps the shape.
+  useEffect(() => {
+    if (drawer !== "area" && areaDrawing) cancelAreaDraw();
+  }, [drawer, areaDrawing, cancelAreaDraw]);
+  useEffect(() => {
+    if (drawer === "area" || drawer === "export") return;
+    const restoring = splitRestoreRef.current;
+    if (drawer === null && splitActiveRef.current && (restoring === "area" || restoring === "export")) return;
+    clearArea();
+    setVisited((list) => (list.includes("area") ? list.filter((tool) => tool !== "area") : list));
+  }, [drawer, clearArea]);
   const startDraw = (kind: "polygon" | "rect") => {
     selectMapTool("pan");
     area.start(kind);
@@ -1424,7 +1474,7 @@ export default function Viewer({
     }
     return specs;
   };
-  const makePng = async (title: string) => {
+  const makePng = async (title: string, signal?: AbortSignal) => {
     if (!map || typeof map.getSize !== "function") throw new Error("NO_MAP");
     const size = map.getSize();
     if (!size) throw new Error("NO_MAP");
@@ -1455,6 +1505,7 @@ export default function Viewer({
       width,
       size[1],
     );
+    if (signal?.aborted) return;
     saveBlob(blob, pngFileName(title, times[timeIndex]?.iso?.slice(0, 10) ?? ""));
   };
 
@@ -1614,6 +1665,7 @@ export default function Viewer({
             </a>
           )}
           <button
+            ref={tourButtonRef}
             type="button"
             className="vx-icon-btn"
             onClick={() => setTourOpen(true)}
@@ -1920,13 +1972,8 @@ export default function Viewer({
                   if (tool === "result") {
                     // 결과 비교 is also the switch for seeing the AI result (UX13B): closing it hides the AI water layer
                     // (and leaves the AI-result comparison), opening it shows the layer again.
-                    if (open) {
-                      closeRightPanel();
-                      if (hasInference) {
-                        setResultVisible(false);
-                        if (compareTarget === "ai") setCompareTarget("time");
-                      }
-                    } else {
+                    if (open) closeRightPanel();
+                    else {
                       if (hasInference) setResultVisible(true);
                       openRightPanel("result", true);
                     }
@@ -1956,7 +2003,9 @@ export default function Viewer({
             onKeyDown={(event) => {
               if (event.key !== "Escape" || event.defaultPrevented) return;
               event.preventDefault();
-              closeRightPanel();
+              // Esc while drawing cancels only the drawing (S7), not the whole panel.
+              if (area.drawing) area.cancel();
+              else closeRightPanel();
             }}
           >
             <div className="vx-drawer__head">
@@ -2058,7 +2107,9 @@ export default function Viewer({
               )}
               {selected && visited.includes("area") && (
                 <div hidden={drawer !== "area"}>
+                  {/* Keyed by dataset: settings, answers and requests of the previous dataset do not carry over (FIX4). */}
                   <AreaStatsPanel
+                    key={selected.id}
                     targets={areaTargets}
                     times={times}
                     currentIndex={timeIndex}
@@ -2136,7 +2187,7 @@ export default function Viewer({
               )}
               {selected && visited.includes("export") && (
                 <div hidden={drawer !== "export"}>
-                  <ExportPanel targets={exportTargets} times={times} currentIndex={timeIndex} shape={area.shape} viewBbox={mapExtent4326} datasetName={selected.name} onPng={makePng} />
+                  <ExportPanel key={selected.id} targets={exportTargets} times={times} currentIndex={timeIndex} shape={area.shape} viewBbox={mapExtent4326} datasetName={selected.name} onPng={makePng} />
                 </div>
               )}
             </div>
@@ -2281,7 +2332,15 @@ export default function Viewer({
           </section>
         </div>
       )}
-      {tourOpen && <ViewerTour onClose={() => setTourOpen(false)} />}
+      {tourOpen && (
+        <ViewerTour
+          onClose={() => {
+            setTourOpen(false);
+            // FIX4: focus goes back to the help button instead of being lost with the tour card.
+            focusNextRef.current = () => tourButtonRef.current;
+          }}
+        />
+      )}
     </main>
   );
 }

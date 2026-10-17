@@ -105,6 +105,12 @@ export default function DatasetPicker({
   useEffect(() => {
     setAllScope(false);
   }, [project?.name]);
+  // FIX4: closing without choosing (Esc, a click outside, the trigger) drops the search, so the list opens whole.
+  useEffect(() => {
+    if (open) return;
+    setQuery("");
+    setActive(0);
+  }, [open]);
   useEffect(() => {
     if (openRequest > 0) {
       setOpen(true);

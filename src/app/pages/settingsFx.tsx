@@ -196,7 +196,7 @@ export function ContactEmailSection({ contact, onToast }: { contact: Load<Contac
                   />
                   <div className="settings__actions">
                     <Button type="submit" disabled={busy !== ''}>{busy === 'send' ? t('accountMail.sending') : t('accountMail.send')}</Button>
-                    {(editing || pending) && <Button variant="quiet" onClick={() => { setEditing(false); setEmailError(''); }}>{t('common.cancel')}</Button>}
+                    {(editing || pending) && <Button variant="quiet" onClick={() => { setEditing(false); setEmail(''); setEmailError(''); setFailure(''); }}>{t('common.cancel')}</Button>}
                   </div>
                 </form>
               ) : null}

@@ -43,6 +43,9 @@ export default function ProjectQuickMenu({
     setOpen(false);
     setMode("menu");
     setError("");
+    // FIX4: a closed (cancelled) new-project form does not come back half filled.
+    setName("");
+    setDescription("");
     buttonRef.current?.focus();
   };
   useEffect(() => {
@@ -229,6 +232,8 @@ export default function ProjectQuickMenu({
                   onClick={() => {
                     setMode("menu");
                     setError("");
+                    setName("");
+                    setDescription("");
                   }}
                 >
                   {t("common.cancel")}
