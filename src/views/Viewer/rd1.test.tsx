@@ -111,4 +111,22 @@ describe('RD1 Viewer 데이터 고르기', () => {
     expect(combo).toHaveAttribute('aria-activedescendant', 'zarr-option-1');
     expect(screen.getByRole('option', { name: /대청호 한 장면/ }).querySelector('.thumb')).toHaveStyle({ '--thumb': '88px' });
   });
+
+  test('마우스를 올려도 목록이 움직이지 않는다 (키보드로 옮길 때만 그 카드가 보이게 스크롤)', () => {
+    const scroll = jest.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      render(<DatasetPicker datasets={datasets} value="1" onChange={jest.fn()} />);
+      const list = open();
+      scroll.mockClear();
+      fireEvent.mouseEnter(within(list).getByRole('option', { name: /받은 융합/ }));
+      expect(screen.getByRole('combobox')).toHaveAttribute('aria-activedescendant', 'zarr-option-2');
+      expect(scroll).not.toHaveBeenCalled();
+      fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowLeft' });
+      expect(scroll).toHaveBeenCalledTimes(1);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
 });
