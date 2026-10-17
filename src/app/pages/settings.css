@@ -25,9 +25,9 @@
 .storage__value { font: var(--text-kpi); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: var(--fb-ink); }
 .storage__percent { font: 600 14px/1 var(--fb-font); font-variant-numeric: tabular-nums; color: var(--fb-ink-2); }
 .storage__meter {
-  position: relative; height: 8px; overflow: hidden; border: 1px solid var(--fb-rule-strong); border-radius: 2px; background: var(--fb-sunken);
+  position: relative; height: 8px; overflow: hidden; border: 1px solid var(--fb-rule-strong); border-radius: var(--fb-radius-hair); background: var(--fb-sunken);
 }
-.storage__fill { position: absolute; inset: 0 auto 0 0; background: var(--fb-ink-2); transition: width 240ms var(--fb-ease-out); }
+.storage__fill { position: absolute; inset: 0; background: var(--fb-ink-2); transform-origin: left center; transition: transform 240ms var(--fb-ease-out); }
 .storage--near .storage__fill { background: var(--fb-warn); }
 .storage--over .storage__fill { background: var(--fb-bad); }
 .storage--near .storage__percent { color: var(--fb-warn); }
@@ -52,10 +52,10 @@
 
 /* UR-63: notification switches, contact e-mail (code entry), the danger zone at the bottom. */
 .settings-check { display: grid; gap: 4px; }
-.settings-check .xc-check { align-items: flex-start; gap: 8px; font: 500 14px/1.45 var(--fb-font); color: var(--fb-ink); }
+.settings-check .xc-check { align-items: flex-start; gap: 8px; font: 500 14px/1.4 var(--fb-font); color: var(--fb-ink); }
 .settings-check input { margin-top: 3px; accent-color: var(--fb-ink); width: 16px; height: 16px; }
 .settings-check .xc-hint { padding-left: 24px; }
-.settings__saved { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--fb-ok); font: 600 13px/1 var(--fb-font); }
+.settings__saved { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--fb-ok); font: var(--fb-text-control); }
 .settings__actions--wrap { flex-wrap: wrap; }
 .contact-email { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .contact-email svg { color: var(--fb-ink-3); }

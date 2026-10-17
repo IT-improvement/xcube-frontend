@@ -185,7 +185,7 @@ export default function JobsPage() {
                           {job.status === 'RUNNING' && (
                             <span className="job-progress-cell">
                               <svg className="job-progress" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label={t('jobs.progressNamed', { name: job.name })}>
-                                <rect width={`${percent}%`} height="100%" />
+                                <rect width="100%" height="100%" transform={`scale(${percent / 100} 1)`} />
                               </svg>
                               <small className="tabular xc-hint">{percent}%</small>
                             </span>

@@ -89,7 +89,7 @@ export function categoriesOf(name?: string): Array<{ code: number; color: string
  * categorical map, or red-green-blue stripes for the RGB composite. Undefined when the map is not known here.
  */
 export function swatchBackground(variable: string, colorBarName?: string): string | undefined {
-  if (variable === "rgb") return "linear-gradient(90deg, #d0342c 0 33%, #2e9d4a 33% 67%, #2f6fd0 67%)";
+  if (variable === "rgb") return "linear-gradient(90deg, var(--fb-channel-r) 0 33%, var(--fb-channel-g) 33% 67%, var(--fb-channel-b) 67%)";
   const classes = categoriesOf(colorBarName);
   if (classes) {
     const width = 100 / classes.length;

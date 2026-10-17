@@ -26,24 +26,15 @@
   --color-danger: var(--fb-bad);
   --color-info: var(--fb-water);
 
-  /* Data colours (compare / change maps). */
-  --cmp-agree: var(--data-cmp-agree);
-  --cmp-only-a: var(--data-cmp-only-a);
-  --cmp-only-b: var(--data-cmp-only-b);
-  --chg-gain: var(--data-chg-gain);
-  --chg-loss: var(--data-chg-loss);
-  --chg-stable: var(--data-chg-stable);
-
   --font-sans: var(--fb-font);
 
-  --text-display: 600 52px/1.15 var(--font-sans);
-  --text-h1: 600 26px/1.3 var(--font-sans);
-  --text-h2: 600 18px/1.4 var(--font-sans);
-  --text-h3: 600 15px/1.4 var(--font-sans);
-  --text-body: 400 14px/1.55 var(--font-sans);
-  --text-label: 600 12.5px/1.4 var(--font-sans);
-  --text-caption: 400 12px/1.5 var(--font-sans);
-  --text-kpi: 600 22px/1.15 var(--font-sans);
+  --text-h1: var(--fb-text-h1);
+  --text-h2: var(--fb-text-h2);
+  --text-h3: var(--fb-text-title);
+  --text-body: var(--fb-text-body);
+  --text-label: var(--fb-text-label);
+  --text-caption: var(--fb-text-caption);
+  --text-kpi: var(--fb-text-value);
 
   --space-1: 4px;
   --space-2: 8px;
