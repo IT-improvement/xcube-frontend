@@ -2,10 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, LayoutGrid, List, Search } from "lucide-react";
 import { ZarrDataset } from "../../api/viewerAdapter";
 import { kindIdOf, shortPeriod, TimeKind, timeKindOf } from "../../api/datasetFacts";
+import { isExample } from "../../api/examples";
 import DatasetThumb from "../../components/thumb/DatasetThumb";
 import { useViewMode, VIEW_KEYS, ViewMode } from "../../hooks/useViewMode";
 import { useT } from "../../i18n";
 import "../../i18n/viewer";
+
+// Mine, then shared with me, then examples: the list groups follow this order.
+const rank = (item: ZarrDataset) => (isExample(item) ? 2 : item.accessType === "SHARED" ? 1 : 0);
 
 const coarsePointer = () =>
   typeof window.matchMedia === "function" && !!window.matchMedia("(pointer: coarse)")?.matches;
@@ -96,11 +100,7 @@ export default function DatasetPicker({
   const filtered = useMemo(() => {
     return searched
       .filter((item) => !timeFilter || timeKindOf(item) === timeFilter)
-      .sort(
-        (a, b) =>
-          (a.accessType === "SHARED" ? 1 : 0) -
-          (b.accessType === "SHARED" ? 1 : 0),
-      );
+      .sort((a, b) => rank(a) - rank(b));
   }, [searched, timeFilter]);
   useEffect(() => {
     setAllScope(false);
@@ -168,8 +168,9 @@ export default function DatasetPicker({
       choose(filtered[active]);
     }
   };
+  // Example data (UR-63) reaches everyone as SHARED; name it as an example, not as something shared with you.
   const ownership = (item: ZarrDataset) =>
-    t(item.accessType === "SHARED" ? "viewer.picker.shared" : "viewer.picker.mine");
+    t(isExample(item) ? "viewer.picker.example" : item.accessType === "SHARED" ? "viewer.picker.shared" : "viewer.picker.mine");
   const timeText = (item: ZarrDataset) =>
     timeKindOf(item) === "series" ? t("datasetFacts.series", { count: item.times.length }) : t("datasetFacts.single");
   const filterItems: Array<{ id: TimeKind | ""; label: string; count: number }> = [
@@ -187,7 +188,8 @@ export default function DatasetPicker({
     ? [{ id: "project", title: t("viewer.picker.groupProject", { name: project!.name }), items: indexed }]
     : [
         { id: "mine", title: t("viewer.picker.groupMine"), items: indexed.filter(({ item }) => item.accessType !== "SHARED") },
-        { id: "shared", title: t("viewer.picker.groupShared"), items: indexed.filter(({ item }) => item.accessType === "SHARED") },
+        { id: "shared", title: t("viewer.picker.groupShared"), items: indexed.filter(({ item }) => item.accessType === "SHARED" && !isExample(item)) },
+        { id: "example", title: t("viewer.picker.groupExample"), items: indexed.filter(({ item }) => isExample(item)) },
       ].filter((group) => group.items.length > 0);
   const facts = (item: ZarrDataset) => (
     <small className="dataset-facts">
@@ -276,7 +278,7 @@ export default function DatasetPicker({
       >
         <span id="dataset-trigger-name" className="dataset-trigger__name">{selected?.name ?? t("viewer.picker.placeholder")}</span>
         {selected?.accessType === "SHARED" && (
-          <small className="dataset-trigger__tag">{t("viewer.picker.shared")}</small>
+          <small className="dataset-trigger__tag">{ownership(selected)}</small>
         )}
         <ChevronDown size={16} aria-hidden="true" />
       </button>
