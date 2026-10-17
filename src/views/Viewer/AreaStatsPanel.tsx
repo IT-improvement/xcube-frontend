@@ -373,6 +373,10 @@ export default function AreaStatsPanel({
 
 type ChartPoint = { time: string; value: number | null; low?: number | null; high?: number | null; extra?: number | null };
 
+/** Room one date label takes on the time axis, and the space kept between labels. */
+const LABEL_WIDTH = 80;
+const LABEL_GAP = 8;
+
 /** Rounded axis bounds and ticks (steps 1, 2, 2.5, 5 × 10^n), as the pixel graph. */
 export function axisTicks(values: number[], zeroBased = false) {
   const finite = values.filter((value) => Number.isFinite(value));
@@ -440,6 +444,24 @@ export function AreaSeriesChart({ points, currentIso, labelOf, water, units, onP
   const shown = hover ?? null;
   const hovered = shown != null ? points[shown] : null;
   const labelEvery = Math.max(1, Math.ceil(points.length / Math.max(2, Math.floor((width - left - right) / 88))));
+  // Date labels never overlap: each label covers about LABEL_WIDTH px (start, middle or end anchored), the last date
+  // is always shown, and an earlier one is kept only when it clears the previous label and the last one.
+  const shownLabels = new Set<number>();
+  if (points.length > 0) {
+    const last = points.length - 1;
+    const extent = (index: number): [number, number] =>
+      index === 0 && last > 0 ? [x(0), x(0) + LABEL_WIDTH] : index === last ? [x(last) - LABEL_WIDTH, x(last)] : [x(index) - LABEL_WIDTH / 2, x(index) + LABEL_WIDTH / 2];
+    const lastStart = extent(last)[0];
+    let end = -Infinity;
+    for (let index = 0; index < last; index += labelEvery) {
+      const [from, to] = extent(index);
+      if (from >= end + LABEL_GAP && to + LABEL_GAP <= lastStart) {
+        shownLabels.add(index);
+        end = to;
+      }
+    }
+    shownLabels.add(last);
+  }
   const valid = points.filter((point) => point.value != null).length;
   const summary = t(water ? "viewer.stats.chartWater" : "viewer.stats.chartMean", { count: points.length, valid, min: fmt(min), max: fmt(max) });
 
@@ -472,7 +494,7 @@ export function AreaSeriesChart({ points, currentIso, labelOf, water, units, onP
         ))}
         {units && <text className="vx-schart__axis" x={left - 6} y={10} textAnchor="end">{units}</text>}
         {points.map((point, index) =>
-          index === points.length - 1 || (index % labelEvery === 0 && x(points.length - 1) - x(index) >= 88) ? (
+          shownLabels.has(index) ? (
             <text key={point.time} className="vx-schart__axis" x={x(index)} y={height - 6} textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"}>
               {labelOf(point.time)}
             </text>

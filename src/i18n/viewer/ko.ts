@@ -177,6 +177,7 @@ const koViewer = {
       trigger: '데이터 또는 Zarr 선택',
       placeholder: '데이터 고르기',
       shared: '공유받음',
+      example: '예시',
       mine: '내 데이터',
       searchIn: '{name}에서 검색…',
       search: '이름으로 검색…',
@@ -193,6 +194,7 @@ const koViewer = {
       /** Group heads in the list (RD1). */
       groupMine: '내 데이터',
       groupShared: '공유받음',
+      groupExample: '예시 데이터',
       groupProject: '프로젝트: {name}',
       groupCount: '{count}개',
     },
