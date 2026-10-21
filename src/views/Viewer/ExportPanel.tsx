@@ -10,6 +10,7 @@ import { userMessage } from "../../api/httpClient";
 import { serverText } from "../../i18n/serverText";
 import type { TimePoint } from "../../api/viewerAdapter";
 import { useLanguage } from "../../i18n";
+import PanelMore from "./PanelMore";
 import "../../i18n/viewer";
 import type { AreaShape } from "./areaDraw";
 import { askOnceOnJobStart } from "../../app/browserNotify";
@@ -17,6 +18,8 @@ import { askOnceOnJobStart } from "../../app/browserNotify";
 export type ExportTarget = { key: string; label: string; datasetId: string; variables: string[]; variable: string };
 type TimeScope = "current" | "all" | "range";
 type AreaScope = "data" | "view" | "shape";
+type Choice = "PNG" | ExportKind;
+const CHOICES: Choice[] = ["PNG", "GEOTIFF", "ANIMATION", "REPORT"];
 type Entry = { job: ExportJob; kind: ExportKind; format?: string; failure?: unknown; downloading?: boolean };
 
 const POLL_MS = useMockApi ? 700 : 2500;
@@ -51,7 +54,9 @@ export default function ExportPanel({
   const pngAbort = useRef<AbortController | null>(null);
   useEffect(() => () => pngAbort.current?.abort(), []);
   const [pngFailure, setPngFailure] = useState<string>("");
-  const [kind, setKind] = useState<ExportKind>("GEOTIFF");
+  // VX1: PNG sits beside the server formats as one more choice; the map image is the quickest one, so it comes first.
+  const [choice, setChoice] = useState<Choice>("PNG");
+  const kind: ExportKind = choice === "PNG" ? "GEOTIFF" : choice;
   const [targetKey, setTargetKey] = useState(targets[0]?.key ?? "");
   const target = targets.find((item) => item.key === targetKey) ?? targets[0];
   const [variable, setVariable] = useState(target?.variable ?? "");
@@ -174,178 +179,210 @@ export default function ExportPanel({
     }
   };
 
-  const kinds: ExportKind[] = ["GEOTIFF", "ANIMATION", "REPORT"];
+  const kindName = (item: Choice) => (item === "PNG" ? t("viewer.vx.export.png") : t(`viewer.export.kind.${item}`));
+  const areaName = t(`viewer.export.areaScope.${areaScope}`);
+  const timesName =
+    timeScope === "current" ? times[currentIndex]?.label ?? "—" : timeScope === "all" ? t("viewer.export.job.timesAll", { count: times.length }) : t("viewer.export.timeScope.range");
+  const bandName = variable === "rgb" ? t("viewer.legend.rgb") : variable || "—";
+  const settingsHint =
+    choice === "PNG"
+      ? t("viewer.vx.export.pngSummary", { title: title.trim() || datasetName })
+      : t("viewer.vx.export.settingsSummary", { target: target?.label ?? "—", band: bandName, times: timesName, area: areaName });
+  const runningEntries = entries.filter((entry) => isExportRunning(entry.job));
+  const finishedEntries = entries.filter((entry) => !isExportRunning(entry.job));
+  const renderEntry = (entry: Entry) => {
+    const status = entry.job.status;
+    const progress = Math.max(0, Math.min(100, Number(entry.job.progress ?? 0)));
+    return (
+      <li key={String(entry.job.id)} className={`vx-run is-${status.toLowerCase()}`}>
+        <div className="vx-run__head">
+          <strong>{t(`viewer.export.kind.${entry.kind}`)}</strong>
+          <span role="status">{t(`viewer.export.status.${status}`)}{isExportRunning(entry.job) ? ` · ${progress}%` : ""}</span>
+        </div>
+        <small title={entry.job.name}>{entry.job.name}</small>
+        {isExportRunning(entry.job) && (
+          <>
+            <span className="vx-run__bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} aria-label={t("viewer.export.list.progress", { kind: t(`viewer.export.kind.${entry.kind}`) })}>
+              <i style={{ transform: `scaleX(${progress / 100})` }} />
+            </span>
+            <button type="button" className="vx-btn vx-btn--quiet" onClick={() => cancel(entry)}>
+              <X size={14} aria-hidden="true" />
+              {t("viewer.export.list.cancel")}
+            </button>
+          </>
+        )}
+        {status === "SUCCEEDED" && (
+          <button type="button" className="vx-btn vx-btn--ink" onClick={() => download(entry)} disabled={entry.downloading}>
+            <Download size={15} aria-hidden="true" />
+            {entry.downloading ? t("viewer.export.list.downloading") : t("viewer.export.list.download")}
+          </button>
+        )}
+        {status === "FAILED" && <small className="vx-results__error">{serverText({ code: entry.job.errorCode ?? undefined, params: entry.job.errorParams, message: entry.job.errorMessage ?? undefined }, lang, { fallback: "viewer.export.list.failed" }) || t("viewer.export.list.failed")}</small>}
+        {entry.failure != null && <small className="vx-results__error" role="alert">{userMessage(entry.failure, lang)}</small>}
+      </li>
+    );
+  };
+
   return (
     <div className="vx-export">
       <section className="vx-section">
-        <label className="vx-field">
-          <span>{t("viewer.export.title")}</span>
-          <input
-            className="vx-input"
-            value={title}
-            maxLength={120}
-            onChange={(event) => {
-              titleTouched.current = true;
-              setTitle(event.target.value);
-            }}
-          />
-          <small className="vx-section__hint">{t("viewer.export.titleHint")}</small>
-        </label>
-      </section>
-      <section className="vx-section">
-        <h3 className="vx-section__title">{t("viewer.export.png.heading")}</h3>
-        <p className="vx-section__hint">{t("viewer.export.png.hint")}</p>
-        <button type="button" className="vx-btn vx-btn--ink vx-btn--block" onClick={makePng} disabled={pngBusy}>
-          {pngBusy ? <LoaderCircle size={16} className="vx-spin" aria-hidden="true" /> : <FileImage size={16} aria-hidden="true" />}
-          {pngBusy ? t("viewer.export.png.busy") : t("viewer.export.png.save")}
-        </button>
-        {pngFailure && <p className="vx-note vx-note--bad" role="alert">{pngFailure}</p>}
-      </section>
-
-      <section className="vx-section">
-        <h3 className="vx-section__title">{t("viewer.export.job.heading")}</h3>
-        <p className="vx-section__hint">{t("viewer.export.job.hint")}</p>
-        <div className="vx-seg vx-seg--fit" role="group" aria-label={t("viewer.export.job.kind")}>
-          {kinds.map((item) => (
-            <button key={item} type="button" aria-pressed={kind === item} onClick={() => setKind(item)}>
-              {t(`viewer.export.kind.${item}`)}
-            </button>
-          ))}
-        </div>
-        <p className="vx-section__hint">{t(`viewer.export.kindHint.${kind}`)}</p>
-        {targets.length > 1 && (
-          <div className="vx-seg vx-seg--fit" role="group" aria-label={t("viewer.export.job.target")}>
-            {targets.map((item) => (
-              <button key={item.key} type="button" aria-pressed={item.key === target?.key} onClick={() => setTargetKey(item.key)}>
-                {item.label}
-              </button>
-            ))}
-          </div>
-        )}
-        {target && (
-          <label className="vx-field">
-            <span>{t("viewer.export.job.variable")}</span>
-            <select value={variable} onChange={(event) => setVariable(event.target.value)}>
-              {target.variables.map((name) => (
-                <option key={name} value={name}>{name === "rgb" ? t("viewer.legend.rgb") : name}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        <fieldset className="vx-field">
-          <legend>{t("viewer.export.job.times")}</legend>
-          <div className="vx-seg vx-seg--fit">
-            {(["current", "all", "range"] as TimeScope[]).map((scope) => (
-              <button key={scope} type="button" aria-pressed={timeScope === scope} disabled={scope !== "current" && times.length < 2} onClick={() => setTimeScope(scope)}>
-                {t(`viewer.export.timeScope.${scope}`)}
-              </button>
-            ))}
-          </div>
-          {timeScope === "current" && <small className="vx-section__hint tabular">{times[currentIndex]?.label ?? "—"}</small>}
-          {timeScope === "all" && <small className="vx-section__hint tabular">{t("viewer.export.job.timesAll", { count: times.length })}</small>}
-          {timeScope === "range" && (
-            <div className="vx-range2">
-              <label>
-                <span className="vx-sr">{t("viewer.export.job.from")}</span>
-                <select value={start} onChange={(event) => setStart(Number(event.target.value))}>
-                  {times.map((time, index) => (
-                    <option key={time.iso} value={index}>{time.label}</option>
-                  ))}
-                </select>
-              </label>
-              <span aria-hidden="true">–</span>
-              <label>
-                <span className="vx-sr">{t("viewer.export.job.to")}</span>
-                <select value={end} onChange={(event) => setEnd(Number(event.target.value))}>
-                  {times.map((time, index) => (
-                    <option key={time.iso} value={index}>{time.label}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
-          {rangeWrong && <small className="vx-results__error">{t("viewer.export.job.rangeWrong")}</small>}
-          {tooManyFrames && <small className="vx-results__error">{t("viewer.export.job.tooManyFrames", { max: EXPORT_LIMITS.maxFrames })}</small>}
-        </fieldset>
-        <fieldset className="vx-field">
-          <legend>{t("viewer.export.job.area")}</legend>
-          <div className="vx-seg vx-seg--fit">
-            {(["data", "view", "shape"] as AreaScope[]).map((scope) => (
-              <button key={scope} type="button" aria-pressed={areaScope === scope} disabled={scope === "shape" && !shape} onClick={() => setAreaScope(scope)} title={scope === "shape" && !shape ? t("viewer.export.job.noShape") : undefined}>
-                {t(`viewer.export.areaScope.${scope}`)}
-              </button>
-            ))}
-          </div>
-          {kind === "REPORT" && <small className="vx-section__hint">{shape && areaScope === "shape" ? t("viewer.export.job.reportStats") : t("viewer.export.job.reportNoStats")}</small>}
-        </fieldset>
-        {kind === "ANIMATION" && (
-          <div className="vx-export__anim">
-            <fieldset className="vx-field">
-              <legend>{t("viewer.export.job.format")}</legend>
-              <div className="vx-seg vx-seg--fit">
-                {(["gif", "mp4"] as const).map((item) => (
-                  <button key={item} type="button" aria-pressed={format === item} onClick={() => setFormat(item)}>
-                    {item.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-            <label className="vx-field">
-              <span className="vx-field__row">
-                {t("viewer.export.job.fps")}
-                <small className="tabular">{t("viewer.export.job.fpsValue", { fps })}</small>
+        <fieldset className="vx-field vx-formats">
+          <legend>{t("viewer.vx.export.format")}</legend>
+          {CHOICES.map((item) => (
+            <label key={item} className="vx-format">
+              <input type="radio" name="vx-export-format" value={item} checked={choice === item} onChange={() => setChoice(item)} />
+              <span>
+                <strong>{kindName(item)}</strong>
+                <small>{t(`viewer.vx.export.line.${item}`)}</small>
               </span>
-              <input type="range" min={EXPORT_LIMITS.fpsMin} max={EXPORT_LIMITS.fpsMax} step={1} value={fps} onChange={(event) => setFps(Number(event.target.value))} aria-valuetext={t("viewer.export.job.fpsValue", { fps })} />
             </label>
-          </div>
+          ))}
+        </fieldset>
+        {choice === "PNG" ? (
+          <>
+            <button type="button" className="vx-btn vx-btn--ink vx-btn--block" onClick={makePng} disabled={pngBusy}>
+              {pngBusy ? <LoaderCircle size={16} className="vx-spin" aria-hidden="true" /> : <FileImage size={16} aria-hidden="true" />}
+              {pngBusy ? t("viewer.export.png.busy") : t("viewer.export.png.save")}
+            </button>
+            {pngFailure && <p className="vx-note vx-note--bad" role="alert">{pngFailure}</p>}
+          </>
+        ) : (
+          <>
+            <button type="button" className="vx-btn vx-btn--ink vx-btn--block" onClick={startJob} disabled={starting || !target || !variable || tooManyFrames || rangeWrong}>
+              {starting ? t("viewer.export.job.starting") : t("viewer.vx.export.start", { kind: kindName(choice) })}
+            </button>
+            {rangeWrong && <p className="vx-note vx-note--bad" role="alert">{t("viewer.export.job.rangeWrong")}</p>}
+            {tooManyFrames && <p className="vx-note vx-note--bad" role="alert">{t("viewer.export.job.tooManyFrames", { max: EXPORT_LIMITS.maxFrames })}</p>}
+            {startFailure != null && <p className="vx-note vx-note--bad" role="alert">{userMessage(startFailure, lang)}</p>}
+          </>
         )}
-        <button type="button" className="vx-btn vx-btn--ink vx-btn--block" onClick={startJob} disabled={starting || !target || !variable || tooManyFrames || rangeWrong}>
-          {starting ? t("viewer.export.job.starting") : t("viewer.export.job.start")}
-        </button>
-        {startFailure != null && <p className="vx-note vx-note--bad" role="alert">{userMessage(startFailure, lang)}</p>}
+        <PanelMore summary={t("viewer.vx.export.settings")} hint={settingsHint}>
+          <label className="vx-field">
+            <span>{t("viewer.export.title")}</span>
+            <input
+              className="vx-input"
+              name="export-title"
+              autoComplete="off"
+              value={title}
+              maxLength={120}
+              onChange={(event) => {
+                titleTouched.current = true;
+                setTitle(event.target.value);
+              }}
+            />
+            <small className="vx-section__hint">{t("viewer.export.titleHint")}</small>
+          </label>
+          {choice === "PNG" ? (
+            <p className="vx-section__hint">{t("viewer.export.png.hint")}</p>
+          ) : (
+            <>
+              <p className="vx-section__hint">{t(`viewer.export.kindHint.${kind}`)} {t("viewer.export.job.hint")}</p>
+              {targets.length > 1 && (
+                <div className="vx-seg vx-seg--fit" role="group" aria-label={t("viewer.export.job.target")}>
+                  {targets.map((item) => (
+                    <button key={item.key} type="button" aria-pressed={item.key === target?.key} onClick={() => setTargetKey(item.key)}>
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {target && (
+                <label className="vx-field">
+                  <span>{t("viewer.export.job.variable")}</span>
+                  <select value={variable} onChange={(event) => setVariable(event.target.value)}>
+                    {target.variables.map((name) => (
+                      <option key={name} value={name}>{name === "rgb" ? t("viewer.legend.rgb") : name}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <fieldset className="vx-field">
+                <legend>{t("viewer.export.job.times")}</legend>
+                <div className="vx-seg vx-seg--fit">
+                  {(["current", "all", "range"] as TimeScope[]).map((scope) => (
+                    <button key={scope} type="button" aria-pressed={timeScope === scope} disabled={scope !== "current" && times.length < 2} onClick={() => setTimeScope(scope)}>
+                      {t(`viewer.export.timeScope.${scope}`)}
+                    </button>
+                  ))}
+                </div>
+                {timeScope === "range" && (
+                  <div className="vx-range2">
+                    <label>
+                      <span className="vx-sr">{t("viewer.export.job.from")}</span>
+                      <select value={start} onChange={(event) => setStart(Number(event.target.value))}>
+                        {times.map((time, index) => (
+                          <option key={time.iso} value={index}>{time.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <span aria-hidden="true">–</span>
+                    <label>
+                      <span className="vx-sr">{t("viewer.export.job.to")}</span>
+                      <select value={end} onChange={(event) => setEnd(Number(event.target.value))}>
+                        {times.map((time, index) => (
+                          <option key={time.iso} value={index}>{time.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                )}
+              </fieldset>
+              <fieldset className="vx-field">
+                <legend>{t("viewer.export.job.area")}</legend>
+                <div className="vx-seg vx-seg--fit">
+                  {(["data", "view", "shape"] as AreaScope[]).map((scope) => (
+                    <button key={scope} type="button" aria-pressed={areaScope === scope} disabled={scope === "shape" && !shape} onClick={() => setAreaScope(scope)} title={scope === "shape" && !shape ? t("viewer.export.job.noShape") : undefined}>
+                      {t(`viewer.export.areaScope.${scope}`)}
+                    </button>
+                  ))}
+                </div>
+                {kind === "REPORT" && <small className="vx-section__hint">{shape && areaScope === "shape" ? t("viewer.export.job.reportStats") : t("viewer.export.job.reportNoStats")}</small>}
+              </fieldset>
+              {kind === "ANIMATION" && (
+                <div className="vx-export__anim">
+                  <fieldset className="vx-field">
+                    <legend>{t("viewer.export.job.format")}</legend>
+                    <div className="vx-seg vx-seg--fit">
+                      {(["gif", "mp4"] as const).map((item) => (
+                        <button key={item} type="button" aria-pressed={format === item} onClick={() => setFormat(item)}>
+                          {item.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <label className="vx-field">
+                    <span className="vx-field__row">
+                      {t("viewer.export.job.fps")}
+                      <small className="tabular">{t("viewer.export.job.fpsValue", { fps })}</small>
+                    </span>
+                    <input type="range" min={EXPORT_LIMITS.fpsMin} max={EXPORT_LIMITS.fpsMax} step={1} value={fps} onChange={(event) => setFps(Number(event.target.value))} aria-valuetext={t("viewer.export.job.fpsValue", { fps })} />
+                  </label>
+                </div>
+              )}
+            </>
+          )}
+        </PanelMore>
       </section>
 
-      {entries.length > 0 && (
-        <section className="vx-section" aria-labelledby="vx-export-list">
-          <h3 className="vx-section__title" id="vx-export-list">{t("viewer.export.list.heading")}</h3>
-          <ul className="vx-exports">
-            {entries.map((entry) => {
-              const status = entry.job.status;
-              const progress = Math.max(0, Math.min(100, Number(entry.job.progress ?? 0)));
-              return (
-                <li key={String(entry.job.id)} className={`vx-run is-${status.toLowerCase()}`}>
-                  <div className="vx-run__head">
-                    <strong>{t(`viewer.export.kind.${entry.kind}`)}</strong>
-                    <span role="status">{t(`viewer.export.status.${status}`)}{isExportRunning(entry.job) ? ` · ${progress}%` : ""}</span>
-                  </div>
-                  <small title={entry.job.name}>{entry.job.name}</small>
-                  {isExportRunning(entry.job) && (
-                    <>
-                      <span className="vx-run__bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} aria-label={t("viewer.export.list.progress", { kind: t(`viewer.export.kind.${entry.kind}`) })}>
-                        <i style={{ transform: `scaleX(${progress / 100})` }} />
-                      </span>
-                      <button type="button" className="vx-btn vx-btn--quiet" onClick={() => cancel(entry)}>
-                        <X size={14} aria-hidden="true" />
-                        {t("viewer.export.list.cancel")}
-                      </button>
-                    </>
-                  )}
-                  {status === "SUCCEEDED" && (
-                    <button type="button" className="vx-btn vx-btn--line" onClick={() => download(entry)} disabled={entry.downloading}>
-                      <Download size={15} aria-hidden="true" />
-                      {entry.downloading ? t("viewer.export.list.downloading") : t("viewer.export.list.download")}
-                    </button>
-                  )}
-                  {status === "FAILED" && <small className="vx-results__error">{serverText({ code: entry.job.errorCode ?? undefined, params: entry.job.errorParams, message: entry.job.errorMessage ?? undefined }, lang, { fallback: "viewer.export.list.failed" }) || t("viewer.export.list.failed")}</small>}
-                  {entry.failure != null && <small className="vx-results__error" role="alert">{userMessage(entry.failure, lang)}</small>}
-                </li>
-              );
-            })}
-          </ul>
+      {runningEntries.length > 0 && (
+        <section className="vx-section" aria-labelledby="vx-export-running">
+          <h3 className="vx-section__title" id="vx-export-running">{t("viewer.vx.export.running", { count: runningEntries.length })}</h3>
+          <ul className="vx-exports">{runningEntries.map(renderEntry)}</ul>
           <p className="vx-section__hint">
             {t("viewer.export.list.keep")}{" "}
             <a className="vx-link" href="/app/jobs" target="_blank" rel="noopener noreferrer">{t("viewer.export.list.jobs")}</a>
           </p>
+        </section>
+      )}
+      {finishedEntries.length > 0 && (
+        <section className="vx-section" aria-labelledby="vx-export-list">
+          <h3 className="vx-section__title" id="vx-export-list">{t("viewer.vx.export.finished", { count: finishedEntries.length })}</h3>
+          <ul className="vx-exports">{finishedEntries.map(renderEntry)}</ul>
+          {runningEntries.length === 0 && (
+            <p className="vx-section__hint">
+              <a className="vx-link" href="/app/jobs" target="_blank" rel="noopener noreferrer">{t("viewer.export.list.jobs")}</a>
+            </p>
+          )}
         </section>
       )}
     </div>

@@ -99,13 +99,14 @@ describe('F1 영역 통계', () => {
       ],
     }, { datasetId: '86', variable: 'ndwi' }));
     const { rerender } = render(<AreaStatsPanel {...panelProps} shape={null} />);
-    expect(screen.getByRole('button', { name: '계산하기' })).toBeDisabled();
+    // VX1: no calculate button until there is an area; the next step is said instead.
+    expect(screen.queryByRole('button', { name: '계산하기' })).not.toBeInTheDocument();
     expect(screen.getByText('먼저 지도에 영역을 그리세요.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '다각형' }));
     expect(panelProps.onDraw).toHaveBeenCalledWith('polygon');
+    // A finished shape is measured right away (no extra press).
     rerender(<AreaStatsPanel {...panelProps} shape={shape} />);
     expect(screen.getByText('다각형 영역')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '계산하기' }));
     await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
     expect(get).toHaveBeenCalledWith('86', { geometry: shape.geometry, variable: 'ndwi', times: 'all' }, expect.any(AbortSignal));
     // The shown time (index 1) leads the numbers; the chart and table carry every time.
@@ -144,7 +145,6 @@ describe('F1 영역 통계', () => {
   test('서버 오류 코드는 무엇을 고치면 되는지 말한다', async () => {
     jest.spyOn(areaStatsApi, 'get').mockRejectedValue(new ApiError(400, 'GEOMETRY_OUTSIDE_DATA', 'outside'));
     render(<AreaStatsPanel {...panelProps} shape={shape} />);
-    fireEvent.click(screen.getByRole('button', { name: '계산하기' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('영역이 데이터 범위와 겹치지 않습니다. 영상이 있는 곳에 그려 주세요.');
   });
 
@@ -157,7 +157,6 @@ describe('F1 영역 통계', () => {
       ],
     }, { datasetId: '86', variable: 'ndwi' }));
     render(<AreaStatsPanel {...panelProps} shape={shape} />);
-    fireEvent.click(screen.getByRole('button', { name: '계산하기' }));
     expect(await screen.findByText(/1개 시점은 지도 서버가 제때 답하지 않아/)).toBeInTheDocument();
     fireEvent.click(screen.getByText('표로 보기'));
     expect(screen.getByRole('cell', { name: '응답 없음' })).toBeInTheDocument();
@@ -249,18 +248,24 @@ describe('F2 내보내기', () => {
         onPng={jest.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: '애니메이션' }));
+    // VX1: the four formats are large choices; settings sit under 설정 바꾸기.
+    expect(screen.getByRole('radio', { name: /^PNG 그림/ })).toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: /^애니메이션/ }));
     expect(screen.getByRole('button', { name: '모든 시점' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'GIF' }));
     fireEvent.change(screen.getByRole('slider', { name: /^초당 프레임/ }), { target: { value: '4' } });
     fireEvent.click(screen.getByRole('button', { name: '지금 화면' }));
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '내보내기 시작' })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '애니메이션 만들기' })); });
     expect(create).toHaveBeenCalledWith({ datasetId: '86', kind: 'ANIMATION', variable: 'rgb', times: 'all', bbox: [127, 36, 128, 37], format: 'gif', fps: 4, title: '대청호' });
     await act(async () => { jest.advanceTimersByTime(800); });
     expect(await screen.findByRole('progressbar', { name: '애니메이션 진행률' })).toHaveAttribute('aria-valuenow', '40');
+    expect(screen.getByRole('heading', { name: '만드는 중 (1)' })).toBeInTheDocument();
     await act(async () => { jest.advanceTimersByTime(800); });
     const download = await screen.findByRole('button', { name: '내려받기' });
     expect(get).toHaveBeenCalledTimes(2);
+    // Running and finished exports are grouped apart.
+    expect(screen.getByRole('heading', { name: '끝난 내보내기 (1)' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /만드는 중/ })).not.toBeInTheDocument();
     await act(async () => { fireEvent.click(download); });
     expect(file).toHaveBeenCalledWith('e1', 'xcube_export.gif');
     expect(click).toHaveBeenCalled();
@@ -270,15 +275,15 @@ describe('F2 내보내기', () => {
     const create = jest.spyOn(exportsApi, 'create').mockResolvedValue({ id: 'r1', name: 'r', type: 'EXPORT_REPORT', status: 'QUEUED' });
     const many = Array.from({ length: 121 }, (_, index) => ({ iso: `2020-01-${index}`, label: String(index) }));
     const { rerender } = render(<ExportPanel targets={[{ key: 'source', label: '원본', datasetId: '86', variables: ['ndwi'], variable: 'ndwi' }]} times={times} currentIndex={0} shape={shape} viewBbox={() => null} datasetName="대청호" onPng={jest.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: '보고서 PDF' }));
+    fireEvent.click(screen.getByRole('radio', { name: /^보고서 PDF/ }));
     fireEvent.click(screen.getByRole('button', { name: '그린 영역' }));
     expect(screen.getByText('그린 영역의 통계 표와 그래프가 보고서에 들어갑니다.')).toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '내보내기 시작' })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '보고서 PDF 만들기' })); });
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ kind: 'REPORT', geometry: shape.geometry, bbox: shape.bbox, times: 'all' }));
     rerender(<ExportPanel targets={[{ key: 'source', label: '원본', datasetId: '86', variables: ['ndwi'], variable: 'ndwi' }]} times={many} currentIndex={0} shape={shape} viewBbox={() => null} datasetName="대청호" onPng={jest.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: '애니메이션' }));
+    fireEvent.click(screen.getByRole('radio', { name: /^애니메이션/ }));
     expect(screen.getByText('애니메이션은 최대 120프레임입니다. 기간을 줄여 주세요.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '내보내기 시작' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '애니메이션 만들기' })).toBeDisabled();
   });
 
   test('FIX2: 내보내기 시작도 다른 작업처럼 브라우저 알림 허락을 한 번만 묻는다', async () => {
@@ -290,8 +295,9 @@ describe('F2 내보내기', () => {
     localStorage.removeItem('xcube.notify.browserOff');
     try {
       render(<ExportPanel targets={[{ key: 'source', label: '원본', datasetId: '86', variables: ['ndwi'], variable: 'ndwi' }]} times={times} currentIndex={0} shape={null} viewBbox={() => null} datasetName="대청호" onPng={jest.fn()} />);
-      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '내보내기 시작' })); });
-      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '내보내기 시작' })); });
+      fireEvent.click(screen.getByRole('radio', { name: /^GeoTIFF/ }));
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'GeoTIFF 만들기' })); });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'GeoTIFF 만들기' })); });
       expect(create).toHaveBeenCalledTimes(2);
       expect(requestPermission).toHaveBeenCalledTimes(1);
     } finally {

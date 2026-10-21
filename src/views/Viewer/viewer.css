@@ -352,7 +352,7 @@
 }
 .vx-legends:empty { display: none; }
 .vx-legends > * { pointer-events: auto; }
-.vx-legend.vx-cbar { width: 196px; gap: 4px; padding: 6px 10px; }
+.vx-legend.vx-cbar { width: 220px; gap: 4px; padding: 6px 10px; }
 .vx-cbar__head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .vx-cbar__head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vx-ink); font: 600 12.5px/1.3 var(--vx-font); }
 .vx-cbar__head span { flex: none; color: var(--vx-ink-3); font: 500 11.5px/1.3 var(--vx-font); }
@@ -1188,12 +1188,11 @@
 .vx-resgroup__title:focus-visible { outline: 2px solid var(--vx-focus); outline-offset: 2px; border-radius: var(--fb-radius-hair); }
 .vx-cmplist { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--vx-rule); }
 .vx-cmpcard {
-  position: relative; display: grid; gap: 6px; min-width: 0; padding: 12px 0 12px 12px;
+  position: relative; display: grid; gap: 6px; min-width: 0; padding: 12px 8px;
   border-bottom: 1px solid var(--vx-rule);
 }
-/* Shown on the map: an ink rule down the left edge and a worded tag (never colour alone). */
-.vx-cmpcard::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: var(--fb-radius-hair); background: var(--vx-rule); }
-.vx-cmpcard.is-shown::before { background: var(--vx-ink); }
+/* Shown on the map: a sunken row and a worded tag (never colour alone; VX1 dropped the side stripe). */
+.vx-cmpcard.is-shown { background: var(--vx-sunken); }
 .vx-cmpcard__top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .vx-cmptag {
   display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px;
@@ -1270,3 +1269,147 @@
   .vx-cmpcard__chev, .vx-cmp-legend__chev { transition: none; }
 }
 .vx-cmpbar__when { white-space: nowrap; }
+
+/* ── VX1 (UR-65): one frame for every tool panel — lead line, one main action, results, folded details ── */
+.vx-drawer__head { height: auto; min-height: 56px; padding-top: 8px; padding-bottom: 8px; }
+.vx-drawer__head p { max-width: none; white-space: normal; overflow: visible; color: var(--vx-ink-2); font: 400 13px/1.45 var(--vx-font); word-break: keep-all; }
+.vx-drawer__body { overscroll-behavior: contain; }
+.vx-sheet-grip { display: none; }
+
+/* The fold: one ruled row with words and the current values; native <details>. */
+.vx-more { border-top: 1px solid var(--vx-rule); }
+.vx-more > summary {
+  display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 0; cursor: pointer; list-style: none;
+  color: var(--vx-ink); font: 600 13px/1.4 var(--vx-font);
+}
+.vx-more > summary::-webkit-details-marker { display: none; }
+.vx-more > summary:hover .vx-more__title { text-decoration: underline; text-underline-offset: 3px; }
+.vx-more > summary:focus-visible { outline: 2px solid var(--vx-focus); outline-offset: 2px; border-radius: var(--fb-radius-hair); }
+.vx-more__words { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
+.vx-more__hint { min-width: 0; color: var(--vx-ink-2); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vx-more__chev { flex: none; color: var(--vx-ink-2); transition: transform 140ms ease-out; }
+.vx-more[open] > summary .vx-more__chev { transform: rotate(180deg); }
+.vx-more__body { display: grid; gap: 12px; padding: 4px 0 8px; }
+.vx-section > .vx-more:last-child { margin-bottom: -6px; }
+.vx-form > .vx-more { margin-top: -4px; }
+
+/* Readable floor inside the panel and on the rail: nothing under 13px, secondary words ink-2. */
+.vx-drawer .vx-section__hint, .vx-drawer small, .vx-drawer dt, .vx-drawer .vx-opacity, .vx-drawer .vx-cmptag,
+.vx-drawer .vx-cmpcard__who, .vx-drawer .vx-cmpcard__on, .vx-drawer .vx-job__state, .vx-drawer .vx-result__detail,
+.vx-drawer .vx-schart__key, .vx-drawer .vx-statgrid dd span, .vx-drawer .vx-confusion td small { font-size: 13px; }
+.vx-drawer .vx-section__hint, .vx-drawer .vx-model small, .vx-drawer .vx-kv dt, .vx-drawer .vx-metrics dt, .vx-drawer .vx-opacity, .vx-drawer .vx-job small { color: var(--vx-ink-2); }
+.vx .vx-drawer .vx-schart__axis { font-size: 13px; }
+.vx-opacity--alone { padding-left: 0; }
+.vx-rail__tool { font-size: 13px; }
+
+/* Layers: toggles only (opacity folded) where a panel needs them short. */
+.vx-layer-row:has(> .vx-layer:only-child) { padding: 6px 0; }
+
+/* Area statistics */
+.vx-stats__result .vx-statgrid .is-lead dd { font-size: 22px; }
+
+/* AI water extraction: one line for the input check, then the period and the run. */
+.vx-ai-inputs { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; color: var(--vx-ink-2); font: 400 13px/1.4 var(--vx-font); }
+.vx-ai-inputs.is-ok svg { color: var(--vx-ok); }
+.vx-ai-inputs.is-missing { color: var(--vx-ink); }
+.vx-ai-inputs.is-missing svg { color: var(--vx-warn); }
+.vx-run.is-succeeded > .vx-btn--ink { justify-self: start; }
+
+/* Compare results: summary with shortcuts, then the AI group short enough that the comparison cards show. */
+.vx-ressum { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; padding: 10px 16px; border-bottom: 1px solid var(--vx-rule); }
+.vx-ressum p { margin: 0; color: var(--vx-ink); font: 600 14px/1.4 var(--vx-font); }
+.vx-ressum div { display: flex; gap: 2px; }
+.vx-ressum .vx-btn { height: 32px; padding: 0 8px; text-decoration: underline; text-underline-offset: 3px; }
+.vx-resgroup__head:focus { outline: none; }
+.vx-resgroup__head:focus-visible { outline: 2px solid var(--vx-focus); outline-offset: 2px; border-radius: var(--fb-radius-hair); }
+.vx-res { gap: 12px; padding-top: 10px; }
+.vx-resname { display: grid; gap: 2px; margin: 0; padding-top: 4px; min-width: 0; }
+.vx-resname strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vx-ink); font: 600 14px/1.4 var(--vx-font); }
+.vx-resname small { color: var(--vx-ink-2); font: 400 13px/1.4 var(--vx-font); }
+.vx-res__key { display: grid; gap: 2px; }
+.vx-res__key > span { color: var(--vx-ink-2); font: 500 13px/1.4 var(--vx-font); }
+.vx-res__key strong { color: var(--vx-ink); font: var(--fb-text-value); font-variant-numeric: tabular-nums; }
+.vx-res__key strong small { color: var(--vx-ink-2); font: 500 13px/1 var(--vx-font); }
+.vx-res__key > small { color: var(--vx-ink-2); font: 400 13px/1.4 var(--vx-font); }
+.vx-res__key em { color: var(--vx-ink-2); font: 400 13px/1.4 var(--vx-font); font-style: normal; }
+.vx-res__swipe { display: grid; gap: 6px; }
+.vx-res__swipe .vx-btn[aria-pressed='true'] { border-color: var(--vx-ink); background: var(--vx-sunken); }
+.vx-res__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.vx-res__csv { flex: none; padding: 0 8px; }
+.vx-resgroup { padding-top: 14px; }
+
+/* Export: the four formats as large choices, each with one line. */
+.vx-formats { gap: 0; }
+.vx-formats legend { margin-bottom: 6px; }
+.vx-format {
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; cursor: pointer; font-weight: 400;
+  border: 1px solid var(--vx-rule-strong); border-top-width: 0;
+}
+.vx-formats legend + .vx-format { border-top-width: 1px; border-radius: var(--vx-radius) var(--vx-radius) 0 0; }
+.vx-format:last-child { border-radius: 0 0 var(--vx-radius) var(--vx-radius); }
+.vx-format:hover { background: var(--vx-sunken); }
+.vx-format:has(input:checked) { background: var(--vx-sunken); }
+.vx-format:has(input:focus-visible) { outline: 2px solid var(--vx-focus); outline-offset: -2px; }
+.vx-format input { accent-color: var(--vx-ink); width: 16px; height: 16px; margin: 2px 0 0; flex: none; }
+.vx-format span { display: grid; gap: 2px; min-width: 0; }
+.vx-format strong { color: var(--vx-ink); font: 600 14px/1.4 var(--vx-font); }
+.vx-format small { color: var(--vx-ink-2); font: 400 13px/1.45 var(--vx-font); }
+.vx-export .vx-section { gap: 12px; }
+
+/* Rail: why a tool cannot be used, with the next step. */
+.vx-railtip {
+  position: absolute; z-index: 14; top: var(--vx-tip-top, 8px); right: calc(var(--vx-rail) + 8px); width: 260px;
+  display: grid; gap: 10px; padding: 12px; border: 1px solid var(--vx-rule); border-radius: var(--vx-radius-lg);
+  background: var(--vx-surface); box-shadow: var(--vx-lift-high);
+}
+.vx-railtip p { margin: 0; display: grid; gap: 2px; color: var(--vx-ink-2); font: 400 13px/1.5 var(--vx-font); }
+.vx-railtip strong { color: var(--vx-ink); font: 600 14px/1.4 var(--vx-font); }
+.vx-railtip__actions { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.vx-railtip__actions .vx-icon-btn { margin-left: auto; }
+
+/* Map legends: the same 13px floor (they are read next to the panel). */
+.vx-legend, .vx-legend small, .vx-legend__row, .vx-cbar__head strong, .vx-cbar__head span, .vx-cbar__ticks, .vx-cbar__rgb, .vx-cbar__classes, .vx-cmp-legend__toggle { font-size: 13px; }
+.vx-cbar__head span { color: var(--vx-ink-2); }
+
+/* The rest of the Viewer's words on the same floor: tags, status, counts, dock dates and labels. */
+.vx .dataset-trigger__tag, .vx-status__text, .vx-status__short, .vx-rail__count, .vx-current__count, .vx-staff__date,
+.vx-modes__label, .vx-now small, .vx-reading__value small, .vx-popt__toggle, .vx-drawer .vx-note--research, .vx-area__tag, .vx-area__name, .vx-area__unit, .vx-cmpbar__note, .vx-cmpbar .vx-cmptag, .vx-user__avatar { font-size: 13px; }
+.vx-rail__count { min-width: 20px; height: 20px; }
+
+@media (pointer: coarse) {
+  .vx-more > summary { min-height: var(--vx-hit); }
+  .vx-format { min-height: var(--vx-hit); }
+  .vx-ressum .vx-btn, .vx-res__csv { min-height: var(--vx-hit); height: var(--vx-hit); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vx-more__chev { transition: none; }
+}
+
+@media (max-width: 767px) {
+  /* The sheet: half (map and any comparison still visible above it) or full; a press on the grip switches. */
+  .vx { --vx-sheet-half: min(32dvh, 290px); }
+  .vx-drawer { height: var(--vx-sheet-half); }
+  .vx-drawer.is-full { top: 8px; height: auto; }
+  .vx-drawer__head { padding-top: 16px; position: relative; }
+  .vx-sheet-grip {
+    display: grid; place-items: center; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 72px; height: 44px; margin-top: -10px; padding: 0; border: 0; background: transparent; cursor: pointer; touch-action: manipulation;
+  }
+  .vx-sheet-grip i { display: block; width: 40px; height: 4px; border-radius: var(--fb-radius-hair); background: var(--vx-rule-strong); }
+  .vx-sheet-grip:focus-visible { outline: 2px solid var(--vx-focus); outline-offset: -4px; border-radius: var(--vx-radius); }
+  .vx-sheet-grip[aria-pressed='true'] i { background: var(--vx-ink-2); }
+  /* While a tool is open the dock keeps only the time staff, so the sheet and the map share the height. */
+  .vx.has-drawer .vx-dock .vx-graph { display: none; }
+  .vx.has-drawer:not(.has-full-sheet) .vx-legends, .vx.has-drawer:not(.has-full-sheet) .vx-map.is-comparing .vx-legends { bottom: calc(var(--vx-sheet-half) + 16px); }
+  /* Little map is left above a half sheet: the source colour bar steps back when a result or comparison legend is there. */
+  .vx.has-drawer .vx-legends > .vx-legend + .vx-cbar:last-child:not(.vx-cmp-legend) { display: none; }
+  .vx-railtip { top: auto; left: 8px; right: 8px; bottom: 70px; width: auto; }
+  .vx-rail__tool { font-size: 13px; line-height: 1.15; }
+  .vx-legend, .vx-legend small, .vx-cbar__rgb, .vx-cbar__ticks, .vx-cbar__classes { font-size: 13px; }
+  .vx-legend.vx-cbar { width: 164px; }
+  /* The dock date never hides behind the mode switch: player and date get their own row. */
+  .vx-timeline { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'lead' 'tail' 'staff'; }
+  .vx-timeline__tail { justify-content: flex-start; padding: 6px 6px 0; }
+  /* 13px dates need room: the phone staff names only the first and the last time (every tick stays). */
+  .vx-staff__date:not(.is-first):not(.is-last) { display: none; }
+}

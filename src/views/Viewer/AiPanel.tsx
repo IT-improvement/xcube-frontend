@@ -1,7 +1,8 @@
 // AI 수체 추출 in the Viewer (M7, S8 + S9 "원본 대비"): the run form, the result list, the result panel
 // (layer, legend, threshold estimate, reference metrics, CSV) and the water-area row in the dock.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, Download, LoaderCircle, RotateCcw, Square, Waves } from "lucide-react";
+import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, Columns2, Download, GitCompareArrows, LoaderCircle, RotateCcw, Square, Waves } from "lucide-react";
+import PanelMore from "./PanelMore";
 import type { AiCheck, AiCurvePoint, AiJobRequest, AiModel, AiResult, AiWaterJob } from "../../api/aiApi";
 import type { TimePoint, ZarrDataset } from "../../api/viewerAdapter";
 import { userMessage } from "../../api/httpClient";
@@ -193,6 +194,7 @@ export function AiRunForm({
   onRun,
   onCancel,
   onRetry,
+  onShowResult,
 }: {
   dataset: ZarrDataset;
   times: TimePoint[];
@@ -204,6 +206,8 @@ export function AiRunForm({
   onRun: (request: AiJobRequest) => void;
   onCancel: () => void;
   onRetry: () => void;
+  /** VX1: a finished run leads straight to 결과 비교 with that result. */
+  onShowResult?: (run: AiWaterJob) => void;
 }) {
   const { lang, t } = useLanguage();
   const [models, setModels] = useState<AiModel[]>([]);
@@ -280,6 +284,15 @@ export function AiRunForm({
   };
   const percentDone = Math.round((run?.progress ?? 0) * 100);
 
+  const inputsLine = checking
+    ? t("viewer.vx.ai.inputsChecking")
+    : check
+      ? check.ready
+        ? t("viewer.vx.ai.inputsOk")
+        : t("viewer.vx.ai.inputsMissing", { count: missing.length })
+      : "";
+  const warnings = check ? serverItems(check.warningItems, check.warnings).map((warning) => aiWarningText(warning, check.unitDecisions, lang)).filter((text): text is string => !!text) : [];
+
   return (
     <form className="vx-form" onSubmit={(event) => { event.preventDefault(); submit(); }} aria-describedby={missing.length ? "vx-ai-missing" : undefined}>
       {modelsError ? (
@@ -300,50 +313,26 @@ export function AiRunForm({
                   <input type="radio" name="ai-model" value={item.id} checked={item.id === modelId} onChange={() => setModelId(item.id)} />
                   <span>
                     <strong>{modelLabel(item.id, models, lang)}</strong>
-                    <small>{t(item.kind === "index" ? "viewer.ai.form.kindIndex" : "viewer.ai.form.kindDeep")} · {t("viewer.ai.form.defaultThreshold", { value: thresholdText(item.defaultThreshold) })}</small>
+                    <small>{t(item.kind === "index" ? "viewer.ai.form.kindIndex" : "viewer.ai.form.kindDeep")}</small>
                   </span>
                 </label>
               ))}
             </div>
           )}
-          {model && <p className="vx-section__hint">{info?.description}{info?.note ? ` ${info.note}` : ""}</p>}
-        </fieldset>
-      )}
-
-      {model && (
-        <section className="vx-field" aria-labelledby="vx-ai-inputs">
-          <span id="vx-ai-inputs" className="vx-field__row">
-            {t("viewer.ai.form.inputs")}
-            <small>{checking ? t("viewer.ai.form.checking") : check ? (check.ready ? t("viewer.ai.form.allPresent") : t("viewer.ai.form.missingCount", { count: missing.length })) : ""}</small>
-          </span>
-          <ul className="vx-inputs" aria-busy={checking}>
-            {model.inputs.map((input) => {
-              const matched = check?.matched[input.name];
-              const absent = missing.includes(input.name);
-              const decision = check?.unitDecisions?.[input.name];
-              return (
-                <li key={input.name} className={absent ? "is-missing" : matched ? "is-matched" : ""}>
-                  {absent ? <CircleAlert size={14} aria-hidden="true" /> : matched ? <CircleCheck size={14} aria-hidden="true" /> : <i aria-hidden="true" />}
-                  <span>{inputLabel(input.name, lang)}</span>
-                  <small className="tabular" title={decision ? `${unitDecisionText(decision, lang).detail} (${decision})` : undefined}>
-                    {absent ? t("viewer.ai.form.absent") : matched ? `← ${matched}${decision ? ` · ${unitDecisionText(decision, lang).text}` : ""}` : t("viewer.ai.form.pending")}
-                  </small>
-                </li>
-              );
-            })}
-          </ul>
-          {!!checkError && <p className="vx-note vx-note--bad" role="alert">{t("viewer.ai.form.checkFailed", { error: userMessage(checkError, lang) })}</p>}
-          {missing.length > 0 && (
+          {model && inputsLine && (
+            <p className={`vx-ai-inputs ${check && !check.ready ? "is-missing" : check?.ready ? "is-ok" : ""}`} aria-live="polite">
+              {checking ? <LoaderCircle size={14} className="vx-spin" aria-hidden="true" /> : check?.ready ? <CircleCheck size={14} aria-hidden="true" /> : check ? <CircleAlert size={14} aria-hidden="true" /> : null}
+              <span>{inputsLine}</span>
+            </p>
+          )}
+          {model && missing.length > 0 && (
             <p id="vx-ai-missing" className="vx-note vx-note--warn" role="status">
               {t("viewer.ai.form.missingNote", { inputs: missing.map((item) => inputLabel(item, lang)).join(", ") })}
               {t(model.kind === "deep" ? "viewer.ai.form.missingDeep" : "viewer.ai.form.missingIndex")}
             </p>
           )}
-          {check && serverItems(check.warningItems, check.warnings).map((warning, index) => {
-            const text = aiWarningText(warning, check.unitDecisions, lang);
-            return text && <p key={index} className="vx-section__hint">{text}</p>;
-          })}
-        </section>
+          {!!checkError && <p className="vx-note vx-note--bad" role="alert">{t("viewer.ai.form.checkFailed", { error: userMessage(checkError, lang) })}</p>}
+        </fieldset>
       )}
 
       <fieldset className="vx-field">
@@ -375,41 +364,23 @@ export function AiRunForm({
         )}
       </fieldset>
 
-      {model && (
-        <label className="vx-field">
-          <span className="vx-field__row">
-            {thresholdName}
-            <small className="tabular">{thresholdText(threshold)}</small>
-          </span>
-          <input
-            type="range"
-            min={min}
-            max={max}
-            step={0.05}
-            value={threshold}
-            aria-label={thresholdName}
-            aria-valuetext={`${thresholdText(threshold)}${sameThreshold(threshold, model.defaultThreshold) ? t("viewer.ai.form.defaultMark") : ""}`}
-            onChange={(event) => setThreshold(Number(event.target.value))}
-          />
-          <span className="vx-section__hint">
-            {t(index ? "viewer.ai.form.hintIndex" : "viewer.ai.form.hintProb")} {t("viewer.ai.form.defaultIs", { value: thresholdText(model.defaultThreshold) })}
-            {!sameThreshold(threshold, model.defaultThreshold) && (
-              <button type="button" className="vx-link" onClick={() => setThreshold(model.defaultThreshold)}>{t("viewer.ai.form.resetDefault")}</button>
-            )}
-          </span>
-        </label>
+      <button type="submit" className="vx-btn vx-btn--ink vx-btn--block" disabled={!canRun}>
+        {busy ? <><LoaderCircle size={16} className="vx-spin" aria-hidden="true" />{t("viewer.ai.form.running")}</>
+          : starting ? <><LoaderCircle size={16} className="vx-spin" aria-hidden="true" />{t("viewer.ai.form.starting")}</>
+          : t("viewer.ai.form.run")}
+      </button>
+      {runLocked && <p className="vx-section__hint" role="note">{runLocked}</p>}
+      {!runLocked && !canRun && !busy && model && (
+        <p className="vx-section__hint">
+          {checking ? t("viewer.ai.form.whyChecking") : missing.length ? t("viewer.ai.form.whyMissing") : rangeInvalid ? t("viewer.ai.form.whyRange") : checkError ? t("viewer.ai.form.whyCheckFailed") : ""}
+        </p>
       )}
-
-      <label className="vx-field">
-        <span>{t("viewer.ai.form.name")}</span>
-        <input className="vx-input" value={name} placeholder={defaultName} onChange={(event) => setName(event.target.value)} />
-      </label>
 
       {run && (
         <div className={`vx-run is-${run.status.toLowerCase()}`}>
           {/* Heard when the status or stage changes, not at every percent (UX13). */}
           <span className="vx-sr" role="status">
-            {statusLabel(run.status, lang)}
+            {run.status === "SUCCEEDED" ? t("viewer.vx.ai.done") : statusLabel(run.status, lang)}
             {busy && run.stage ? ` · ${stageLabel(run.stage, lang)}` : ""}
           </span>
           <div className="vx-run__head" aria-hidden="true">
@@ -425,21 +396,72 @@ export function AiRunForm({
           {run.status === "FAILED" && <p className="vx-note vx-note--bad" role="alert">{t("viewer.ai.form.failedReason", { reason: failureText(run, lang) || t("viewer.ai.form.unknown") })}</p>}
           {busy && <button type="button" className="vx-btn vx-btn--line" onClick={onCancel}><Square size={14} aria-hidden="true" />{t("common.cancel")}</button>}
           {(run.status === "FAILED" || run.status === "CANCELLED") && <button type="button" className="vx-btn vx-btn--line" onClick={onRetry}><RotateCcw size={14} aria-hidden="true" />{t("viewer.ai.form.retrySame")}</button>}
+          {run.status === "SUCCEEDED" && onShowResult && (
+            <button type="button" className="vx-btn vx-btn--ink" onClick={() => onShowResult(run)}>
+              <GitCompareArrows size={15} aria-hidden="true" />
+              {t("viewer.vx.ai.showResult")}
+            </button>
+          )}
         </div>
       )}
       {runError && <p className="vx-note vx-note--bad" role="alert">{runError}</p>}
 
-      <button type="submit" className="vx-btn vx-btn--ink vx-btn--block" disabled={!canRun}>
-        {busy ? <><LoaderCircle size={16} className="vx-spin" aria-hidden="true" />{t("viewer.ai.form.running")}</>
-          : starting ? <><LoaderCircle size={16} className="vx-spin" aria-hidden="true" />{t("viewer.ai.form.starting")}</>
-          : t("viewer.ai.form.run")}
-      </button>
-      {runLocked && <p className="vx-section__hint" role="note">{runLocked}</p>}
-      {!runLocked && !canRun && !busy && model && (
-        <p className="vx-section__hint">
-          {checking ? t("viewer.ai.form.whyChecking") : missing.length ? t("viewer.ai.form.whyMissing") : rangeInvalid ? t("viewer.ai.form.whyRange") : checkError ? t("viewer.ai.form.whyCheckFailed") : ""}
-        </p>
-      )}
+      <PanelMore summary={t("viewer.vx.ai.more")} hint={model ? t("viewer.vx.ai.moreSummary", { value: thresholdText(threshold) }) : undefined}>
+        {model && info?.description && <p className="vx-section__hint">{info.description}{info.note ? ` ${info.note}` : ""}</p>}
+        {model && (
+          <label className="vx-field">
+            <span className="vx-field__row">
+              {thresholdName}
+              <small className="tabular">{thresholdText(threshold)}</small>
+            </span>
+            <input
+              type="range"
+              min={min}
+              max={max}
+              step={0.05}
+              value={threshold}
+              aria-label={thresholdName}
+              aria-valuetext={`${thresholdText(threshold)}${sameThreshold(threshold, model.defaultThreshold) ? t("viewer.ai.form.defaultMark") : ""}`}
+              onChange={(event) => setThreshold(Number(event.target.value))}
+            />
+            <span className="vx-section__hint">
+              {t(index ? "viewer.ai.form.hintIndex" : "viewer.ai.form.hintProb")} {t("viewer.ai.form.defaultIs", { value: thresholdText(model.defaultThreshold) })}
+              {!sameThreshold(threshold, model.defaultThreshold) && (
+                <button type="button" className="vx-link" onClick={() => setThreshold(model.defaultThreshold)}>{t("viewer.ai.form.resetDefault")}</button>
+              )}
+            </span>
+          </label>
+        )}
+        <label className="vx-field">
+          <span>{t("viewer.ai.form.name")}</span>
+          <input className="vx-input" name="ai-result-name" autoComplete="off" value={name} placeholder={defaultName} onChange={(event) => setName(event.target.value)} />
+        </label>
+        {model && (
+          <section className="vx-field" aria-labelledby="vx-ai-inputs">
+            <span id="vx-ai-inputs" className="vx-field__row">
+              {t("viewer.ai.form.inputs")}
+              <small>{checking ? t("viewer.ai.form.checking") : check ? (check.ready ? t("viewer.ai.form.allPresent") : t("viewer.ai.form.missingCount", { count: missing.length })) : ""}</small>
+            </span>
+            <ul className="vx-inputs" aria-busy={checking}>
+              {model.inputs.map((input) => {
+                const matched = check?.matched[input.name];
+                const absent = missing.includes(input.name);
+                const decision = check?.unitDecisions?.[input.name];
+                return (
+                  <li key={input.name} className={absent ? "is-missing" : matched ? "is-matched" : ""}>
+                    {absent ? <CircleAlert size={14} aria-hidden="true" /> : matched ? <CircleCheck size={14} aria-hidden="true" /> : <i aria-hidden="true" />}
+                    <span>{inputLabel(input.name, lang)}</span>
+                    <small className="tabular" title={decision ? `${unitDecisionText(decision, lang).detail} (${decision})` : undefined}>
+                      {absent ? t("viewer.ai.form.absent") : matched ? `← ${matched}${decision ? ` · ${unitDecisionText(decision, lang).text}` : ""}` : t("viewer.ai.form.pending")}
+                    </small>
+                  </li>
+                );
+              })}
+            </ul>
+            {warnings.map((text, at) => <p key={at} className="vx-section__hint">{text}</p>)}
+          </section>
+        )}
+      </PanelMore>
     </form>
   );
 }
@@ -557,6 +579,8 @@ export function AiResultPanel({
   onRerun,
   rerunBusy,
   demo,
+  onSwipe,
+  swiping = false,
 }: {
   entry: ResultEntry;
   result: AiResult | null;
@@ -576,6 +600,9 @@ export function AiResultPanel({
   onRerun?: (threshold: number) => void;
   rerunBusy: boolean;
   demo: boolean;
+  /** VX1: 원본 ↔ AI 결과 swipe from the panel (one press instead of the dock's mode and target). */
+  onSwipe?: () => void;
+  swiping?: boolean;
 }) {
   const { lang, t } = useLanguage();
   const used = result?.threshold ?? entry.threshold;
@@ -599,23 +626,55 @@ export function AiResultPanel({
   const atTime = result?.metrics?.times?.find((item) => item.time === stat?.time);
   const changed = chosen != null && used != null && !sameThreshold(chosen, used);
 
+  const swipeHintId = "vx-res-swipe-hint";
   return (
-    <div className="vx-form">
-      <section className="vx-field" aria-label={t("viewer.ai.result.layers")}>
-        <div className="vx-layers">
-          <LayerControl label={t("viewer.panel.aiResult")} accent="result" checked={resultVisible} onChecked={onResultVisible} opacity={resultOpacity} onOpacity={onResultOpacity} />
-          <LayerControl label={t("viewer.panel.source")} accent="source" checked={sourceVisible} onChecked={onSourceVisible} opacity={sourceOpacity} onOpacity={onSourceOpacity} />
-        </div>
-        <p className="vx-section__hint">{t("viewer.ai.result.overlayHint")}</p>
-      </section>
-
+    <div className="vx-form vx-res">
       {demo && <p className="vx-note">{t("viewer.ai.result.demo")}</p>}
       {loading ? (
         <p className="vx-section__hint"><LoaderCircle size={14} className="vx-spin" aria-hidden="true" /> {t("viewer.ai.result.statsLoading")}</p>
-      ) : !result ? (
-        <p className="vx-note">{t("viewer.ai.result.noStats")}</p>
+      ) : result ? (
+        <div className="vx-res__top">
+        <div className="vx-res__key">
+          <span>{t("viewer.vx.result.waterAt", { time: currentLabel ?? t("viewer.ai.result.currentTime") })}</span>
+          {stat?.waterAreaKm2 != null ? (
+            <strong className="tabular">{km2(stat.waterAreaKm2, lang)}<small> km²</small></strong>
+          ) : (
+            <em>{t("viewer.vx.result.waterNone")}</em>
+          )}
+          {stat?.waterRatio != null && <small className="tabular">{t("viewer.ai.area.ratio", { ratio: percent(stat.waterRatio, lang) })}</small>}
+        </div>
+        <button type="button" className="vx-btn vx-btn--quiet vx-res__csv" onClick={() => downloadCsv(csvFileName(entry.name || source.name, lang), areaCsv(result, labelOf, lang))} disabled={!result.times.length} title={t("viewer.ai.result.csv")} aria-label={t("viewer.ai.result.csv")}>
+          <Download size={14} aria-hidden="true" />CSV
+        </button>
+        </div>
       ) : (
-        <>
+        <p className="vx-note">{t("viewer.ai.result.noStats")}</p>
+      )}
+
+      <div className="vx-layers" role="group" aria-label={t("viewer.ai.result.layers")}>
+        <LayerControl parts="toggle" label={t("viewer.panel.aiResult")} accent="result" checked={resultVisible} onChecked={onResultVisible} opacity={resultOpacity} onOpacity={onResultOpacity} />
+      </div>
+      {onSwipe && (
+        <div className="vx-res__swipe">
+          <button type="button" className="vx-btn vx-btn--line vx-btn--block" aria-pressed={swiping} aria-describedby={swiping ? swipeHintId : undefined} onClick={onSwipe}>
+            <Columns2 size={15} aria-hidden="true" />
+            {t(swiping ? "viewer.vx.result.swipeOff" : "viewer.vx.result.swipe")}
+          </button>
+          {swiping && <p id={swipeHintId} className="vx-section__hint">{t("viewer.vx.result.swipeHint")}</p>}
+        </div>
+      )}
+
+      <PanelMore summary={t("viewer.vx.result.layersMore")} hint={`${resultOpacity}% · ${sourceOpacity}%`}>
+        <div className="vx-layers">
+          <LayerControl parts="toggle" label={t("viewer.panel.source")} accent="source" checked={sourceVisible} onChecked={onSourceVisible} opacity={sourceOpacity} onOpacity={onSourceOpacity} />
+          <LayerControl parts="opacity" label={t("viewer.panel.aiResult")} accent="result" checked={resultVisible} onChecked={onResultVisible} opacity={resultOpacity} onOpacity={onResultOpacity} />
+          <LayerControl parts="opacity" label={t("viewer.panel.source")} accent="source" checked={sourceVisible} onChecked={onSourceVisible} opacity={sourceOpacity} onOpacity={onSourceOpacity} />
+        </div>
+        <p className="vx-section__hint">{t("viewer.ai.result.overlayHint")}</p>
+      </PanelMore>
+
+      {result && !loading && (
+        <PanelMore summary={t("viewer.vx.result.researchMore")} hint={overall ? `IoU ${metric(atTime?.iou ?? overall.iou)}` : thresholdText(used)}>
           <section className="vx-field" aria-labelledby="vx-ai-estimate">
             <span id="vx-ai-estimate" className="vx-field__row">
               {t("viewer.ai.result.estimate")}
@@ -674,12 +733,9 @@ export function AiResultPanel({
               )}
             </section>
           )}
-
-          <button type="button" className="vx-btn vx-btn--line" onClick={() => downloadCsv(csvFileName(entry.name || source.name, lang), areaCsv(result, labelOf, lang))} disabled={!result.times.length}>
-            <Download size={14} aria-hidden="true" />{t("viewer.ai.result.csv")}
-          </button>
-        </>
+        </PanelMore>
       )}
+
     </div>
   );
 }

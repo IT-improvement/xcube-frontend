@@ -10,6 +10,7 @@ export default function LayerControl({
   opacity,
   onOpacity,
   swatch,
+  parts = "both",
 }: {
   label: string;
   accent: string;
@@ -19,10 +20,13 @@ export default function LayerControl({
   onOpacity: (value: number) => void;
   /** CSS background drawing the layer's colour ramp; without it the accent colour square. */
   swatch?: string;
+  /** VX1: the toggle and the opacity can be laid out apart (toggle up front, opacity folded away). */
+  parts?: "both" | "toggle" | "opacity";
 }) {
   const t = useT();
   return (
     <div className={`vx-layer-row ${checked ? "" : "is-off"}`}>
+      {parts !== "opacity" && (
       <label className="vx-layer">
         <input
           type="checkbox"
@@ -36,8 +40,10 @@ export default function LayerControl({
         />
         <span>{label}</span>
       </label>
-      <label className="vx-opacity">
-        <span>{t("viewer.layer.opacity")}</span>
+      )}
+      {parts !== "toggle" && (
+      <label className={`vx-opacity ${parts === "opacity" ? "vx-opacity--alone" : ""}`}>
+        <span>{parts === "opacity" ? label : t("viewer.layer.opacity")}</span>
         <output className="tabular">{opacity}%</output>
         <input
           type="range"
@@ -49,6 +55,7 @@ export default function LayerControl({
           onChange={(e) => onOpacity(Number(e.target.value))}
         />
       </label>
+      )}
     </div>
   );
 }

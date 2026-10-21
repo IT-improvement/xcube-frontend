@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import Map from "ol/Map";
 import OlMap from "../../components/map";
 import addDynamicXcubeLayer from "../../components/xcubeLayer";
@@ -40,6 +41,7 @@ import { NEEDS, useRoleGate } from "../../auth/roles";
 import { BottomGraphPanel, PixelMarker } from "./PixelGraph";
 import DatasetPicker from "./DatasetPicker";
 import LayerControl from "./LayerControl";
+import PanelMore from "./PanelMore";
 import SourceLegend, { swatchBackground } from "./SourceLegend";
 import {
   CompareMap,
@@ -241,6 +243,10 @@ export default function Viewer({
   const [drawer, setDrawer] = useState<Drawer>(null);
   /** Tools opened once stay mounted (hidden) so a running area query or export keeps going across tabs. */
   const [visited, setVisited] = useState<Tool[]>([]);
+  /** VX1: on phones the tool sheet sits half-way (map still visible) or full; a press switches. */
+  const [sheetFull, setSheetFull] = useState(false);
+  /** VX1: a rail tool that cannot be used says why, next to the rail, with the next step. */
+  const [railTip, setRailTip] = useState<{ tool: Tool; reason: string } | null>(null);
   const [baseVisible, setBaseVisible] = useState(true);
   const [sourceVisible, setSourceVisible] = useState(true);
   const [resultVisible, setResultVisible] = useState(false);
@@ -1147,6 +1153,11 @@ export default function Viewer({
     next()?.focus();
   });
   const drawerBoxRef = useRef<HTMLElement>(null);
+  /** VX1: every tool opens at its top (the body is shared, so a scrolled area result must not carry over). */
+  const drawerBodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (drawerBodyRef.current) drawerBodyRef.current.scrollTop = 0;
+  }, [drawer]);
   const tourButtonRef = useRef<HTMLButtonElement>(null);
   const drawerTitleRef = useRef<HTMLHeadingElement>(null);
   const railRefs = useRef<Partial<Record<Tool, HTMLButtonElement | null>>>({});
@@ -1502,6 +1513,30 @@ export default function Viewer({
     setResultVisible(true);
     openRightPanel("result");
   };
+  /** VX1: `결과 비교에서 보기` after a finished run — that result, on the map, in 결과 비교. */
+  const showRunResult = (run: AiWaterJob) => {
+    const entry = readyEntries.find((item) => item.job?.id === run.id) ?? readyEntries.find((item) => item.name === run.name);
+    if (entry) setResultKey(entry.key);
+    if (entry || hasInference) setResultVisible(true);
+    if (comparisonOrigin) setComparisonTick((value) => value + 1);
+    focusNextRef.current = () => drawerTitleRef.current;
+    openRightPanel("result");
+  };
+  /** VX1: 원본 ↔ AI 결과 swipe in one press from 결과 비교 (the dock's mode + target, together). */
+  const toggleAiSwipe = () => {
+    if (aiCompare && displayMode === "swipe") {
+      changeDisplayMode("single");
+      return;
+    }
+    setCompareTarget("ai");
+    changeDisplayMode("swipe");
+  };
+  /** VX1: the summary's shortcuts move to a group (and its heading, for the keyboard). */
+  const jumpTo = (id: string) => {
+    const heading = document.getElementById(id);
+    heading?.scrollIntoView?.({ block: "start" });
+    heading?.focus({ preventScroll: true });
+  };
   const labelOf = (iso: string) => {
     const match = matchTime(times.map((time) => time.iso), iso);
     return times.find((time) => time.iso === match)?.label ?? (Number.isFinite(Date.parse(iso)) ? formatDate(iso, lang) : iso);
@@ -1724,6 +1759,8 @@ export default function Viewer({
     if (tool === "ai" && (selected.kind === "AI_RESULT" || selected.kind === "COMPARISON")) return t("viewer.tools.aiNotHere");
     return undefined;
   };
+  // VX1: the "why" note goes once the reason is gone (a dataset was chosen) or another dataset is shown.
+  useEffect(() => setRailTip(null), [selected?.id]);
   // A tool that cannot be used for the new dataset closes.
   useEffect(() => {
     if (drawer && drawer !== "layers" && (!selected || (drawer === "ai" && selected.kind === "COMPARISON"))) setDrawer(null);
@@ -1732,7 +1769,7 @@ export default function Viewer({
   const bandTitle = variableStyle?.title && variableStyle.title !== activeVariable ? variableStyle.title : "";
 
   return (
-    <main className="viewer vx" aria-label={t("viewer.top.main")}>
+    <main className={`viewer vx ${drawer ? "has-drawer" : ""} ${drawer && sheetFull ? "has-full-sheet" : ""}`} aria-label={t("viewer.top.main")}>
       <h1 className="vx-sr">{selected ? t("viewer.top.heading", { name: selected.name }) : t("viewer.top.main")}</h1>
       {/* CMP2: says when a comparison goes on or off the map, or is deleted. */}
       <p className="vx-sr" role="status" aria-live="polite">{comparisonNews}</p>
@@ -2182,7 +2219,12 @@ export default function Viewer({
                 aria-describedby={reason ? `vx-rail-why-${tool}` : undefined}
                 title={reason ?? t(`viewer.tools.${tool}Title`)}
                 onClick={() => {
-                  if (reason) return;
+                  if (reason) {
+                    // VX1: say why, next to the rail, with the next step (instead of a press that does nothing).
+                    setRailTip((current) => (current?.tool === tool ? null : { tool, reason }));
+                    return;
+                  }
+                  setRailTip(null);
                   if (tool === "result") {
                     // 결과 비교 is also the switch for seeing the AI result (UX13B): closing it hides the AI water layer
                     // (and leaves the AI-result comparison), opening it shows the layer again.
@@ -2215,12 +2257,42 @@ export default function Viewer({
             return reason ? <span key={tool} id={`vx-rail-why-${tool}`} className="vx-sr">{reason}</span> : null;
           })}
         </nav>
+        {railTip && (
+          <div
+            className="vx-railtip"
+            role="status"
+            style={{ "--vx-tip-top": `${railRefs.current[railTip.tool]?.offsetTop ?? 8}px` } as CSSProperties}
+          >
+            <p>
+              <strong>{t(`viewer.tools.full.${railTip.tool}`)}</strong>
+              {railTip.reason}
+            </p>
+            <div className="vx-railtip__actions">
+              {!selected && (
+                <button
+                  type="button"
+                  className="vx-btn vx-btn--ink"
+                  onClick={() => {
+                    setRailTip(null);
+                    setPickerRequest((value) => value + 1);
+                  }}
+                >
+                  {t("viewer.vx.railTipPick")}
+                </button>
+              )}
+              <button type="button" className="vx-icon-btn" aria-label={t("viewer.vx.railTipClose")} title={t("viewer.vx.railTipClose")} onClick={() => setRailTip(null)}>
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        )}
         {drawer && (
           <aside
             ref={drawerBoxRef}
             id="vx-drawer"
-            className={`vx-drawer vx-drawer--${drawer}`}
+            className={`vx-drawer vx-drawer--${drawer} ${sheetFull ? "is-full" : ""}`}
             aria-labelledby="vx-drawer-title"
+            aria-describedby="vx-drawer-lead"
             onKeyDown={(event) => {
               if (event.key !== "Escape" || event.defaultPrevented) return;
               event.preventDefault();
@@ -2230,11 +2302,20 @@ export default function Viewer({
             }}
           >
             <div className="vx-drawer__head">
+              {/* VX1: on phones the sheet has two heights; a press (not a drag) switches them. */}
+              <button
+                type="button"
+                className="vx-sheet-grip"
+                aria-pressed={sheetFull}
+                aria-label={t(sheetFull ? "viewer.vx.shrink" : "viewer.vx.grow")}
+                title={t(sheetFull ? "viewer.vx.shrink" : "viewer.vx.grow")}
+                onClick={() => setSheetFull((value) => !value)}
+              >
+                <i aria-hidden="true" />
+              </button>
               <div>
                 <h2 id="vx-drawer-title" ref={drawerTitleRef} tabIndex={-1}>{t(`viewer.tools.full.${drawer}`)}</h2>
-                <p title={selected?.name}>
-                  {drawer === "ai" && isRunning(aiRunHere) ? t("viewer.drawer.running") : drawer === "result" && selectedResult && selected?.kind !== "COMPARISON" ? selectedResult.name : selected?.name ?? t("viewer.drawer.noData")}
-                </p>
+                <p id="vx-drawer-lead">{drawer === "ai" && isRunning(aiRunHere) ? t("viewer.drawer.running") : t(`viewer.vx.lead.${drawer}`)}</p>
               </div>
               <button
                 type="button"
@@ -2247,7 +2328,7 @@ export default function Viewer({
                 <span className="vx-hide-sm">{t("common.close")}</span>
               </button>
             </div>
-            <div className="vx-drawer__body">
+            <div className="vx-drawer__body" ref={drawerBodyRef}>
               {drawer === "layers" && (
                 <div id="vx-panel-body">
                   {!selected && <p className="vx-section__hint vx-form__pad">{t("viewer.panel.pickFirstLayers")}</p>}
@@ -2297,7 +2378,7 @@ export default function Viewer({
                   </section>
                   {selected && (
                     <section className="vx-section">
-                      <h3 className="vx-section__title">{t("viewer.panel.info")}</h3>
+                      <PanelMore summary={t("viewer.vx.layers.info")} hint={t("viewer.panel.count", { count: times.length })}>
                       <dl className="vx-meta">
                         <div>
                           <dt>{t("viewer.panel.name")}</dt>
@@ -2322,6 +2403,7 @@ export default function Viewer({
                           <dd>EPSG:4326</dd>
                         </div>
                       </dl>
+                      </PanelMore>
                     </section>
                   )}
                 </div>
@@ -2351,23 +2433,39 @@ export default function Viewer({
               )}
               {drawer === "ai" && selected && (
                 <>
-                  <AiRunForm dataset={selected} times={times} run={aiRunHere} runError={aiRunError} starting={aiStarting} onRun={startAi} onCancel={cancelAi} onRetry={retryAi} />
-                  <section className="vx-section vx-section--top">
-                    <h3 className="vx-section__title">{t("viewer.panel.aiResults")}</h3>
-                    {jobsError && <p className="vx-section__hint" role="status">{t("viewer.panel.linkedError", { error: jobsError })}</p>}
-                    <AiResultList entries={entries} selectedKey={resultKey} onMap={!!selectedResult && (resultVisible || aiCompare)} onSelect={chooseResult} />
+                  <AiRunForm dataset={selected} times={times} run={aiRunHere} runError={aiRunError} starting={aiStarting} onRun={startAi} onCancel={cancelAi} onRetry={retryAi} onShowResult={showRunResult} />
+                  <section className="vx-section vx-section--top" aria-label={t("viewer.panel.aiResults")}>
+                    <PanelMore summary={t("viewer.vx.ai.listGroup", { count: entries.length })}>
+                      {jobsError && <p className="vx-section__hint" role="status">{t("viewer.panel.linkedError", { error: jobsError })}</p>}
+                      <AiResultList entries={entries} selectedKey={resultKey} onMap={!!selectedResult && (resultVisible || aiCompare)} onSelect={chooseResult} />
+                    </PanelMore>
                   </section>
                 </>
               )}
               {drawer === "result" && selected && (
                 <>
+                  {!comparison && comparisonOrigin && (
+                    <nav className="vx-ressum" aria-label={t("viewer.vx.result.summaryAria")}>
+                      <p className="tabular">{t("viewer.vx.result.summary", { ai: readyEntries.length, cmp: comparisonList.length })}</p>
+                      <div>
+                        <button type="button" className="vx-btn vx-btn--quiet" onClick={() => jumpTo("vx-ai-results-title")}>{t("viewer.vx.result.toAi")}</button>
+                        <button type="button" className="vx-btn vx-btn--quiet" onClick={() => jumpTo("vx-cmps-title")}>{t("viewer.vx.result.toCmp")}</button>
+                      </div>
+                    </nav>
+                  )}
                   {!comparison && (
-                    <h3 className="vx-resgroup__head" id="vx-ai-results-title">{t("viewer.cmps.aiGroup")}</h3>
+                    <h3 className="vx-resgroup__head" id="vx-ai-results-title" tabIndex={-1}>{t("viewer.cmps.aiGroup")}</h3>
                   )}
                   {comparison ? (
                     <ComparisonPanel info={comparison} labelOf={labelOf} datasetName={selected.name} />
                   ) : selectedResult ? (
                     <>
+                      {readyEntries.length === 1 && (
+                        <p className="vx-resname vx-form__pad" title={`${selectedResult.name} · ${entryDetail(selectedResult, lang)}`}>
+                          <strong>{selectedResult.name}</strong>
+                          <small className="tabular">{entryDetail(selectedResult, lang)}</small>
+                        </p>
+                      )}
                       {readyEntries.length > 1 && (
                         <label className="vx-field vx-form__pad">
                           <span>{t("viewer.drawer.pickResult")}</span>
@@ -2397,6 +2495,8 @@ export default function Viewer({
                         onRerun={selectedResult.job?.input?.modelId ? rerunAi : undefined}
                         rerunBusy={isRunning(aiRun)}
                         demo={useMockApi}
+                        onSwipe={times.length > 0 ? toggleAiSwipe : undefined}
+                        swiping={aiCompare && displayMode === "swipe"}
                       />
                     </>
                   ) : (

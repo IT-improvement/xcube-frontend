@@ -87,6 +87,7 @@ test('영역 통계를 닫으면(도구 막대 다시 누르기·닫기·Esc) �
 test('영역 통계 → 내보내기는 그린 영역을 함께 쓰고, 레이어로 가거나 내보내기를 닫으면 지운다', async () => {
   await openWithArea();
   fireEvent.click(rail().getByRole('button', { name: '내보내기' }));
+  fireEvent.click(await screen.findByRole('radio', { name: /^GeoTIFF/ }));
   expect(await screen.findByRole('button', { name: '그린 영역' })).toBeEnabled();
   expect(areaLegend()).toBeInTheDocument();
   fireEvent.click(rail().getByRole('button', { name: '영역 통계' }));
@@ -133,7 +134,7 @@ test('계산 중에 영역 통계를 떠나면 요청을 끊고, 늦게 온 답�
     return new Promise((resolve) => { answer = resolve; });
   });
   await openWithArea();
-  fireEvent.click(screen.getByRole('button', { name: '계산하기' }));
+  // VX1: the drawn area is measured right away.
   expect(await screen.findByRole('button', { name: '계산하는 중…' })).toBeDisabled();
   expect(get).toHaveBeenCalledTimes(1);
 
@@ -141,7 +142,8 @@ test('계산 중에 영역 통계를 떠나면 요청을 끊고, 늦게 온 답�
   expect(signal?.aborted).toBe(true);
   await act(async () => answer({ datasetId: 'landsat', variable: 'NDWI', areaKm2: 12.5, series: [{ time: 't', mean: 0.5, min: 0, max: 1, std: 0.1, validCount: 1, validAreaKm2: 1 }] }));
   fireEvent.click(rail().getByRole('button', { name: '영역 통계' }));
-  expect(await screen.findByRole('button', { name: '계산하기' })).toBeDisabled();
+  expect(await screen.findByText('먼저 지도에 영역을 그리세요.')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /계산하기|계산하는 중/ })).not.toBeInTheDocument();
   expect(screen.queryByText(/^결과 · /)).not.toBeInTheDocument();
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });

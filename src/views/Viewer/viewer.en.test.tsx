@@ -80,14 +80,14 @@ describe('Viewer chrome in English', () => {
     expect(within(sheet).getByRole('slider', { name: 'Source imagery opacity' })).toBeInTheDocument();
     expect(within(sheet).getByText('Opacity')).toBeInTheDocument();
     expect(within(sheet).getByRole('checkbox', { name: 'Basemap' })).toBeChecked();
-    expect(within(sheet).getByRole('heading', { name: 'Data info' })).toBeInTheDocument();
+    expect(within(sheet).getByText('Data info')).toBeInTheDocument();
     const info = Object.fromEntries(Array.from(sheet.querySelectorAll('.vx-meta > div')).map((row) => [row.querySelector('dt')!.textContent, row.querySelector('dd')!.textContent])); // eslint-disable-line testing-library/no-node-access
     expect(info).toEqual({ Name: 'Daecheong pair', Times: '2', Period: 'Aug 14, 2024 – Sep 1, 2024', Bands: '3', CRS: 'EPSG:4326' });
     // The time staff and the current time use the same English dates.
     expect(screen.getByRole('slider', { name: 'Acquisition time' })).toHaveAttribute('aria-valuetext', 'Aug 14, 2024, 1 / 2');
     fireEvent.click(screen.getByRole('button', { name: 'AI water' }));
     const ai = screen.getByRole('complementary', { name: 'AI water extraction' });
-    expect(within(ai).getByRole('heading', { name: 'AI results for this data' })).toBeInTheDocument();
+    expect(within(ai).getByText('AI results of this data (0)')).toBeInTheDocument();
     expect(await within(ai).findByText('No AI results for this data yet.')).toBeInTheDocument();
   });
 
@@ -168,8 +168,10 @@ describe('Legends and AI in English', () => {
     const radios = await within(drawer).findAllByRole('radio');
     expect(radios.map((radio) => radio.closest('label')!.querySelector('strong')!.textContent)) // eslint-disable-line testing-library/no-node-access
       .toEqual(['NDWI baseline', 'U-Net (S1+S2, 10 channels)', 'DeepLabV3+ (S1+S2, 10 channels)']);
-    expect(within(drawer).getByText('Index-based · Default threshold 0.00')).toBeInTheDocument();
-    expect(within(drawer).getAllByText('Deep learning · Default threshold 0.50')).toHaveLength(2);
+    expect(within(drawer).getByText('Index-based')).toBeInTheDocument();
+    expect(within(drawer).getAllByText('Deep learning')).toHaveLength(2);
+    expect(within(drawer).getByText('More settings')).toBeInTheDocument();
+    expect(within(drawer).getByText(/^Threshold \d\.\d\d · result name$/)).toBeInTheDocument();
     expect(within(drawer).getByText(/Counts a pixel as water when NDWI/)).toBeInTheDocument();
     expect(await within(drawer).findByText('All present')).toBeInTheDocument();
     expect(within(drawer).getByText('Required inputs')).toBeInTheDocument();
