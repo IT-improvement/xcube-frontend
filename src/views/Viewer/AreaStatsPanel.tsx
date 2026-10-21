@@ -12,6 +12,7 @@ import type { Lang, TKey } from "../../i18n";
 import "../../i18n/viewer";
 import { matchTime } from "./AiPanel";
 import type { AreaShape, DrawKind } from "./areaDraw";
+import PanelMore from "./PanelMore";
 
 /** What can be measured: the source data, the AI result shown with it, or the shown dataset itself. */
 export type AreaTarget = { key: string; label: string; datasetId: string; variables: string[]; variable: string; water: boolean };
@@ -175,11 +176,40 @@ export default function AreaStatsPanel({
     saveText(`${safe}_${t("viewer.stats.csv.fileSuffix")}_${variable}.csv`, csv);
   };
 
+  // VX1: a finished shape is measured right away with the current settings (area → numbers in two presses).
+  const runRef2 = useRef(run);
+  runRef2.current = run;
+  useEffect(() => {
+    if (shape && !drawing && shape.vertices <= MAX_AREA_VERTICES) runRef2.current();
+  }, [shape, drawing]);
+
+  // VX1: a new result below the fold (a half-height phone sheet) is brought into view, once.
+  const resultRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const box = resultRef.current;
+    const scroller = box?.closest(".vx-drawer__body");
+    if (!box || !scroller) return;
+    if (box.getBoundingClientRect().top > scroller.getBoundingClientRect().bottom - 48) box.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  }, [result]);
+
+  const timesLabel = scope === "all" ? t("viewer.vx.area.timesAllShort", { count: Math.min(times.length, 120) }) : t("viewer.vx.area.timesCurrentShort");
+  const settingsHint = t("viewer.vx.area.settingsSummary", { target: target?.label ?? "—", band: variable || "—", times: timesLabel });
+
   return (
     <div className="vx-stats">
-      <section className="vx-section">
-        <h3 className="vx-section__title">{t("viewer.stats.areaTitle")}</h3>
-        <p className="vx-section__hint">{t("viewer.stats.areaHint")}</p>
+      {/* VX1: progress and completion are heard, not only seen. */}
+      <p className="vx-sr" role="status" aria-live="polite">
+        {busy
+          ? t("viewer.stats.running")
+          : result
+            ? t("viewer.vx.area.done", {
+                time: at ? labelOf(at) : "",
+                value: water ? `${t("viewer.stats.waterArea")} ${km2(waterPoint?.km2, lang)} km²` : `${t("viewer.stats.mean")} ${statValue(point?.mean, lang)}`,
+              })
+            : ""}
+      </p>
+      <section className="vx-section" aria-labelledby="vx-stats-step">
+        <h3 className="vx-section__title" id="vx-stats-step">{t("viewer.vx.area.step")}</h3>
         <div className="vx-drawbar" role="group" aria-label={t("viewer.stats.drawGroup")}>
           <button type="button" className="vx-btn vx-btn--line" aria-pressed={drawing === "polygon"} disabled={!canDraw} onClick={() => (drawing === "polygon" ? onCancelDraw() : onDraw("polygon"))}>
             <Pentagon size={16} aria-hidden="true" />
@@ -216,54 +246,55 @@ export default function AreaStatsPanel({
             </button>
           </div>
         )}
+        {!shape && !drawing && <p className="vx-section__hint" id="vx-stats-need">{t("viewer.stats.needShape")}</p>}
         {tooMany && <p className="vx-note vx-note--bad" role="alert">{t("viewer.stats.error.GEOMETRY_TOO_LARGE", { max: MAX_AREA_VERTICES })}</p>}
-      </section>
-
-      <section className="vx-section">
-        <h3 className="vx-section__title">{t("viewer.stats.whatTitle")}</h3>
-        {targets.length > 1 && (
-          <div className="vx-seg vx-seg--fit" role="group" aria-label={t("viewer.stats.target")}>
-            {targets.map((item) => (
-              <button key={item.key} type="button" aria-pressed={item.key === target?.key} onClick={() => setTargetKey(item.key)}>
-                {item.label}
-              </button>
-            ))}
-          </div>
+        {shape && (
+          <button type="button" className={`vx-btn vx-btn--block ${result && !busy ? "vx-btn--line" : "vx-btn--ink"}`} disabled={!canRun} onClick={run}>
+            {busy ? t("viewer.stats.running") : result ? t("viewer.vx.area.again") : t("viewer.stats.run")}
+          </button>
         )}
-        {target && target.variables.length > 1 && (
-          <label className="vx-field">
-            <span>{t("viewer.stats.variable")}</span>
-            <select value={variable} onChange={(event) => setVariable(event.target.value)}>
-              {target.variables.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        {target?.water && <p className="vx-section__hint">{t("viewer.stats.waterHint")}</p>}
-        <fieldset className="vx-field">
-          <legend>{t("viewer.stats.times")}</legend>
-          <div className="vx-seg vx-seg--fit">
-            <button type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}>
-              {t("viewer.stats.timesAll", { count: Math.min(times.length, 120) })}
-            </button>
-            <button type="button" aria-pressed={scope === "current"} onClick={() => setScope("current")}>
-              {t("viewer.stats.timesCurrent")}
-            </button>
-          </div>
-          {scope === "all" && times.length > 120 && <small className="vx-section__hint">{t("viewer.stats.timesCapped")}</small>}
-        </fieldset>
-        <button type="button" className="vx-btn vx-btn--ink vx-btn--block" disabled={!canRun} aria-describedby={!shape ? "vx-stats-need" : undefined} onClick={run}>
-          {busy ? t("viewer.stats.running") : t("viewer.stats.run")}
-        </button>
-        {!shape && <small id="vx-stats-need" className="vx-section__hint">{t("viewer.stats.needShape")}</small>}
         {failure != null && <p className="vx-note vx-note--bad" role="alert">{areaErrorText(failure, lang, t)}</p>}
+        <PanelMore summary={t("viewer.vx.area.settings")} hint={settingsHint}>
+          {targets.length > 1 && (
+            <div className="vx-seg vx-seg--fit" role="group" aria-label={t("viewer.stats.target")}>
+              {targets.map((item) => (
+                <button key={item.key} type="button" aria-pressed={item.key === target?.key} onClick={() => setTargetKey(item.key)}>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {target && target.variables.length > 1 && (
+            <label className="vx-field">
+              <span>{t("viewer.stats.variable")}</span>
+              <select value={variable} onChange={(event) => setVariable(event.target.value)}>
+                {target.variables.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {target?.water && <p className="vx-section__hint">{t("viewer.stats.waterHint")}</p>}
+          <fieldset className="vx-field">
+            <legend>{t("viewer.stats.times")}</legend>
+            <div className="vx-seg vx-seg--fit">
+              <button type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}>
+                {t("viewer.stats.timesAll", { count: Math.min(times.length, 120) })}
+              </button>
+              <button type="button" aria-pressed={scope === "current"} onClick={() => setScope("current")}>
+                {t("viewer.stats.timesCurrent")}
+              </button>
+            </div>
+            {scope === "all" && times.length > 120 && <small className="vx-section__hint">{t("viewer.stats.timesCapped")}</small>}
+          </fieldset>
+          <p className="vx-section__hint">{t("viewer.vx.area.auto")}</p>
+        </PanelMore>
       </section>
 
       {result && (
-        <section className="vx-section" aria-live="polite">
+        <section ref={resultRef} className="vx-section vx-stats__result" aria-labelledby="vx-stats-result">
           <div className="vx-stats__head">
-            <h3 className="vx-section__title">{t("viewer.stats.resultTitle", { variable: result.variable })}</h3>
+            <h3 className="vx-section__title" id="vx-stats-result">{t("viewer.stats.resultTitle", { variable: result.variable })}</h3>
             <button type="button" className="vx-btn vx-btn--line" onClick={downloadCsv}>
               <Download size={15} aria-hidden="true" />
               CSV
