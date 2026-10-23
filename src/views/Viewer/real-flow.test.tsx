@@ -312,8 +312,11 @@ test('FR-VIEW-12: 재생은 tile이 다 그려질 때까지 기다리고, 이전
   const [second] = tiles.at(T2);
   await act(async () => { second.source.emit('tileloadstart'); jest.advanceTimersByTime(300); });
   expect(mockAlive.has(first)).toBe(true);
+  // UR-66: the loading frame stays hidden, so its first tiles never sit beside the old date's tiles.
+  expect(second.setOpacity).toHaveBeenLastCalledWith(0);
   await act(async () => { second.source.emit('tileloaderror'); jest.advanceTimersByTime(80); });
   expect(mockAlive.has(first)).toBe(false);
+  expect(second.setOpacity).toHaveBeenLastCalledWith(1);
   // Drawn before the interval: the next frame is prefetched hidden, then reused when playback advances.
   const prefetch = tiles.at(T1)[1];
   expect(prefetch.setOpacity).toHaveBeenLastCalledWith(0);
@@ -322,8 +325,12 @@ test('FR-VIEW-12: 재생은 tile이 다 그려질 때까지 기다리고, 이전
   await act(async () => { jest.advanceTimersByTime(200); });
   expect(slider).toHaveValue('0');
   expect(tiles.at(T1)).toHaveLength(2);
-  expect(prefetch.setOpacity).toHaveBeenLastCalledWith(1);
+  // The reused frame appears only once its tiles are in, until then the shown time stays whole.
+  expect(prefetch.setOpacity).toHaveBeenLastCalledWith(0);
   expect(mockAlive.has(second)).toBe(true);
+  await tiles.load(prefetch);
+  expect(prefetch.setOpacity).toHaveBeenLastCalledWith(1);
+  expect(mockAlive.has(second)).toBe(false);
 });
 
 test('FR-VIEW-12: 빠르게 시점을 넘겨도 layer는 현재와 대기 중 하나씩만 남는다', async () => {
