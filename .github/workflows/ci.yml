@@ -1,0 +1,41 @@
+# CI (DEPJ1): type check and tests on GitHub-hosted runners for pushes to dev/version1 and pull requests. No secrets.
+name: ci
+
+on:
+  push:
+    branches: [dev, version1]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Type check and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Type check
+        run: npx tsc --noEmit
+      - name: Tests
+        run: npx react-scripts test --watchAll=false --maxWorkers=2
+        env:
+          CI: "true"
+      - name: Production build
+        run: npm run build
+        env:
+          CI: "false"
+          GENERATE_SOURCEMAP: "false"
+          REACT_APP_XCUBE_URL: /xcube/main
+          REACT_APP_ADMIN_URL: /admin
