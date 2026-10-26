@@ -1375,7 +1375,8 @@
 
 /* The rest of the Viewer's words on the same floor: tags, status, counts, dock dates and labels. */
 .vx .dataset-trigger__tag, .vx-status__text, .vx-status__short, .vx-rail__count, .vx-current__count, .vx-staff__date,
-.vx-modes__label, .vx-now small, .vx-reading__value small, .vx-popt__toggle, .vx-drawer .vx-note--research, .vx-area__tag, .vx-area__name, .vx-area__unit, .vx-cmpbar__note, .vx-cmpbar .vx-cmptag, .vx-rail__count { min-width: 20px; height: 20px; }
+.vx-modes__label, .vx-now small, .vx-reading__value small, .vx-popt__toggle, .vx-drawer .vx-note--research, .vx-area__tag, .vx-area__name, .vx-area__unit, .vx-cmpbar__note, .vx-cmpbar .vx-cmptag { font-size: 13px; }
+.vx-rail__count { min-width: 20px; height: 20px; }
 
 @media (pointer: coarse) {
   .vx-more > summary { min-height: var(--vx-hit); }
