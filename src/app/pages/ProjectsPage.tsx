@@ -1,5 +1,5 @@
-import { ArrowLeft, Database, ExternalLink, HelpCircle, LayoutGrid, Link2, List, Lock, Pencil, Plus, Search, SearchX, Trash2, Unlink } from 'lucide-react';
-import { FormEvent, useMemo, useState } from 'react';
+import { ArrowLeft, Database, ExternalLink, HelpCircle, Link2, Lock, Pencil, Plus, Search, SearchX, Trash2, Unlink } from 'lucide-react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { userMessage } from '../../api/httpClient';
 import { Alert, Button, ButtonLink, LockedButton, TextField } from '../../components/ui';
@@ -14,6 +14,8 @@ import { ProjectExtents, ProjectIntro } from './projectParts';
 import { DatasetStatus, NoValue, RoleBadge } from './DataLibraryPage';
 import { useLanguage } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useViewMode, VIEW_KEYS } from '../../hooks/useViewMode';
+import { ViewModeSwitch } from '../../components/ui/ViewModeSwitch';
 // The management screens' text (UR-53 stage 2) loads with these pages, not with the main bundle.
 import '../../i18n/app';
 
@@ -80,6 +82,11 @@ export function ProjectsPage() {
   const [params, setParams] = useSearchParams();
   const scope = (SCOPES.includes(params.get('scope') as Scope) ? params.get('scope') : 'all') as Scope;
   const [query, setQueryState] = useState(() => params.get('q') ?? '');
+  // FIX4: the address can change without the box (the menu's 프로젝트 link, back/forward): the box follows it.
+  const urlQuery = params.get('q') ?? '';
+  useEffect(() => {
+    setQueryState((current) => (current.trim() === urlQuery.trim() ? current : urlQuery));
+  }, [urlQuery]);
   const setParam = (key: string, value: string, fallback: string) =>
     setParams((current) => {
       const next = new URLSearchParams(current);
@@ -294,18 +301,10 @@ function ProjectSentence({ datasets, members }: { datasets?: number; members?: n
   return <span className="project-sentence">{text}</span>;
 }
 
-type DataView = 'grid' | 'table';
-
 function ProjectData({ project, editable, linked, byId, onToast }: { project: Project; editable: boolean; linked: Load<ZarrDataset[]>; byId: Map<string, ZarrDataset>; onToast: (text: string) => void }) {
   const { lang, t } = useLanguage();
-  // Pictures by default; the table stays one press away and is kept in the URL (?view=table).
-  const [params, setParams] = useSearchParams();
-  const view: DataView = params.get('view') === 'table' ? 'table' : 'grid';
-  const setView = (value: DataView) => setParams((current) => {
-    const next = new URLSearchParams(current);
-    if (value === 'grid') next.delete('view'); else next.set('view', value);
-    return next;
-  }, { replace: true });
+  // UX3: the same `그림 보기 / 목록 보기` switch as the data list, remembered in this browser (pictures by default).
+  const [view, setView] = useViewMode(VIEW_KEYS.project);
   const [picking, setPicking] = useState(false);
   // Linking data needs PROJECT_USER (UR-59) on top of the project's edit permission.
   const linkLocked = useRoleGate().reason(NEEDS.createData);
@@ -330,10 +329,7 @@ function ProjectData({ project, editable, linked, byId, onToast }: { project: Pr
         <span className="xc-hint">{t('projects.dataHint')}</span>
         <span className="toolbar__spacer" />
         {items.length > 0 && (
-          <Segmented label={t('projects.viewLabel')} value={view} onChange={setView} items={[
-            { id: 'grid', label: <><LayoutGrid size={14} aria-hidden />{t('projects.viewGrid')}</> },
-            { id: 'table', label: <><List size={14} aria-hidden />{t('projects.viewTable')}</> },
-          ]} />
+          <ViewModeSwitch value={view} onChange={setView} />
         )}
         {editable && (linkLocked
           ? <LockedButton size="sm" showReason reason={linkLocked}><Link2 size={16} aria-hidden />{t('projects.linkData')}</LockedButton>

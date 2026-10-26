@@ -35,7 +35,11 @@ export type AiResult = {
   researchBestThreshold?: AiResearchBest | null;
   threshold?: number; modelId?: string;
 };
-export type AiWaterJob = JobSummary & { input?: Partial<AiJobRequest> & Record<string, unknown>; result?: AiResult | null };
+export type AiWaterJob = JobSummary & {
+  input?: Partial<AiJobRequest> & Record<string, unknown>; result?: AiResult | null;
+  /** FIX2: true when the caller only reads the result (someone else's job): public statistics only. */
+  readOnly?: boolean;
+};
 
 const base = '/api/v1/ai';
 const id = (value: string | number) => encodeURIComponent(String(value));
@@ -104,6 +108,10 @@ export const aiApi = {
   },
   async getJob(jobId: string | number) {
     return withResult(await request<AiWaterJob>(AI_API_BASE_URL, `${base}/jobs/${id(jobId)}`));
+  },
+  /** FIX2: the job behind a registered result datacube, also for readers who do not own it (public fields only). */
+  async getResult(datacubeId: string | number) {
+    return withResult(await request<AiWaterJob>(AI_API_BASE_URL, `${base}/results/${id(datacubeId)}`));
   },
   cancelJob(jobId: string | number) {
     return request<unknown>(AI_API_BASE_URL, `${base}/jobs/${id(jobId)}/cancel`, { method: 'POST' });

@@ -36,7 +36,7 @@
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   height: 32px; padding: 0 12px;
   border: 1px solid transparent; border-radius: var(--fb-radius);
-  font: 600 13px/1 var(--fb-font); white-space: nowrap; text-decoration: none;
+  font: var(--fb-text-control); white-space: nowrap; text-decoration: none;
   cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent;
   transition:
     background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out,
@@ -58,7 +58,7 @@
 .xc-btn--quiet, .xc-btn--ghost { background: transparent; color: var(--fb-ink-2); }
 .xc-btn--quiet:hover:not(:disabled), .xc-btn--ghost:hover:not(:disabled) { background: var(--fb-sunken); color: var(--fb-ink); }
 .xc-btn--quiet:disabled, .xc-btn--ghost:disabled { background: transparent; border-color: transparent; }
-.xc-btn--danger { background: var(--fb-bad); color: #fff; }
+.xc-btn--danger { background: var(--fb-bad); color: var(--fb-on-ink); }
 .xc-btn--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--fb-bad) 86%, var(--fb-ink)); }
 
 /* Text field */
@@ -68,7 +68,7 @@
 .xc-field__input {
   width: 100%; height: 36px; padding: 0 10px;
   border: 1px solid var(--fb-input-border); border-radius: var(--fb-radius);
-  background: var(--fb-surface); color: var(--fb-ink); font: 400 14px/1.2 var(--fb-font);
+  background: var(--fb-surface); color: var(--fb-ink); font: 400 14px/1.3 var(--fb-font);
 }
 .xc-field__input::placeholder { color: var(--fb-ink-3); }
 .xc-field__input:hover:not(:disabled) { border-color: var(--fb-ink-2); }
@@ -83,7 +83,7 @@
 }
 .xc-field__action:hover { background: var(--fb-sunken); color: var(--fb-ink); }
 .xc-field__help { font: var(--text-caption); color: var(--fb-ink-3); }
-.xc-field__error { display: flex; gap: 4px; align-items: flex-start; font: 500 12.5px/1.45 var(--fb-font); color: var(--fb-bad); }
+.xc-field__error { display: flex; gap: 4px; align-items: flex-start; font: 500 13px/1.4 var(--fb-font); color: var(--fb-bad); }
 .xc-field__error svg { flex: none; margin-top: 2px; }
 
 /* Alert: words first; the tone colours the icon and a faint wash, never the text. */
@@ -91,7 +91,7 @@
   display: flex; gap: 10px; align-items: flex-start;
   padding: 10px 12px; border-radius: var(--fb-radius); border: 1px solid var(--fb-rule);
   background: var(--fb-sunken); color: var(--fb-ink);
-  font: 400 14px/1.5 var(--fb-font);
+  font: var(--fb-text-body);
 }
 .xc-alert svg { flex: none; margin-top: 2px; }
 .xc-alert--info { background: var(--fb-water-soft); border-color: color-mix(in srgb, var(--fb-water) 22%, var(--fb-surface)); }
@@ -104,7 +104,7 @@
 .xc-alert--danger > svg { color: var(--fb-bad); }
 
 /* Logo: the Viewer's outline cube in ink. */
-.xc-logo { display: inline-flex; align-items: center; gap: 7px; color: var(--fb-ink); text-decoration: none; }
+.xc-logo { display: inline-flex; align-items: center; gap: 6px; color: var(--fb-ink); text-decoration: none; }
 .xc-logo__mark { width: 22px; height: 22px; flex: none; }
 .xc-logo__text { font: 700 16px/1 var(--fb-font); letter-spacing: -0.01em; }
 
@@ -123,12 +123,11 @@
 }
 @keyframes xc-spin { to { transform: rotate(360deg); } }
 
-/* Fingers get 40px targets; phones get 16px inputs so iOS does not zoom on focus. */
+/* Fingers get 44px targets (UXF1; 40px before); phones get 16px inputs so iOS does not zoom on focus. */
 @media (pointer: coarse), (max-width: 767px) {
-  .xc-btn, .xc-btn--sm { height: 40px; padding: 0 14px; }
-  .xc-btn--lg { height: 44px; }
-  .xc-field__input { height: 40px; }
-  .xc-field__action { width: 36px; height: 36px; }
+  .xc-btn, .xc-btn--sm, .xc-btn--lg { height: 44px; padding: 0 14px; }
+  .xc-field__input { height: 44px; }
+  .xc-field__action { width: 44px; height: 44px; }
 }
 @media (max-width: 767px) {
   .xc input:not([type='checkbox']):not([type='radio']):not([type='range']),
@@ -149,10 +148,10 @@
   display: inline-flex; align-items: center; gap: 2px; padding: 2px;
   border: 1px solid var(--fb-rule-strong); border-radius: var(--fb-radius); background: var(--fb-surface);
 }
-.xc-lang__icon { flex: none; margin: 0 4px 0 5px; color: var(--fb-ink-3); }
+.xc-lang__icon { flex: none; margin: 0 4px; color: var(--fb-ink-3); }
 .xc-lang button {
   flex: none; height: 24px; padding: 0 8px; border: 0; border-radius: var(--fb-radius-mark); background: transparent;
-  color: var(--fb-ink-2); font: 600 12.5px/1 var(--fb-font); cursor: pointer; white-space: nowrap;
+  color: var(--fb-ink-2); font: 600 13px/1 var(--fb-font); cursor: pointer; white-space: nowrap;
   transition: background-color 140ms ease-out, color 140ms ease-out;
 }
 .xc-lang button:hover:not([aria-pressed='true']) { background: var(--fb-sunken); color: var(--fb-ink); }
@@ -160,10 +159,22 @@
 .xc-lang button:focus-visible { outline-offset: -2px; }
 .xc-lang--block { display: flex; }
 .xc-lang--block button { flex: 1 1 0; }
-@media (pointer: coarse), (max-width: 767px) { .xc-lang button { height: 36px; padding: 0 12px; } }
+@media (pointer: coarse), (max-width: 767px) { .xc-lang button { height: 44px; padding: 0 12px; } }
 
 /* An action the account role cannot use (UR-59): the disabled button and, on pages, its reason beside it. */
 .xc-locked { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; max-width: 100%; }
 .xc-locked--block { display: grid; width: 100%; }
 .xc-locked__reason { font: var(--text-caption); color: var(--fb-ink-3); word-break: keep-all; overflow-wrap: break-word; }
 .xc-btn[aria-disabled='true']:hover { background: var(--fb-sunken); }
+
+/* Account mark (UXF1): the same 28px ring with the name's first letter in the app top bar, the Viewer and the
+   admin console. Quiet (surface, ink-2 ring, ink letter) so it never competes with the ink action button. */
+.xc-avatar {
+  display: inline-grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--fb-surface); color: var(--fb-ink); box-shadow: inset 0 0 0 1px var(--fb-ink-2); font: 600 13px/1 var(--fb-font);
+}
+
+/* UXF1: 44px touch targets for the logo link on every screen (landing, auth, app). */
+@media (pointer: coarse), (max-width: 767px) {
+  .xc-logo { min-height: 44px; }
+}

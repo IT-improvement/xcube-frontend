@@ -1,5 +1,5 @@
-import { Database, ExternalLink, FolderPlus, LayoutGrid, List, Plus, Search, Trash2 } from 'lucide-react';
-import { FormEvent, useMemo, useState } from 'react';
+import { Database, ExternalLink, FolderPlus, Plus, Search, Trash2 } from 'lucide-react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Alert, Button, ButtonLink, LockedButton, TextField } from '../../components/ui';
 import { NEEDS, useRoleGate } from '../../auth/roles';
@@ -8,17 +8,19 @@ import { userMessage } from '../../api/httpClient';
 import { ai, aiViewerHref, appApi, canEditProject, formatDate, isOwned, periodLabel, Project, roleLabel, viewerHref, ZarrDataset } from '../api';
 import { aiFactsByResult, aiSubtitle } from '../aiFacts';
 import { useLoad } from '../useLoad';
+import { isExample } from '../../api/examples';
 import { kindIdOf, parseTimeKind, shortPeriod, TimeKind, timeKindOf } from '../../api/datasetFacts';
 import { useViewMode, VIEW_KEYS } from '../../hooks/useViewMode';
 import DatasetThumb from '../../components/thumb/DatasetThumb';
+import { ViewModeSwitch } from '../../components/ui/ViewModeSwitch';
 import { useLanguage, useT } from '../../i18n';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 // The management screens' text (UR-53 stage 2) loads with these pages, not with the main bundle.
 import '../../i18n/app';
 
-type Scope = 'all' | 'owned' | 'shared';
+type Scope = 'all' | 'owned' | 'shared' | 'example';
 type Sort = 'recent' | 'name' | 'period';
-type Kind = '' | 'original' | 'fusion' | 'ai';
+type Kind = '' | 'original' | 'fusion' | 'ai' | 'compare';
 
 /**
  * Status tag from "INTEGRATION · AVAILABILITY" (Backoffice) or demo text.
@@ -45,11 +47,14 @@ export function RoleBadge({ role }: { role?: string }) {
   return <Badge tone={role === 'OWNER' ? 'primary' : 'neutral'}>{roleLabel(role, lang)}</Badge>;
 }
 
-const SCOPES: Scope[] = ['all', 'owned', 'shared'];
+const SCOPES: Scope[] = ['all', 'owned', 'shared', 'example'];
 const SORTS: Sort[] = ['recent', 'name', 'period'];
+// CMP2: comparison results are not listed here (they are read in the original's Viewer 결과 비교), so no 비교 filter.
 const KINDS: Kind[] = ['', 'original', 'fusion', 'ai'];
 const pick = <T extends string>(value: string | null, allowed: T[], fallback: T) => (allowed.includes(value as T) ? (value as T) : fallback);
 const kindOf = (item: ZarrDataset): Kind => (item.kind === 'FUSION' ? 'fusion' : item.kind === 'AI_RESULT' ? 'ai' : 'original');
+/** Example data (UX1) is its own group: not mine (even for its owner's eyes it is shared with everyone) and not "shared with me". */
+const scopeOf = (item: ZarrDataset): Exclude<Scope, 'all'> => (isExample(item) ? 'example' : isOwned(item) ? 'owned' : 'shared');
 
 /** S3: all Zarr datasets the user owns or received. */
 export default function DataLibraryPage() {
@@ -65,6 +70,11 @@ export default function DataLibraryPage() {
   const time = parseTimeKind(params.get('time'));
   // The search box keeps its own state (typing stays immediate) and mirrors it into the URL.
   const [query, setQueryState] = useState(() => params.get('q') ?? '');
+  // FIX4: the address can change without the box (the menu's 데이터 link, back/forward): the box follows it.
+  const urlQuery = params.get('q') ?? '';
+  useEffect(() => {
+    setQueryState((current) => (current.trim() === urlQuery.trim() ? current : urlQuery));
+  }, [urlQuery]);
   const setParam = (key: string, value: string, fallback: string) =>
     setParams((current) => {
       const next = new URLSearchParams(current);
@@ -92,8 +102,8 @@ export default function DataLibraryPage() {
   const hasAi = items.some((item) => item.kind === 'AI_RESULT');
   const aiJobs = useLoad(() => (hasAi ? ai.listJobs().catch(() => []) : Promise.resolve([])), [hasAi]);
   const aiFacts = useMemo(() => aiFactsByResult(aiJobs.data ?? []), [aiJobs.data]);
-  const counts = { all: items.length, owned: items.filter(isOwned).length, shared: items.filter((item) => !isOwned(item)).length };
-  const inScope = useMemo(() => items.filter((item) => scope === 'all' || (scope === 'owned' ? isOwned(item) : !isOwned(item))), [items, scope]);
+  const counts = { all: items.length, owned: items.filter((item) => scopeOf(item) === 'owned').length, shared: items.filter((item) => scopeOf(item) === 'shared').length, example: items.filter(isExample).length };
+  const inScope = useMemo(() => items.filter((item) => scope === 'all' || scopeOf(item) === scope), [items, scope]);
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const filtered = inScope.filter((item) =>
@@ -119,8 +129,11 @@ export default function DataLibraryPage() {
   const actions = (item: ZarrDataset) => (
     <div className="row-actions">
       <a className="xc-icon-btn" href={item.kind === 'AI_RESULT' && item.sourceDatacubeId ? aiViewerHref(item.sourceDatacubeId, item.id) : viewerHref(item.id)} target="_blank" rel="noopener noreferrer" aria-label={t('app.openInViewerNamed', { name: item.name })} title={t('app.openInViewer')}><ExternalLink size={16} aria-hidden /></a>
+      {/* Example data is read-only for everyone (UX1): no link, no delete. */}
+      {!isExample(item) && <>
       <button type="button" className="xc-icon-btn" aria-label={t('data.linkNamed', { name: item.name })} title={locked ? `${t('app.linkToProject')} — ${locked}` : t('app.linkToProject')} aria-disabled={locked ? true : undefined} onClick={locked ? undefined : () => setLinking(item)}><FolderPlus size={16} aria-hidden /></button>
       <button type="button" className="xc-icon-btn" aria-label={t('data.deleteNamed', { name: item.name })} title={!isOwned(item) ? t('data.cannotDeleteShared') : locked ? `${t('app.delete')} — ${locked}` : t('app.delete')} disabled={!isOwned(item)} aria-disabled={isOwned(item) && locked ? true : undefined} onClick={locked ? undefined : () => setDeleting(item)}><Trash2 size={16} aria-hidden /></button>
+      </>}
     </div>
   );
   const timeText = (item: ZarrDataset) => timeKindOf(item) === 'series' ? t('datasetFacts.series', { count: item.times.length }) : t('datasetFacts.single');
@@ -131,7 +144,7 @@ export default function DataLibraryPage() {
       <PageHeader title={t('titles.data')} description={t('data.description')} />
       <Card>
         <div className="sheet-tabs">
-          <Tabs label={t('data.scopeLabel')} idPrefix="data-scope" value={scope} onChange={setScope} items={[{ id: 'all', label: t('app.all'), count: counts.all }, { id: 'owned', label: t('app.mine'), count: counts.owned }, { id: 'shared', label: t('app.shared'), count: counts.shared }]} />
+          <Tabs label={t('data.scopeLabel')} idPrefix="data-scope" value={scope} onChange={setScope} items={[{ id: 'all', label: t('app.all'), count: counts.all }, { id: 'owned', label: t('app.mine'), count: counts.owned }, { id: 'shared', label: t('app.shared'), count: counts.shared }, ...(counts.example ? [{ id: 'example' as const, label: t('examples.group'), count: counts.example }] : [])]} />
         </div>
         <TabPanel idPrefix="data-scope" value={scope}>
         <div className="toolbar">
@@ -146,10 +159,7 @@ export default function DataLibraryPage() {
             { id: '', label: t('datasetFacts.filter.all') }, { id: 'series', label: t('datasetFacts.filter.series') }, { id: 'single', label: t('datasetFacts.filter.single') },
           ]} />
           <span className="toolbar__spacer" />
-          <Segmented label={t('datasetFacts.view.label')} value={view} onChange={setView} items={[
-            { id: 'grid', label: <><LayoutGrid size={14} aria-hidden />{t('datasetFacts.view.grid')}</> },
-            { id: 'list', label: <><List size={14} aria-hidden />{t('datasetFacts.view.list')}</> },
-          ]} />
+          <ViewModeSwitch value={view} onChange={setView} />
           {datasets.data && <span className="xc-hint tabular" aria-live="polite">{visible.length === inScope.length ? t('data.countAll', { count: inScope.length }) : t('data.countOf', { count: visible.length, total: inScope.length })}</span>}
           <label className="xc-check">
             <span className="sr-only">{t('data.sort')}</span>
@@ -187,7 +197,7 @@ export default function DataLibraryPage() {
                     {item.variables.length > 0 && <span>{t('datasetFacts.bands', { count: item.variables.length })}</span>}
                   </span>
                   <span className="data-card__sub">
-                    {!isOwned(item) && <Badge tone="water">{t('app.shared')}</Badge>}
+                    {isExample(item) ? <Badge>{t('examples.tag')}</Badge> : !isOwned(item) && <Badge tone="water">{t('app.shared')}</Badge>}
                     <DatasetStatus dataset={item} quiet />
                     {item.kind === 'AI_RESULT' ? detail(item) : item.projectName ? <span>{item.projectName}</span> : null}
                   </span>
@@ -223,7 +233,7 @@ export default function DataLibraryPage() {
                           <Link to={`/app/data/${encodeURIComponent(item.id)}`}>{item.name}</Link>
                           {/* Tags first (shared, kind, an exception status), then what tells the row apart. */}
                           <small className="cell-sub">
-                            {!isOwned(item) && <Badge tone="water">{t('app.shared')}</Badge>}
+                            {isExample(item) ? <Badge>{t('examples.tag')}</Badge> : !isOwned(item) && <Badge tone="water">{t('app.shared')}</Badge>}
                             {item.kind === 'FUSION' && <Badge tone="water">{t('kinds.fusion')}</Badge>}
                             {item.kind === 'AI_RESULT' && <Badge tone="result">{t('kinds.ai')}</Badge>}
                             <DatasetStatus dataset={item} quiet />

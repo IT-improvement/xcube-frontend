@@ -11,7 +11,7 @@
   border-right: 1px solid var(--fb-rule);
 }
 .auth__brand-copy { display: grid; gap: var(--space-3); max-width: 360px; }
-.auth__brand-title { font: 600 26px/1.35 var(--fb-font); letter-spacing: -0.01em; color: var(--fb-ink); text-wrap: balance; }
+.auth__brand-title { font: var(--fb-text-h1); letter-spacing: -0.01em; color: var(--fb-ink); text-wrap: balance; }
 .auth__brand-text { color: var(--fb-ink-2); font-size: 15px; line-height: 1.65; word-break: keep-all; }
 .auth__brand { overflow: hidden; }
 /* The capture fills whatever height the form column leaves; absolute so it never stretches the row. */
@@ -31,12 +31,18 @@
 }
 .auth__back:hover { color: var(--fb-ink) !important; text-decoration: underline; }
 .auth__mobile-logo { display: none; }
-.auth__title { font: 600 24px/1.3 var(--fb-font); letter-spacing: -0.01em; }
+.auth__title { font: var(--fb-text-h1); letter-spacing: -0.01em; }
 .auth__subtitle { margin-top: calc(var(--space-2) * -1); color: var(--fb-ink-2); }
 .auth__form { display: grid; gap: var(--space-4); }
 .auth__form .xc-btn { margin-top: var(--space-2); }
 .auth__switch { text-align: center; color: var(--fb-ink-2); }
 .auth__switch a { font-weight: 600; color: var(--fb-ink); text-decoration: underline; text-underline-offset: 2px; }
+/* UR-63 F6: "비밀번호를 잊었나요?" right under the login button; the reset pages reuse the auth form. */
+.auth__forgot { margin-top: calc(-1 * var(--space-2)); text-align: right; font: var(--text-caption); }
+.auth__forgot a { color: var(--fb-ink-2); text-decoration: underline; text-underline-offset: 2px; }
+.auth__forgot a:hover { color: var(--fb-ink); }
+.auth__note { color: var(--fb-ink-2); word-break: keep-all; }
+.auth__actions { display: grid; gap: var(--space-3); }
 
 @media (max-width: 767px) {
   .auth { grid-template-columns: 1fr; }
@@ -44,3 +50,6 @@
   .auth__main { place-items: start center; padding: var(--space-6) var(--space-4) var(--space-10); }
   .auth__mobile-logo { display: block; }
 }
+
+/* UXF1: the back link is a 44px target on phones. */
+@media (pointer: coarse), (max-width: 767px) { .auth__back { min-height: 44px; } }

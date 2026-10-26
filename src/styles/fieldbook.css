@@ -34,18 +34,32 @@
   --fb-lift: 0 1px 2px rgba(27, 32, 29, 0.07), 0 6px 16px rgba(27, 32, 29, 0.09);
   --fb-lift-high: 0 2px 4px rgba(27, 32, 29, 0.08), 0 16px 36px rgba(27, 32, 29, 0.16);
 
-  /* Data colours for compare / change maps (kept from the previous token set). */
-  --data-cmp-agree: #1d4ed8;
-  --data-cmp-only-a: #ea580c;
-  --data-cmp-only-b: #7c3aed;
-  --data-chg-gain: #0284c7;
-  --data-chg-loss: #ea580c;
-  --data-chg-stable: #94a3b8;
+  --fb-map-empty: #e2eaec;     /* map area before tiles arrive (Viewer and the small maps) */
+  --fb-halo: #ffffff;          /* white halo for marks drawn over imagery (reticle, swipe line); same in both themes */
+  /* RGB composite channel stripes (layer swatch). Comparison class colours are data and live in api/compare.ts. */
+  --fb-channel-r: #d0342c;
+  --fb-channel-g: #2e9d4a;
+  --fb-channel-b: #2f6fd0;
 
   --fb-radius-mark: 4px;  /* tags, badges, segments */
   --fb-radius: 6px;       /* controls */
   --fb-radius-lg: 8px;    /* sheets, dialogs, popovers, toasts */
+  --fb-radius-hair: 2px;  /* thin bars and ticks (progress, meters, stems): fully round ends on a 2–4px bar */
   --fb-font: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --fb-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; /* formulas and code only */
+
+  /* Type ramp (DESIGN.md Typography). Sizes off this ramp are not used; landing.css keeps its own --lp-* scale.
+     13px is the floor for every text on every screen (VX1 Viewer, UXF1 everywhere): label, caption and axis are 13px.
+     Line heights: 1 (one-line controls), 1.15 (value), 1.3 (tight multi-line), 1.4, 1.55 (body), 1.65 (long reading). */
+  --fb-text-h1: 600 26px/1.3 var(--fb-font);       /* page title */
+  --fb-text-h2: 600 18px/1.4 var(--fb-font);       /* section title */
+  --fb-text-value: 600 22px/1.15 var(--fb-font);   /* the reading value, KPI */
+  --fb-text-title: 600 15px/1.4 var(--fb-font);    /* sheet, drawer and dialog title */
+  --fb-text-body: 400 14px/1.55 var(--fb-font);
+  --fb-text-control: 600 13px/1 var(--fb-font);    /* buttons, tabs, chips */
+  --fb-text-label: 600 13px/1.4 var(--fb-font);    /* field and section labels */
+  --fb-text-caption: 400 13px/1.45 var(--fb-font); /* hints, metadata */
+  --fb-text-axis: 500 13px/1 var(--fb-font);       /* chart axes, staff dates, smallest marks */
   --fb-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --fb-press: 140ms;
 }
@@ -72,6 +86,7 @@
   --fb-result: #4fc4b4;
   --fb-ai-water: #7fcbff;
   --fb-basemap: #7d977d;
+  --fb-map-empty: #5b6365;
   --fb-ok: #6fcf7f;
   --fb-warn: #f0b45a;
   --fb-bad: #ff8a80;

@@ -52,7 +52,8 @@ export default function ExtentMap({ bbox, bboxes, label, fallback, className = '
   }, [key]);
   return (
     <div className={`extent-map${ready ? ' is-ready' : ''} ${className}`.trim()}>
-      <div ref={host} className="extent-map__canvas" role={ready ? 'img' : undefined} aria-label={ready ? label : undefined} aria-hidden={ready ? undefined : true} />
+      {/* A group, not an img (UXF1, axe nested-interactive): the OSM credit inside is a link. */}
+      <div ref={host} className="extent-map__canvas" role={ready ? 'group' : undefined} aria-label={ready ? label : undefined} aria-hidden={ready ? undefined : true} />
       {!ready && fallback}
     </div>
   );

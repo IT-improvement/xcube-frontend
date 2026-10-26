@@ -3,13 +3,14 @@
 // - GeoTIFF/CAS500, satellite products (UR-55) and Shapefile: 방식 → 원본 입력 → 자동 검사 결과 → 설정 → 확인 및 생성 (the inspection is real)
 // - Zarr registration: 방식 → 원본 입력 → 설정 → 확인 (nothing to inspect before registering)
 // Requests are the same as before for the same choices (wizard.request.test.tsx).
+import { useLeaveGuard } from '../leaveGuard';
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, CloudDownload, Database, Droplets, FileArchive, Globe2, Image, Loader2, Satellite, Search, UploadCloud } from 'lucide-react';
 import { ChangeEvent, DragEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, userMessage } from '../../api/httpClient';
 import { ColorBarOption, GeeCollection, GenerationJob, InspectionField, isAbortError, JobSummary, SpatialInspection } from '../../api/generationApi';
 import { Alert, Button, ButtonLink, TextField } from '../../components/ui';
-import { Badge, Card, EmptyState, PageHeader, RadioGroup, Skeleton } from '../../components/ui/kit';
+import { Badge, Card, EmptyState, PageHeader, RadioGroup, Skeleton, StepTrack } from '../../components/ui/kit';
 import { accountRoleLabel, NEEDS, useRoleGate } from '../../auth/roles';
 import { appApi, canEditProject, generation, viewerHref } from '../api';
 import { jobSteps } from '../jobs';
@@ -208,7 +209,8 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   const exported = isProduct && isExport(products);
   const productsBusy = isProduct && busyProducts(productUploads.items);
 
-  // Leaving the tab mid-way loses the inputs; ask first.
+  // Leaving the tab mid-way loses the inputs; ask first. The same goes for links inside the app (UXF1).
+  useLeaveGuard(step > 0 && !done);
   useEffect(() => {
     if (step === 0 || done) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
@@ -580,14 +582,7 @@ function AddDataWizard({ onRestart }: { onRestart: () => void }) {
   return (
     <div className="page-stack wizard">
       <PageHeader back={<Link className="page-back" to="/app/data"><ArrowLeft size={16} aria-hidden />{t('wizard.back')}</Link>} title={t('wizard.title')} description={t('wizard.description')} />
-      <ol className="wizard-steps" aria-label={t('wizard.steps.label')}>
-        {steps.map((id, index) => (
-          <li key={id} className={index === step ? 'is-current' : index < step ? 'is-done' : ''} aria-current={index === step ? 'step' : undefined}>
-            <span className="wizard-steps__dot">{index < step ? <Check size={14} aria-hidden /> : index + 1}</span>
-            <span className="wizard-steps__label">{stepLabel(id)}</span>
-          </li>
-        ))}
-      </ol>
+      <StepTrack label={t('wizard.steps.label')} steps={steps.map((id) => stepLabel(id))} current={step} />
 
       <Card className="wizard-card">
         <div className="wizard-body" ref={bodyRef}>

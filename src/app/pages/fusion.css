@@ -1,47 +1,31 @@
 /* S12 수식 융합 */
-.fusion-bindings { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
-.fusion-binding { display: grid; grid-template-columns: 36px repeat(3, minmax(0, 1fr)) auto; gap: var(--space-3); align-items: end; padding: var(--space-4); border: 1px solid var(--fb-rule); border-radius: var(--fb-radius); background: var(--fb-ground); }
+.fusion-bindings { display: grid; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--fb-rule-strong); }
+/* UXF1: ruled rows, not boxes inside the sheet ("Ruled, not carded"). */
+.fusion-binding { display: grid; grid-template-columns: 36px repeat(3, minmax(0, 1fr)) auto; gap: var(--space-3); align-items: end; padding: var(--space-4) 0; border-bottom: 1px solid var(--fb-rule); }
 .fusion-binding__letter { display: grid; place-items: center; height: 36px; border-radius: var(--fb-radius-mark); background: var(--fb-ink); color: var(--fb-on-ink); font: 700 15px/1 var(--font-sans); }
 .fusion-binding__custom { grid-column: 2 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); align-items: start; }
 .fusion-binding__custom .xc-hint { grid-column: 1 / -1; margin: 0; }
-.fusion-formula .xc-field__input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 16px; }
+.fusion-formula .xc-field__input { font-family: var(--fb-mono); font-size: 16px; }
 .fusion-status { min-height: 24px; display: grid; gap: var(--space-2); }
 .fusion-status p { margin: 0; }
 .fusion-ok { display: flex; align-items: center; gap: 6px; color: var(--color-success); font-weight: 600; }
 .fusion-error { color: var(--color-danger); font-weight: 600; }
 .fusion-error p { margin: 4px 0 0; }
-.fusion-marker { font: 16px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--color-text-secondary); padding: 0 var(--space-3); }
+.fusion-marker { font: 400 16px/1.55 var(--fb-mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--color-text-secondary); padding: 0 var(--space-3); }
 .fusion-marker mark { background: color-mix(in srgb, var(--fb-bad) 10%, var(--fb-surface)); color: var(--color-danger); text-decoration: underline wavy var(--color-danger); text-underline-offset: 4px; }
 .fusion-help { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
 .fusion-help summary { cursor: pointer; font-weight: 600; }
-.fusion-help code, .fusion-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; background: var(--color-surface-subtle); padding: 1px 6px; border-radius: 4px; }
+.fusion-help code, .fusion-code { font-family: var(--fb-mono); font-size: 13px; background: var(--color-surface-subtle); padding: 2px 6px; border-radius: var(--fb-radius-mark); }
 .fusion-preview { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
 .fusion-preview__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .fusion-preview__body { display: grid; gap: var(--space-4); }
-.fusion-list { margin: 6px 0 0; padding-left: 18px; }
-.fusion-caption { text-align: left; padding: 8px var(--space-4); font: 600 13px/1.4 var(--font-sans); color: var(--color-text-secondary); }
-.fusion-quota { display: block; width: 100%; height: 8px; overflow: hidden; border-radius: 2px; background: var(--color-surface-subtle); border: 1px solid var(--color-border); }
+.fusion-list { margin: 6px 0 0; padding-left: 20px; }
+.fusion-caption { text-align: left; padding: 8px var(--space-4); font: var(--text-label); color: var(--color-text-secondary); }
+.fusion-quota { display: block; width: 100%; height: 8px; overflow: hidden; border-radius: var(--fb-radius-hair); background: var(--color-surface-subtle); border: 1px solid var(--color-border); }
 .fusion-quota .is-used { fill: var(--color-text-tertiary); }
 .fusion-quota .is-new { fill: var(--color-primary); }
 .fusion-quota .is-over { fill: var(--color-danger); }
 
-/* Steps as ticks on one rule (a staff), not boxes: done ticks ink-2, the current one taller in ink. */
-.step-scale { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--fb-rule-strong); }
-.step-scale li { position: relative; display: grid; gap: 6px; padding-top: 10px; color: var(--fb-ink-3); }
-.step-scale li.is-done::before, .step-scale li.is-current::before { content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 1px; background: var(--fb-ink-2); }
-.step-scale li.is-current::before { right: auto; width: 0; }
-.step-scale__tick { position: absolute; left: 0; top: -1px; width: 1px; height: 8px; background: var(--fb-rule-strong); }
-.step-scale li.is-done .step-scale__tick { background: var(--fb-ink-2); }
-.step-scale li.is-current .step-scale__tick { width: 2px; height: 12px; background: var(--fb-ink); }
-.step-scale__label { display: inline-flex; align-items: center; gap: 6px; font: 600 13px/1.3 var(--fb-font); white-space: nowrap; }
-.step-scale__num { font-variant-numeric: tabular-nums; color: inherit; }
-.step-scale li.is-done { color: var(--fb-ink-2); }
-.step-scale li.is-current { color: var(--fb-ink); }
-@media (max-width: 520px) {
-  .step-scale__label { font-size: 12px; }
-  /* Only the current step keeps its word on a phone; the others stay readable to screen readers. */
-  .step-scale li:not(.is-current) .step-scale__text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-}
 @media (max-width: 720px) {
   .fusion-binding { grid-template-columns: 36px minmax(0, 1fr); }
   .fusion-binding > * { grid-column: 2; }

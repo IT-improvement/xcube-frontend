@@ -71,7 +71,7 @@ test('RGB 조건과 band 선택이 실제 tile variable을 바꾼다', async () 
   const select = await screen.findByRole('button', { name: /^데이터 또는 Zarr 선택/ });
   fireEvent.click(select); fireEvent.click(await screen.findByRole('option', { name: /임의 데이터셋/ }));
   await waitFor(() => expect(mockAddLayer).toHaveBeenCalled());
-  fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  fireEvent.click(screen.getByRole('button', { name: '레이어' }));
   expect(screen.getByRole('button', { name: 'RGB' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'RGB' }));
   await waitFor(() => expect(mockBackoffice.tileUrl).toHaveBeenCalledWith('custom_cube_2026', 'rgb', '2026-01-01T00:00:00Z'));
@@ -153,7 +153,7 @@ test('M0 FR-VIEW-04/05: 같은 좌표 전체 시계열, 현재 시점 동기화�
   mockView.fit.mockClear();
   fireEvent.click(screen.getByRole('button', { name: '픽셀 그래프 아래로 숨기기' }));
   fireEvent.click(screen.getByRole('button', { name: '픽셀 그래프 위로 펼치기' }));
-  fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  fireEvent.click(screen.getByRole('button', { name: '레이어' }));
   fireEvent.click(screen.getByRole('button', { name: '패널 닫기' }));
   expect(mockAddLayer).toHaveBeenCalledTimes(layers);
   expect(mockBackoffice.getTimeseries).toHaveBeenCalledTimes(1);
@@ -312,8 +312,11 @@ test('FR-VIEW-12: 재생은 tile이 다 그려질 때까지 기다리고, 이전
   const [second] = tiles.at(T2);
   await act(async () => { second.source.emit('tileloadstart'); jest.advanceTimersByTime(300); });
   expect(mockAlive.has(first)).toBe(true);
+  // UR-66: the loading frame stays hidden, so its first tiles never sit beside the old date's tiles.
+  expect(second.setOpacity).toHaveBeenLastCalledWith(0);
   await act(async () => { second.source.emit('tileloaderror'); jest.advanceTimersByTime(80); });
   expect(mockAlive.has(first)).toBe(false);
+  expect(second.setOpacity).toHaveBeenLastCalledWith(1);
   // Drawn before the interval: the next frame is prefetched hidden, then reused when playback advances.
   const prefetch = tiles.at(T1)[1];
   expect(prefetch.setOpacity).toHaveBeenLastCalledWith(0);
@@ -322,8 +325,12 @@ test('FR-VIEW-12: 재생은 tile이 다 그려질 때까지 기다리고, 이전
   await act(async () => { jest.advanceTimersByTime(200); });
   expect(slider).toHaveValue('0');
   expect(tiles.at(T1)).toHaveLength(2);
-  expect(prefetch.setOpacity).toHaveBeenLastCalledWith(1);
+  // The reused frame appears only once its tiles are in, until then the shown time stays whole.
+  expect(prefetch.setOpacity).toHaveBeenLastCalledWith(0);
   expect(mockAlive.has(second)).toBe(true);
+  await tiles.load(prefetch);
+  expect(prefetch.setOpacity).toHaveBeenLastCalledWith(1);
+  expect(mockAlive.has(second)).toBe(false);
 });
 
 test('FR-VIEW-12: 빠르게 시점을 넘겨도 layer는 현재와 대기 중 하나씩만 남는다', async () => {
@@ -391,12 +398,12 @@ test('UX8: 원본 colour bar 범례는 비교(스와이프) 중에도 남고, �
   await selectBaselineDataset();
   // RGB can be built, so it opens on RGB (FB1); pick red for its colour bar.
   expect(await screen.findByRole('group', { name: '원본 범례: RGB 합성, 빨강 red · 초록 green · 파랑 blue' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  fireEvent.click(screen.getByRole('button', { name: '레이어' }));
   fireEvent.click(screen.getByRole('button', { name: 'red' }));
   expect(await screen.findByRole('group', { name: '원본 범례: red, 94 – 621.7' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /스와이프/ }));
   expect(screen.getByRole('group', { name: '원본 범례: red, 94 – 621.7' })).toBeInTheDocument();
-  if (!screen.queryByRole('button', { name: 'nir' })) fireEvent.click(screen.getByRole('button', { name: '레이어 및 AI 작업 패널 열기' }));
+  if (!screen.queryByRole('button', { name: 'nir' })) fireEvent.click(screen.getByRole('button', { name: '레이어' }));
   fireEvent.click(screen.getByRole('button', { name: 'nir' }));
   expect(screen.getByRole('group', { name: '원본 범례: nir, 32 – 1,469' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'RGB' }));

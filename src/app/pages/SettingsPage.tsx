@@ -1,6 +1,8 @@
 import { Check, TriangleAlert } from 'lucide-react';
 import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { accountMail, ContactEmail } from '../../api/accountMail';
+import { ContactEmailSection, DangerSection, NotifySection } from './settingsFx';
 import { ApiError, userMessage } from '../../api/httpClient';
 import { useAuth } from '../../auth/AuthProvider';
 import { accountRoleLabel, toAccountRole } from '../../auth/roles';
@@ -25,16 +27,28 @@ export default function SettingsPage() {
   const { t } = useLanguage();
   useDocumentTitle(t('titles.settings'));
   const toast = useToast();
+  // The contact e-mail (F6) is read once: its section edits it and the notification section names it.
+  const contact = useLoad<ContactEmail>(() => accountMail.contact());
+  // `#settings-notify` (the bell's "알림 설정") and other section anchors scroll into view once drawn.
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (!hash) return undefined;
+    const timer = window.setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView?.({ block: 'start' }), 120);
+    return () => window.clearTimeout(timer);
+  }, [hash]);
   return (
     <div className="settings-page">
-      <PageHeader title={t('titles.settings')} description={t('settings.description')} />
+      <PageHeader title={t('titles.settings')} description={t('settings.descriptionFx')} />
       <div className="settings">
         <ProfileSection onSaved={toast.show} />
         <Section id="settings-language" title={t('settings.language.title')} text={t('settings.language.text')}>
           <div className="settings__lang"><LanguageSwitch /></div>
         </Section>
         <PasswordSection onChanged={toast.show} />
+        <ContactEmailSection contact={contact} onToast={toast.show} />
+        <NotifySection contact={contact.data} />
         <StorageSection />
+        <DangerSection />
       </div>
       {toast.node}
     </div>
@@ -242,10 +256,13 @@ function StorageReport({ usage, lang }: { usage: StorageUsage; lang: 'ko' | 'en'
   const ratio = hasQuota ? usage.usedBytes / usage.quotaBytes : 0;
   const percent = hasQuota ? percentOf(usage.usedBytes, usage.quotaBytes, lang) : '';
   const level = !hasQuota ? 'ok' : ratio >= 1 ? 'over' : ratio >= NEAR_LIMIT ? 'near' : 'ok';
+  const byKind = (usage.byKind ?? {}) as Record<string, number | undefined>;
+  // Comparison results (UR-63 F3) appear in byKind once there are any.
   const kinds = [
     ['ORIGINAL', 'kinds.original'],
     ['FUSION', 'kinds.fusion'],
     ['AI_RESULT', 'kinds.ai'],
+    ...(byKind.COMPARISON ? [['COMPARISON', 'datasetFacts.kinds.compare'] as const] : []),
   ] as const;
   return (
     <div className={`storage storage--${level}`}>
@@ -267,7 +284,7 @@ function StorageReport({ usage, lang }: { usage: StorageUsage; lang: 'ko' | 'en'
           aria-valuenow={Math.min(100, Math.round(ratio * 100))}
           aria-valuetext={t('settings.storage.meterValue', { used, quota, percent })}
         >
-          <span className="storage__fill" style={{ width: `${Math.min(100, ratio * 100)}%` }} />
+          <span className="storage__fill" style={{ transform: `scaleX(${Math.min(1, ratio)})` }} />
         </div>
       )}
       {level !== 'ok' && (
@@ -279,7 +296,7 @@ function StorageReport({ usage, lang }: { usage: StorageUsage; lang: 'ko' | 'en'
       )}
       <dl className="storage__rows" aria-label={t('settings.storage.kinds')}>
         {kinds.map(([kind, label]) => (
-          <div key={kind} className="storage__row"><dt>{t(label)}</dt><dd>{formatBytes(usage.byKind?.[kind] ?? 0)}</dd></div>
+          <div key={kind} className="storage__row"><dt>{t(label)}</dt><dd>{formatBytes(byKind[kind] ?? 0)}</dd></div>
         ))}
         <div className="storage__row storage__row--count"><dt>{t('settings.storage.datasets')}</dt><dd>{t('settings.storage.datasetCount', { count: usage.datasetCount })}</dd></div>
       </dl>

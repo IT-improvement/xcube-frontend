@@ -75,6 +75,10 @@ const koApp = {
   jobType: {
     FUSION: '수식 융합',
     AI_WATER: 'AI 수체 추출',
+    COMPARE: '비교 분석',
+    EXPORT_GEOTIFF: 'GeoTIFF 내보내기',
+    EXPORT_ANIMATION: '애니메이션 내보내기',
+    EXPORT_REPORT: '보고서 PDF 내보내기',
   },
   aiModels: {
     ndwiBaseline: 'NDWI 기준선',
@@ -154,6 +158,9 @@ const koApp = {
     toList: '데이터 목록으로',
     sourceData: '원본 데이터:',
     viewSource: '#{id} 보기',
+    /** CMP2: comparison results of an original, read in its Viewer 결과 비교. */
+    comparisons: '비교 결과 {count}개',
+    comparisonsView: 'Viewer에서 보기',
     deleteLabel: '데이터 삭제',
     tabsLabel: '데이터 상세',
     tabs: {
@@ -337,7 +344,7 @@ const koApp = {
     userFallback: '사용자 {id}',
   },
   jobs: {
-    description: '데이터 생성·수식 융합·AI 수체 추출 작업의 진행 상황입니다. 처리 중인 작업이 있으면 10초마다 갱신합니다.',
+    description: '데이터 생성·수식 융합·AI 수체 추출·비교 분석·내보내기 작업의 진행 상황입니다. 처리 중인 작업이 있으면 10초마다 갱신합니다.',
     typeLabel: '작업 종류',
     refreshed: '{time} 갱신 · {seconds}초마다',
     updating: '새 조건으로 불러오는 중',
@@ -375,7 +382,35 @@ const koApp = {
     unavailable: '{services} 작업 목록을 불러오지 못했습니다. 나머지 작업만 표시합니다.',
     serviceFusion: '수식 융합',
     serviceAi: 'AI',
+    serviceCompare: '비교 분석',
     serviceSeparator: '·',
+    /** Result exports (UR-63 F2) in the job center. */
+    export: {
+      filter: '내보내기',
+      download: '내려받기',
+      downloading: '받는 중…',
+      downloadNamed: '{name} 파일 내려받기',
+      expired: '보관 기간 지남',
+      until: '{date}까지',
+      timesCount: '시점 {count}개',
+      format: '형식',
+      fps: '초당 {fps}장',
+      extent: '범위',
+      drawnArea: '그린 영역',
+      wholeData: '데이터 전체',
+    },
+    /** Comparison jobs (UR-63 F3). */
+    compare: {
+      type: '유형',
+      result: 'AI 결과',
+      a: '결과 A',
+      b: '결과 B',
+      times: '시점',
+      time: '시점',
+      reference: '정답 자료',
+      view: 'Viewer에서 보기',
+      viewNamed: '{name} 결과를 Viewer에서 보기',
+    },
     steps: {
       label: '처리 단계',
       inspect: '검사',
@@ -386,6 +421,8 @@ const koApp = {
       checkInputs: '입력 확인',
       compute: '계산',
       infer: '추론',
+      render: '파일 만들기',
+      ready: '내려받기 준비',
       done: '완료',
       current: '진행 중',
       failed: '실패',
@@ -590,6 +627,7 @@ const koApp = {
   /** S11 account settings: profile, language, password and storage usage. */
   settings: {
     description: '이름·언어·비밀번호를 바꾸고, 저장 용량을 확인합니다.',
+    descriptionFx: '이름·언어·비밀번호·연락 이메일·알림을 정하고, 저장 용량을 확인합니다.',
     profile: {
       title: '프로필',
       text: '프로젝트를 공유받은 사람에게 보이는 이름입니다.',

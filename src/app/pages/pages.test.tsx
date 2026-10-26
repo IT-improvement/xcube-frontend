@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import '@testing-library/jest-dom';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
+// Comparison jobs (UR-63 F3) join the job lists; these tests do not run Data Analysis.
+jest.mock('../../api/compare', () => ({ ...jest.requireActual('../../api/compare'), compareApi: { ...jest.requireActual('../../api/compare').compareApi, listJobs: () => Promise.resolve([]) } }));
 jest.mock('../../api', () => ({ activeViewerAdapter: { getProjects: jest.fn(), getDatasets: jest.fn(), getProjectDatasets: jest.fn(), getJobs: jest.fn(), runWaterExtraction: jest.fn() }, useMockApi: false }));
 jest.mock('../../api/backofficeApi', () => ({ backofficeAdapter: { getProject: jest.fn(), createProject: jest.fn(), updateProject: jest.fn(), deleteProject: jest.fn(), getProjectMembers: jest.fn(), addProjectMember: jest.fn(), updateProjectMember: jest.fn(), removeProjectMember: jest.fn(), getProjectDatasets: jest.fn(), getLinkableDatacubes: jest.fn(), linkProjectDataset: jest.fn(), unlinkProjectDataset: jest.fn(), getDatasetDetail: jest.fn(), deleteDatacube: jest.fn(), registerDatacube: jest.fn() } }));
 jest.mock('../../api/generationApi', () => ({ generationApi: { getColorBarOptions: jest.fn(), getCollections: jest.fn(), inspectSpatialFile: jest.fn(), createGeeJob: jest.fn(), createFileJob: jest.fn(), getJob: jest.fn(), listJobs: jest.fn(), jobSummary: jest.fn(), retryJob: jest.fn(), cancelJob: jest.fn(), estimateGee: jest.fn(), searchAdminAreas: jest.fn(), getAdminArea: jest.fn(), listAreas: jest.fn(), getArea: jest.fn(), deleteArea: jest.fn(), uploadArea: jest.fn(), areaFromJob: jest.fn() } }));

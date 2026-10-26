@@ -14,7 +14,7 @@
 /* Tag (was a pill badge): 4px corners, words + tone. */
 .xc-badge {
   display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border-radius: var(--fb-radius-mark);
-  font: 600 12px/1 var(--fb-font); white-space: nowrap; vertical-align: middle;
+  font: 600 13px/1 var(--fb-font); white-space: nowrap; vertical-align: middle;
 }
 .xc-badge svg { flex: none; }
 .xc-badge--neutral { background: var(--fb-sunken); color: var(--fb-ink-2); }
@@ -35,7 +35,7 @@
 .xc-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--fb-rule); overflow-x: auto; scrollbar-width: none; }
 .xc-tabs__tab {
   position: relative; display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 10px;
-  border: 0; background: transparent; color: var(--fb-ink-3); font: 600 13px/1 var(--fb-font); cursor: pointer; white-space: nowrap;
+  border: 0; background: transparent; color: var(--fb-ink-3); font: var(--fb-text-control); cursor: pointer; white-space: nowrap;
   transition: color 140ms ease-out;
 }
 .xc-tabs__tab:hover { color: var(--fb-ink); }
@@ -43,14 +43,15 @@
 .xc-tabs__tab[aria-selected='true']::after { content: ''; position: absolute; left: 6px; right: 6px; bottom: -1px; height: 2px; background: var(--fb-ink); }
 .xc-tabs__tab:focus-visible { outline-offset: -2px; }
 .xc-tabs__count {
-  min-width: 18px; height: 18px; padding: 0 5px; display: inline-grid; place-items: center; border-radius: var(--fb-radius-mark);
-  background: var(--fb-sunken); color: var(--fb-ink-2); font: 600 11.5px/1 var(--fb-font); font-variant-numeric: tabular-nums;
+  min-width: 18px; height: 18px; padding: 0 4px; display: inline-grid; place-items: center; border-radius: var(--fb-radius-mark);
+  background: var(--fb-sunken); color: var(--fb-ink-2); font: 600 13px/1 var(--fb-font); font-variant-numeric: tabular-nums;
 }
 
-/* Scroll cue: a row that scrolls sideways fades the edge that has more (data-more from useOverflowCue). */
-.xc-tabs[data-more='end'], .segmented[data-more='end'] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
-.xc-tabs[data-more='start'], .segmented[data-more='start'] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
-.xc-tabs[data-more='start end'], .segmented[data-more='start end'] { -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
+/* Scroll cue: a row that scrolls sideways fades the edge that has more (data-more from useOverflowCue).
+   A mask reads only alpha, so any opaque token works as the solid stop. */
+.xc-tabs[data-more='end'], .segmented[data-more='end'] { -webkit-mask-image: linear-gradient(to right, var(--fb-ink) calc(100% - 32px), transparent); mask-image: linear-gradient(to right, var(--fb-ink) calc(100% - 32px), transparent); }
+.xc-tabs[data-more='start'], .segmented[data-more='start'] { -webkit-mask-image: linear-gradient(to left, var(--fb-ink) calc(100% - 32px), transparent); mask-image: linear-gradient(to left, var(--fb-ink) calc(100% - 32px), transparent); }
+.xc-tabs[data-more='start end'], .segmented[data-more='start end'] { -webkit-mask-image: linear-gradient(to right, transparent, var(--fb-ink) 32px, var(--fb-ink) calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, var(--fb-ink) 32px, var(--fb-ink) calc(100% - 32px), transparent); }
 .xc-tabs::-webkit-scrollbar { display: none; }
 
 /* Segmented: a framed track; the pressed segment is ink. Scrolls instead of overflowing the page. */
@@ -61,7 +62,7 @@
 .segmented::-webkit-scrollbar { display: none; }
 .segmented button {
   flex: none; height: 28px; padding: 0 10px; border: 0; border-radius: var(--fb-radius-mark); background: transparent;
-  color: var(--fb-ink-2); font: 600 13px/1 var(--fb-font); cursor: pointer; white-space: nowrap;
+  color: var(--fb-ink-2); font: var(--fb-text-control); cursor: pointer; white-space: nowrap;
   transition: background-color 140ms ease-out, color 140ms ease-out;
 }
 .segmented button:hover:not(:disabled):not([aria-pressed='true']) { background: var(--fb-sunken); color: var(--fb-ink); }
@@ -142,7 +143,7 @@
 .xc-cell-main { display: grid; gap: 2px; min-width: 0; }
 .xc-cell-main a, .xc-cell-main strong { font-weight: 600; color: var(--fb-ink); text-decoration: none; }
 .xc-cell-main a:hover { text-decoration: underline; }
-.xc-cell-main small { color: var(--fb-ink-3); font-size: 12px; }
+.xc-cell-main small { color: var(--fb-ink-3); font-size: 13px; }
 
 /* A list that is reloading for new filters: the old rows stay, dimmed, until the new ones arrive (aria-busy). */
 .xc-stale { position: relative; transition: opacity 120ms ease-out; }
@@ -191,9 +192,10 @@
 .xc-hint { font: var(--text-caption); color: var(--fb-ink-3); font-weight: 400; }
 
 @media (pointer: coarse), (max-width: 767px) {
-  .xc-icon-btn { width: 40px; height: 40px; }
-  .xc-select { height: 40px; }
-  .segmented button { height: 34px; }
+  .xc-icon-btn { width: 44px; height: 44px; }
+  .xc-select { height: 44px; }
+  .segmented button { height: 44px; }
+  .xc-tabs__tab { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .xc-skeleton span, .xc-dialog, .xc-dialog-backdrop, .xc-toast, .xc-busy-line::before { animation: none; }
@@ -201,4 +203,27 @@
   .xc-stale { transition: none; }
   .xc-toast.is-leaving { transition: none; }
   .xc-icon-btn:active:not(:disabled) { transform: none; }
+}
+
+/* Steps (UXF1): one number mark everywhere (wizard, fusion, comparison sections, getting started, job stages)
+   and one staff for flows of steps. Ruled like the time staff, no boxes. */
+.xc-step-num {
+  display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: var(--fb-radius-mark);
+  background: var(--fb-surface); box-shadow: inset 0 0 0 1px var(--fb-rule-strong); color: var(--fb-ink-2);
+  font: 700 13px/1 var(--fb-font); font-variant-numeric: tabular-nums;
+}
+.xc-step-num.is-current { background: var(--fb-ink); box-shadow: none; color: var(--fb-on-ink); }
+.xc-step-num.is-done { box-shadow: inset 0 0 0 1px var(--fb-ink-2); color: var(--fb-ink); }
+.xc-steps { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--fb-rule-strong); }
+.xc-steps li { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 10px 12px 0 0; color: var(--fb-ink-3); }
+.xc-steps li::before { content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 2px; }
+.xc-steps li.is-done { color: var(--fb-ink-2); }
+.xc-steps li.is-done::before { background: var(--fb-ink-2); }
+.xc-steps li.is-current { color: var(--fb-ink); }
+.xc-steps li.is-current::before { background: var(--fb-ink); }
+.xc-steps__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 13px/1.3 var(--fb-font); }
+@media (max-width: 767px) {
+  .xc-steps li { padding-right: 6px; }
+  .xc-steps li:not(.is-current) .xc-steps__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .xc-steps li.is-current { grid-column: span 2; }
 }

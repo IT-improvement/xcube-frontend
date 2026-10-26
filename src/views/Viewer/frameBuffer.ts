@@ -24,7 +24,8 @@ type Options = {
 /**
  * Double-buffered source layer (FR-VIEW-12): a new frame is added while the previous one stays on
  * screen, and the previous one is removed only after the new frame's visible tiles have loaded
- * (or the safety timeout). At most current + pending + prefetch layers are alive.
+ * (or the safety timeout). The pending frame loads hidden and appears whole, so two times never show
+ * side by side tile by tile. At most current + pending + prefetch layers are alive.
  */
 export class FrameBuffer {
   private current: Frame | null = null;
@@ -114,14 +115,16 @@ export class FrameBuffer {
     if (this.current && this.current !== frame) this.dispose(this.current);
     this.current = frame;
     this.pending = null;
+    this.style(frame);
     this.options.onShown(frame.url);
   }
 
   private style(frame: Frame) {
     if (!frame.layer) return;
     frame.layer.setVisible(this.visible);
-    // The prefetch layer is rendered (so its tiles load) but not seen.
-    frame.layer.setOpacity(frame === this.prefetch ? 0 : this.opacity);
+    // Prefetch and pending layers are rendered (so their tiles load) but not seen: a half-loaded new time
+    // over the old one would show two dates side by side (UR-66).
+    frame.layer.setOpacity(frame === this.prefetch || frame === this.pending ? 0 : this.opacity);
   }
 
   private drop(slot: "current" | "pending" | "prefetch") {

@@ -14,6 +14,9 @@ import NotFoundPage from './pages/NotFoundPage';
 // and the signed-in app (shell + pages, see app/AppSection) download when their route opens.
 const Viewer = lazy(() => import('./views/Viewer'));
 const AppSection = lazy(() => import('./app/AppSection'));
+// Password reset (UR-63 F6) is rarely used: its pages and server codes download when opened.
+const ForgotPasswordPage = lazy(() => import('./pages/PasswordPages').then((module) => ({ default: module.ForgotPasswordPage })));
+const ResetPasswordPage = lazy(() => import('./pages/PasswordPages').then((module) => ({ default: module.ResetPasswordPage })));
 
 function ViewerPage() {
   const { user, signOut } = useAuth();
@@ -31,6 +34,9 @@ export function AppRoutes() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        {/* UR-63 F6: password reset by mail (the request page says to ask an admin when mail is off). */}
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/app/*" element={<RequireAuth><AppSection /></RequireAuth>} />
         {/* The Viewer keeps its own full-screen layout and opens in a new tab. */}
         <Route path="/app/viewer" element={<RequireAuth><ViewerPage /></RequireAuth>} />

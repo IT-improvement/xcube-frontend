@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, ListChecks, RotateCcw, Square } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, ExternalLink, ListChecks, RotateCcw, Square } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { userMessage } from '../../api/httpClient';
@@ -6,7 +6,10 @@ import { JobSummary } from '../../api/generationApi';
 import { Alert, Button, ButtonLink } from '../../components/ui';
 import { NEEDS, useRoleGate } from '../../auth/roles';
 import { Card, ConfirmDialog, EmptyState, PageHeader, Segmented, Skeleton, useToast } from '../../components/ui/kit';
-import { aiViewerHref, formatDateTime, JobListResult, jobs as jobService, unavailableJobsNotice } from '../api';
+import { aiViewerHref, formatDateTime, isCompareJob, isExportJob, JobListResult, jobs as jobService, unavailableJobsNotice, viewerHref } from '../api';
+import { exportFallbackName, exportsApi, saveBlob } from '../../api/exports';
+import type { ExportKind, ExportFacts as ExportFactsShape } from '../../api/exports';
+import { formatBytes } from '../fusion';
 import { elapsed, isActive, jobTypeLabel, JobInputSummary, JobStatusBadge, JobSteps, POLL_ACTIVE_MS, useJobsFeed } from '../jobs';
 import { useLoad } from '../useLoad';
 import { failureText, formatDate, registrationFailureText, useLanguage } from '../../i18n';
@@ -15,16 +18,21 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 // The management screens' text (UR-53 stage 2) loads with these pages, not with the main bundle.
 import '../../i18n/app';
 
-type TypeFilter = '' | 'GEE_TO_ZARR' | 'GEOTIFF_BANDS,CAS500' | 'SENTINEL2_L2A,LANDSAT_C2L2' | 'SHAPEFILE' | 'FUSION' | 'AI_WATER';
+type TypeFilter = '' | 'GEE_TO_ZARR' | 'GEOTIFF_BANDS,CAS500' | 'SENTINEL2_L2A,LANDSAT_C2L2' | 'SHAPEFILE' | 'FUSION' | 'AI_WATER' | 'COMPARE' | 'EXPORT_GEOTIFF,EXPORT_ANIMATION,EXPORT_REPORT';
 type StatusFilter = '' | 'QUEUED,RUNNING' | 'SUCCEEDED' | 'FAILED,CANCELLED';
-const TYPES: TypeFilter[] = ['', 'GEE_TO_ZARR', 'GEOTIFF_BANDS,CAS500', 'SENTINEL2_L2A,LANDSAT_C2L2', 'SHAPEFILE', 'FUSION', 'AI_WATER'];
+const TYPES: TypeFilter[] = ['', 'GEE_TO_ZARR', 'GEOTIFF_BANDS,CAS500', 'SENTINEL2_L2A,LANDSAT_C2L2', 'SHAPEFILE', 'FUSION', 'AI_WATER', 'COMPARE', 'EXPORT_GEOTIFF,EXPORT_ANIMATION,EXPORT_REPORT'];
 const STATUSES: StatusFilter[] = ['', 'QUEUED,RUNNING', 'SUCCEEDED', 'FAILED,CANCELLED'];
 const pick = <T extends string>(value: string | null, allowed: T[]) => (allowed.includes(value as T) ? (value as T) : ('' as T));
 /** Type filter buttons: source types keep their product names; the rest are dictionary keys. */
 const TYPE_BUTTONS: Array<[TypeFilter, { key: TKey } | { text: string }]> = [
   ['', { key: 'app.all' }], ['GEE_TO_ZARR', { text: 'GEE' }], ['GEOTIFF_BANDS,CAS500', { text: 'GeoTIFF·CAS500' }], ['SENTINEL2_L2A,LANDSAT_C2L2', { text: 'Sentinel-2·Landsat' }], ['SHAPEFILE', { text: 'Shapefile' }],
-  ['FUSION', { key: 'jobType.FUSION' }], ['AI_WATER', { key: 'jobType.AI_WATER' }],
+  ['FUSION', { key: 'jobType.FUSION' }], ['AI_WATER', { key: 'jobType.AI_WATER' }], ['COMPARE', { key: 'jobType.COMPARE' }],
+  ['EXPORT_GEOTIFF,EXPORT_ANIMATION,EXPORT_REPORT', { key: 'jobs.export.filter' }],
 ];
+/** Export file kind from the job type (EXPORT_GEOTIFF → GEOTIFF). */
+const exportKindOf = (type: string) => type.replace('EXPORT_', '') as ExportKind;
+type ExportFacts = ExportFactsShape;
+const exportOf = (job: JobSummary) => (job as JobSummary & { export?: ExportFacts | null }).export ?? null;
 // Seconds, so each 10-second refresh visibly changes the time.
 const REFRESHED: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' };
 
@@ -79,7 +87,17 @@ export default function JobsPage() {
   const retryList = () => { if (filtered) own.reload(); else feed.refresh(); };
 
   // Ids are unique per service only, so rows are keyed by type too.
-  const keyOf = (job: JobSummary) => `${job.type === 'FUSION' || job.type === 'AI_WATER' ? job.type : 'GEN'}:${job.id}`;
+  const keyOf = (job: JobSummary) => `${job.type === 'FUSION' || job.type === 'AI_WATER' || job.type === 'COMPARE' ? job.type : 'GEN'}:${job.id}`;
+  // Export files need the sign-in token, so they come through fetch → blob and are saved under the server's name (F2).
+  const download = async (job: JobSummary) => {
+    setBusy(keyOf(job));
+    setError('');
+    try {
+      const facts = exportOf(job);
+      const file = await exportsApi.file(job.id, facts?.fileName ?? exportFallbackName(exportKindOf(job.type), String(job.input?.format ?? '')));
+      saveBlob(file.blob, file.fileName);
+    } catch (cause) { setError(userMessage(cause, lang)); } finally { setBusy(''); }
+  };
   const retry = async (job: JobSummary) => {
     setBusy(keyOf(job));
     setError('');
@@ -97,6 +115,9 @@ export default function JobsPage() {
     toast.show(t('jobs.cancelled'));
     refreshAll();
   };
+
+  /** "12.3 MB · 10. 24.까지" for a finished export (7-day retention). */
+  const exportFacts = (facts: ExportFacts) => [facts.sizeBytes != null ? formatBytes(facts.sizeBytes) : '', facts.expired ? t('jobs.export.expired') : facts.expiresAt ? t('jobs.export.until', { date: formatDateTime(facts.expiresAt, lang) }) : ''].filter(Boolean).join(' · ');
 
   return (
     <div className="page-stack">
@@ -157,14 +178,14 @@ export default function JobsPage() {
                             {expanded ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
                           </button>
                         </td>
-                        <td className="cell-main"><span className="xc-cell-main"><strong>{job.name || t('app.noName')}</strong>{job.errorMessage && <small className="job-error">{failureText(job, lang)}</small>}</span></td>
+                        <td className="cell-main"><span className="xc-cell-main"><strong>{job.name || t('app.noName')}</strong>{job.errorMessage && <small className="job-error">{failureText(job, lang)}</small>}{isExportJob(job) && job.status === 'SUCCEEDED' && exportOf(job) && <small className="job-export tabular">{exportFacts(exportOf(job)!)}</small>}</span></td>
                         <td className="nowrap jobs-table__type">{jobTypeLabel(job.type, lang)}</td>
                         <td><JobStatusBadge job={job} /></td>
                         <td className="jobs-table__progress">
                           {job.status === 'RUNNING' && (
                             <span className="job-progress-cell">
                               <svg className="job-progress" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label={t('jobs.progressNamed', { name: job.name })}>
-                                <rect width={`${percent}%`} height="100%" />
+                                <rect width="100%" height="100%" transform={`scale(${percent / 100} 1)`} />
                               </svg>
                               <small className="tabular xc-hint">{percent}%</small>
                             </span>
@@ -174,14 +195,20 @@ export default function JobsPage() {
                         <td className="hide-sm date">{formatDateTime(job.createdAt, lang)}</td>
                         <td className="cell-actions">
                           <div className="row-actions">
-                            {job.registration?.datacubeId != null && job.status === 'SUCCEEDED' && (
+                            {job.registration?.datacubeId != null && job.status === 'SUCCEEDED' && !isCompareJob(job) && (
                               <Link className="xc-btn xc-btn--ghost xc-btn--sm" to={`/app/data/${job.registration.datacubeId}`}>{t('jobs.viewData')}</Link>
                             )}
                             {job.type === 'AI_WATER' && job.status === 'SUCCEEDED' && job.input?.datacubeId != null && (
                               <a className="xc-btn xc-btn--ghost xc-btn--sm" href={aiViewerHref(String(job.input.datacubeId), job.id)} target="_blank" rel="noopener noreferrer" aria-label={t('app.compareInViewerNamed', { name: job.name })}>{t('app.compareShort')}</a>
                             )}
+                            {isExportJob(job) && job.status === 'SUCCEEDED' && (exportOf(job)?.expired
+                              ? <span className="xc-hint">{t('jobs.export.expired')}</span>
+                              : <Button size="sm" variant="line" disabled={busy === key} onClick={() => download(job)} aria-label={t('jobs.export.downloadNamed', { name: job.name })}><Download size={14} aria-hidden />{busy === key ? t('jobs.export.downloading') : t('jobs.export.download')}</Button>)}
+                            {isCompareJob(job) && job.status === 'SUCCEEDED' && job.registration?.datacubeId != null && (
+                              <a className="xc-btn xc-btn--ghost xc-btn--sm" href={viewerHref(String(job.registration.datacubeId))} target="_blank" rel="noopener noreferrer" aria-label={t('jobs.compare.viewNamed', { name: job.name })}>{t('jobs.compare.view')}<ExternalLink size={13} aria-hidden /></a>
+                            )}
                             {isActive(job) && <Button size="sm" variant="quiet" disabled={busy === key} onClick={() => setCancelling(job)} aria-label={t('jobs.cancelNamed', { name: job.name })}><Square size={14} aria-hidden />{t('jobs.cancel')}</Button>}
-                            {(job.status === 'FAILED' || job.status === 'CANCELLED') && <Button size="sm" variant="line" disabled={busy === key} aria-disabled={retryLocked ? true : undefined} title={retryLocked || undefined} onClick={retryLocked ? undefined : () => retry(job)} aria-label={t('jobs.retryNamed', { name: job.name })}><RotateCcw size={14} aria-hidden />{t('jobs.retry')}</Button>}
+                            {(job.status === 'FAILED' || job.status === 'CANCELLED') && !isCompareJob(job) && <Button size="sm" variant="line" disabled={busy === key} aria-disabled={retryLocked ? true : undefined} title={retryLocked || undefined} onClick={retryLocked ? undefined : () => retry(job)} aria-label={t('jobs.retryNamed', { name: job.name })}><RotateCcw size={14} aria-hidden />{t('jobs.retry')}</Button>}
                           </div>
                         </td>
                       </tr>

@@ -4,6 +4,8 @@
 // message codes these pages show (job failures, band math warnings, request errors) come with them (stage 5).
 import '../codes/data';
 import '../codes/ai';
+import '../codes/fx';
+import '../fx';
 import { registerDictionaries } from '../core';
 import en from './en';
 import ko from './ko';

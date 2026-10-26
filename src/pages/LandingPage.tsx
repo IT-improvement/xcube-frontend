@@ -14,12 +14,15 @@ const ASSET = `${process.env.PUBLIC_URL ?? ''}/landing`;
 
 const NAV = [
   { href: '#case', key: 'landing.nav.case' },
+  { href: '#features', key: 'landing.nav.features' },
   { href: '#customers', key: 'landing.nav.customers' },
   { href: '#adopt', key: 'landing.nav.adopt' },
 ] as const;
 
 /** "무엇이 달라지나": three ruled lines. Only what is built today. Texts: landing.change.<id>. */
 const CHANGES = ['store', 'open', 'ai'] as const;
+/** "지금 할 수 있는 일" (UX5, UR-63): only what works today. Texts: landing.features.<id>. */
+const FEATURES = ['pictures', 'area', 'export', 'compare', 'notify', 'operator'] as const;
 /** What the result panel in the case capture shows, top to bottom. Texts: landing.case.<id>. */
 const CASE_READING = ['swipe', 'threshold', 'metrics', 'csv'] as const;
 const CUSTOMERS = ['enterprise', 'local'] as const;
@@ -210,6 +213,27 @@ export default function LandingPage() {
               </Link>
               <figcaption className="lp-caption">{t('landing.case.caption')}</figcaption>
             </figure>
+          </div>
+        </section>
+
+        <section id="features" className="lp-features" aria-labelledby="features-title">
+          <div className="lp-wrap">
+            <div className="lp-features__head">
+              <h2 id="features-title" className="lp-h2">{t('landing.features.title')}</h2>
+              <p className="lp-features__lead">{t('landing.features.lead')}</p>
+            </div>
+            <figure className="lp-features__shot">
+              <img src={`${ASSET}/daecheong-change.webp`} width={1600} height={912} loading="lazy" decoding="async" alt={t('landing.features.alt')} />
+              <figcaption className="lp-caption">{t('landing.features.caption')}</figcaption>
+            </figure>
+            <ul className="lp-ledger">
+              {FEATURES.map((id) => (
+                <li key={id} className={`lp-ledger__item${id === 'operator' ? ' lp-ledger__item--quiet' : ''}`}>
+                  <h3 className="lp-ledger__title">{t(`landing.features.${id}.title`)}</h3>
+                  <p>{t(`landing.features.${id}.text`)}</p>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 

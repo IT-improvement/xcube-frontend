@@ -1,6 +1,7 @@
-import { ChevronDown, ExternalLink, LogOut, Menu, Plus, Settings, ShieldCheck, X } from 'lucide-react';
+import { ChevronDown, ExternalLink, LogOut, Menu, Plus, RotateCcw, Settings, ShieldCheck, X } from 'lucide-react';
 import { KeyboardEvent, RefObject, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { LeaveGuardProvider, useConfirmLeave } from './leaveGuard';
 import { useAuth } from '../auth/AuthProvider';
 import { NEEDS, useRoleGate } from '../auth/roles';
 import { ButtonLink, LanguageSwitch, LockedButton, Logo, RouteFallback } from '../components/ui';
@@ -8,6 +9,8 @@ import { TKey, useT } from '../i18n';
 import { adminConsoleUrl } from './adminConsole';
 import { appApi } from './api';
 import { JobsFeedProvider, useActiveJobCount } from './jobs';
+import { NotificationBell, NotificationsProvider } from './notifications';
+import { showOnboardingAgain } from './onboarding';
 import './app.css';
 
 /** Pages inside the shell. The Viewer keeps its own full-screen layout and opens in a new tab. */
@@ -17,6 +20,7 @@ const NAV: Array<{ to: string; label: TKey; end: boolean }> = [
   { to: '/app/projects', label: 'shell.nav.projects', end: false },
   { to: '/app/jobs', label: 'shell.nav.jobs', end: false },
   { to: '/app/analysis/fusion', label: 'shell.nav.fusion', end: false },
+  { to: '/app/analysis/compare', label: 'shell.nav.compare', end: false },
 ];
 const ACTIVE_JOBS_HREF = `/app/jobs?status=${encodeURIComponent('QUEUED,RUNNING')}`;
 const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled)';
@@ -65,7 +69,8 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
 /** Signed-in layout for /app pages (S2–S6, S10–S12): a 48px top bar like the Viewer's, then the page. */
 export default function AppShell() {
   // One jobs poller for the whole shell: the top bar badge, the dashboard and the job center share it.
-  return <JobsFeedProvider><ShellFrame /></JobsFeedProvider>;
+  // Notifications (UR-63 F4) check for news on the same poller's ticks.
+  return <JobsFeedProvider><NotificationsProvider><LeaveGuardProvider><ShellFrame /></LeaveGuardProvider></NotificationsProvider></JobsFeedProvider>;
 }
 
 function ShellFrame() {
@@ -74,6 +79,12 @@ function ShellFrame() {
   const name = user?.name ?? t('shell.userFallback');
   const activeJobs = useActiveJobCount();
   const location = useLocation();
+  const navigate = useNavigate();
+  /** UX1: the dashboard's "시작하기" checklist comes back (it was closed in this browser). */
+  // UXF1: both leave the page from code, so a screen with unsaved input (데이터 추가, 수식 융합) asks first.
+  const confirmLeave = useConfirmLeave();
+  const startGuide = () => { setAccountOpen(false); setMenuOpen(false); confirmLeave(() => { showOnboardingAgain(); navigate('/app'); }); };
+  const leaveAndSignOut = () => { setAccountOpen(false); setMenuOpen(false); confirmLeave(() => { void signOut(); }); };
   // Data can be added from PROJECT_USER up (UR-59); below that the button stays, off, with the reason.
   const gate = useRoleGate();
   const addLocked = gate.reason(NEEDS.createData);
@@ -119,6 +130,7 @@ function ShellFrame() {
         <nav className="app-top__nav" aria-label={t('shell.mainNav')}><NavItems /></nav>
         <div className="app-top__end">
           {jobsState}
+          <NotificationBell useDismiss={useDismiss} />
           {/* The one "add data" entry on every page (decision 2): words on wide screens, the + alone on tablets. */}
           {addLocked ? (
             <LockedButton size="sm" className="app-top__add" wrapClassName="app-top__add-wrap" reason={addLocked} label={t('shell.addData')}><Plus size={14} aria-hidden /><span className="app-top__add-text">{t('shell.addData')}</span></LockedButton>
@@ -134,7 +146,7 @@ function ShellFrame() {
               aria-controls="app-account-panel"
               onClick={() => setAccountOpen((value) => !value)}
             >
-              <span className="app-account__initial" aria-hidden>{name.slice(0, 1)}</span>
+              <span className="xc-avatar" aria-hidden>{name.slice(0, 1)}</span>
               <span className="app-account__name">{name}</span>
               <span className="sr-only">{t('shell.accountMenu')}</span>
               <ChevronDown size={14} aria-hidden />
@@ -144,8 +156,9 @@ function ShellFrame() {
                 <p className="app-account__who"><strong>{name}</strong>{appApi.demo && <small>{t('shell.demo')}</small>}</p>
                 <div className="app-account__lang"><LanguageSwitch block /></div>
                 <Link className="app-account__item" to="/app/settings" aria-current={location.pathname === '/app/settings' ? 'page' : undefined}><Settings size={15} aria-hidden />{t('shell.settings')}</Link>
+                <button type="button" className="app-account__item" onClick={startGuide}><RotateCcw size={15} aria-hidden />{t('shell.startGuide')}</button>
                 {gate.isAdmin && <a className="app-account__item" href={adminConsoleUrl()}><ShieldCheck size={15} aria-hidden />{t('shell.nav.admin')}</a>}
-                <button type="button" className="app-account__item" onClick={signOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
+                <button type="button" className="app-account__item" onClick={leaveAndSignOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
               </div>
             )}
           </div>
@@ -178,7 +191,8 @@ function ShellFrame() {
               <span className="app-account__who"><strong>{name}</strong>{appApi.demo && <small>{t('shell.demo')}</small>}</span>
               <div className="app-sheet__account-actions">
                 <ButtonLink to="/app/settings" variant="line" size="sm" onClick={closeMenu}><Settings size={15} aria-hidden />{t('shell.settings')}</ButtonLink>
-                <button type="button" className="xc-btn xc-btn--line xc-btn--sm" onClick={signOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
+                <button type="button" className="xc-btn xc-btn--line xc-btn--sm" onClick={startGuide}><RotateCcw size={15} aria-hidden />{t('shell.startGuide')}</button>
+                <button type="button" className="xc-btn xc-btn--line xc-btn--sm" onClick={leaveAndSignOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
               </div>
             </div>
           </div>

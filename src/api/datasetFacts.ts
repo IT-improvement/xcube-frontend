@@ -35,6 +35,6 @@ export function shortPeriod(dataset: Pick<ZarrDataset, 'times'>): string {
   return start === end ? start : `${start}–${end}`;
 }
 
-export type KindId = 'original' | 'fusion' | 'ai';
+export type KindId = 'original' | 'fusion' | 'ai' | 'compare';
 export const kindIdOf = (dataset: Pick<ZarrDataset, 'kind'>): KindId =>
-  dataset.kind === 'FUSION' ? 'fusion' : dataset.kind === 'AI_RESULT' ? 'ai' : 'original';
+  dataset.kind === 'FUSION' ? 'fusion' : dataset.kind === 'AI_RESULT' ? 'ai' : dataset.kind === 'COMPARISON' ? 'compare' : 'original';

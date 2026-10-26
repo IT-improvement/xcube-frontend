@@ -12,6 +12,7 @@ const ProjectDetailPage = lazy(() => import('./pages/ProjectsPage').then((module
 const AddDataPage = lazy(() => import('./wizard/AddDataPage'));
 const JobsPage = lazy(() => import('./pages/JobsPage'));
 const FusionPage = lazy(() => import('./pages/FusionPage'));
+const ComparePage = lazy(() => import('./pages/ComparePage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AdminRedirectPage = lazy(() => import('./pages/AdminRedirectPage'));
 const AppNotFoundPage = lazy(() => import('./pages/AppNotFoundPage'));
@@ -29,6 +30,7 @@ export default function AppSection() {
         <Route path="projects/:projectId" element={<ProjectDetailPage />} />
         <Route path="jobs" element={<JobsPage />} />
         <Route path="analysis/fusion" element={<FusionPage />} />
+        <Route path="analysis/compare" element={<ComparePage />} />
         <Route path="settings" element={<SettingsPage />} />
         {/* The old S13 address: admins go on to the admin console (UR-62, /admin); others get the 404 below. */}
         <Route path="admin/*" element={<AdminRedirectPage />} />
