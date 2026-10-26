@@ -809,7 +809,8 @@ export function WaterAreaRow({
               {[0, max / 2, max].map((tick) => (
                 <g key={tick}>
                   <line className="grid" x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} />
-                  <text className="axis-label" x={left - 5} y={y(tick) + 3} textAnchor="end">{formatNumber(tick, { maximumFractionDigits: 1 }, lang)}</text>
+                  {/* UXF1: clear of the first bar, which is centred on the first tick (13px labels used to sit under it). */}
+                  <text className="axis-label" x={left - barWidth / 2 - 4} y={y(tick) + 3} textAnchor="end">{formatNumber(tick, { maximumFractionDigits: 1 }, lang)}</text>
                 </g>
               ))}
               {values.map((value, at) =>

@@ -1414,3 +1414,9 @@
   /* 13px dates need room: the phone staff names only the first and the last time (every tick stays). */
   .vx-staff__date:not(.is-first):not(.is-last) { display: none; }
 }
+
+/* UXF1: with a finger pointer on a wide screen (tablets, touch laptops) the 44px player leaves no room for the
+   count beside the date ("1 /" was cut off); the count goes under the date as on phones. */
+@media (pointer: coarse) and (min-width: 768px) {
+  .vx-current { grid-template-columns: auto; grid-template-areas: 'date' 'count' 'b'; gap: 2px; }
+}
