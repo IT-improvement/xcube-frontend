@@ -1,6 +1,6 @@
 // Shared building blocks for the app pages: tags, tabs, radio groups, dialogs, empty and loading
 // states and a small toast. Field-book system (DESIGN.md); styles in kit.css under .xc.
-import { X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { KeyboardEvent, ReactNode, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { userMessage } from '../../api/httpClient';
 import { useLanguage, useT } from '../../i18n';
@@ -290,4 +290,31 @@ export function useToast() {
     </div>
   );
   return { show, node };
+}
+
+/** One number mark for every step on every screen (UXF1): a 22px square; ink when current, a check when done. */
+export function StepNum({ n, state }: { n: number; state?: 'current' | 'done' }) {
+  return <span className={`xc-step-num tabular${state ? ` is-${state}` : ''}`} aria-hidden>{state === 'done' ? <Check size={14} /> : n}</span>;
+}
+
+/**
+ * Where you are in a flow of steps (UXF1: 데이터 추가 and 수식 융합 share it): a ruled staff, a number mark and a word per
+ * step. Done steps carry a 2px ink-2 rule and a check, the current one a 2px ink rule. On phones only the current
+ * step keeps its word on screen; the others stay readable to screen readers.
+ */
+export function StepTrack({ label, steps, current }: { label: string; steps: ReactNode[]; current: number }) {
+  const t = useT();
+  return (
+    <ol className="xc-steps" aria-label={label}>
+      {steps.map((name, index) => {
+        const state = index === current ? 'current' : index < current ? 'done' : undefined;
+        return (
+          <li key={index} className={state ? `is-${state}` : undefined} aria-current={state === 'current' ? 'step' : undefined}>
+            <StepNum n={index + 1} state={state} />
+            <span className="xc-steps__label">{name}{state === 'done' && <span className="sr-only"> ({t('common.stepDone')})</span>}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }

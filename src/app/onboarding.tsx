@@ -1,9 +1,10 @@
 // "시작하기" checklist for first-time users (UR-63 UX1): ① open the example data in the Viewer ② compare an AI
 // result with its source ③ add your own data ④ see it together in a project. What is done and whether the guide is
 // closed live in this browser (localStorage, a convenience); the account menu's "시작 안내 다시 보기" brings it back.
-import { ArrowRight, Check, ExternalLink } from 'lucide-react';
+import { ArrowRight, ExternalLink } from 'lucide-react';
 import { ReactElement, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { StepNum } from '../components/ui/kit';
 import { isExample } from '../api/examples';
 import { NEEDS, useRoleGate } from '../auth/roles';
 import { useT } from '../i18n';
@@ -98,7 +99,7 @@ export function OnboardingChecklist({ items }: { items: ZarrDataset[] | null }) 
           const isDone = finished(row.id);
           return (
             <li key={row.id} className={`onboard__step${isDone ? ' is-done' : ''}`}>
-              <span className="onboard__num tabular" aria-hidden>{isDone ? <Check size={14} /> : index + 1}</span>
+              <StepNum n={index + 1} state={isDone ? 'done' : undefined} />
               <span className="onboard__text">
                 <strong>{t(row.title)}{isDone && <span className="onboard__done">{t('onboarding.done')}</span>}</strong>
                 <span>{row.id === 'add' && locked ? locked : t(row.text, { name: (row.id === 'compare' ? aiResult?.name : original?.name) ?? '' })}</span>

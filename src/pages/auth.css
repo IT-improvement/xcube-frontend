@@ -50,3 +50,6 @@
   .auth__main { place-items: start center; padding: var(--space-6) var(--space-4) var(--space-10); }
   .auth__mobile-logo { display: block; }
 }
+
+/* UXF1: the back link is a 44px target on phones. */
+@media (pointer: coarse), (max-width: 767px) { .auth__back { min-height: 44px; } }

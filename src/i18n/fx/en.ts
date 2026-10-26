@@ -126,6 +126,9 @@ const enFx: FxTranslation = {
     running: 'Starting…',
     runHint: 'It usually takes a few seconds. You will get a notification.',
     result: {
+      loadFailed: 'Could not load the progress. {error}',
+      reload: 'Load again',
+      retrying: 'Loading the progress again ({count}/{max}).',
       title: 'Comparison result',
       viewer: 'View in Viewer',
       where: 'Open the source “{name}” in the Viewer and find the result under “Compare”.',

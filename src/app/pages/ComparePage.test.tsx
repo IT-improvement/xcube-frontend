@@ -119,3 +119,34 @@ test('CMP2: ?resultId=로 미리 채우고, 지난 비교의 Viewer 링크는 �
   expect(screen.getByText(/결과는 원본 데이터의 Viewer ‘결과 비교’에 쌓입니다/)).toBeInTheDocument();
   expect(await screen.findByRole('link', { name: '예전 비교 결과를 Viewer에서 보기' })).toHaveAttribute('href', '/app/viewer?dataset=55&tool=result&comparison=120');
 });
+
+test('UXF1: 진행 상태를 못 읽으면 다시 묻고, 계속 실패하면 오류와 “다시 불러오기”를 보인다', async () => {
+  jest.useFakeTimers();
+  try {
+    const running = { ...done, id: 'c5', name: '진행 중 비교', status: 'RUNNING', progress: 0.4, metrics: undefined };
+    compare.listJobs.mockResolvedValue([running]);
+    const offline = new ApiError(0, 'NETWORK', '서버에 연결할 수 없습니다.');
+    compare.get.mockReset();
+    compare.get.mockResolvedValueOnce(running).mockRejectedValueOnce(offline).mockResolvedValueOnce({ ...running, progress: 0.8 });
+    renderAt('/app/analysis/compare?job=c5');
+    expect(await screen.findByRole('region', { name: '진행 중 비교' })).toBeInTheDocument();
+    // The next read fails: the job stays on screen and the page says it is trying again.
+    await act(async () => { jest.advanceTimersByTime(2000); });
+    expect(await screen.findByText(/진행 상태를 다시 불러오는 중입니다 \(1\/4\)/)).toBeInTheDocument();
+    await act(async () => { jest.advanceTimersByTime(2000); });
+    await waitFor(() => expect(screen.queryByText(/다시 불러오는 중/)).not.toBeInTheDocument());
+    expect(compare.get).toHaveBeenCalledTimes(3);
+
+    // Every read fails: after four tries the error shows with a button that starts again.
+    compare.get.mockReset();
+    compare.get.mockRejectedValue(offline);
+    await act(async () => { jest.advanceTimersByTime(2000); });
+    for (const ms of [2000, 4000, 8000, 15000]) await act(async () => { jest.advanceTimersByTime(ms); });
+    expect(await screen.findByText(/진행 상태를 불러오지 못했습니다/)).toBeInTheDocument();
+    compare.get.mockResolvedValue({ ...running, status: 'SUCCEEDED', progress: 1 });
+    fireEvent.click(screen.getByRole('button', { name: '다시 불러오기' }));
+    await waitFor(() => expect(screen.queryByText(/진행 상태를 불러오지 못했습니다/)).not.toBeInTheDocument());
+  } finally {
+    jest.useRealTimers();
+  }
+});

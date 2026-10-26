@@ -1,6 +1,7 @@
 import { ChevronDown, ExternalLink, LogOut, Menu, Plus, RotateCcw, Settings, ShieldCheck, X } from 'lucide-react';
 import { KeyboardEvent, RefObject, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { LeaveGuardProvider, useConfirmLeave } from './leaveGuard';
 import { useAuth } from '../auth/AuthProvider';
 import { NEEDS, useRoleGate } from '../auth/roles';
 import { ButtonLink, LanguageSwitch, LockedButton, Logo, RouteFallback } from '../components/ui';
@@ -69,7 +70,7 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
 export default function AppShell() {
   // One jobs poller for the whole shell: the top bar badge, the dashboard and the job center share it.
   // Notifications (UR-63 F4) check for news on the same poller's ticks.
-  return <JobsFeedProvider><NotificationsProvider><ShellFrame /></NotificationsProvider></JobsFeedProvider>;
+  return <JobsFeedProvider><NotificationsProvider><LeaveGuardProvider><ShellFrame /></LeaveGuardProvider></NotificationsProvider></JobsFeedProvider>;
 }
 
 function ShellFrame() {
@@ -80,7 +81,10 @@ function ShellFrame() {
   const location = useLocation();
   const navigate = useNavigate();
   /** UX1: the dashboard's "시작하기" checklist comes back (it was closed in this browser). */
-  const startGuide = () => { showOnboardingAgain(); setAccountOpen(false); setMenuOpen(false); navigate('/app'); };
+  // UXF1: both leave the page from code, so a screen with unsaved input (데이터 추가, 수식 융합) asks first.
+  const confirmLeave = useConfirmLeave();
+  const startGuide = () => { setAccountOpen(false); setMenuOpen(false); confirmLeave(() => { showOnboardingAgain(); navigate('/app'); }); };
+  const leaveAndSignOut = () => { setAccountOpen(false); setMenuOpen(false); confirmLeave(() => { void signOut(); }); };
   // Data can be added from PROJECT_USER up (UR-59); below that the button stays, off, with the reason.
   const gate = useRoleGate();
   const addLocked = gate.reason(NEEDS.createData);
@@ -142,7 +146,7 @@ function ShellFrame() {
               aria-controls="app-account-panel"
               onClick={() => setAccountOpen((value) => !value)}
             >
-              <span className="app-account__initial" aria-hidden>{name.slice(0, 1)}</span>
+              <span className="xc-avatar" aria-hidden>{name.slice(0, 1)}</span>
               <span className="app-account__name">{name}</span>
               <span className="sr-only">{t('shell.accountMenu')}</span>
               <ChevronDown size={14} aria-hidden />
@@ -154,7 +158,7 @@ function ShellFrame() {
                 <Link className="app-account__item" to="/app/settings" aria-current={location.pathname === '/app/settings' ? 'page' : undefined}><Settings size={15} aria-hidden />{t('shell.settings')}</Link>
                 <button type="button" className="app-account__item" onClick={startGuide}><RotateCcw size={15} aria-hidden />{t('shell.startGuide')}</button>
                 {gate.isAdmin && <a className="app-account__item" href={adminConsoleUrl()}><ShieldCheck size={15} aria-hidden />{t('shell.nav.admin')}</a>}
-                <button type="button" className="app-account__item" onClick={signOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
+                <button type="button" className="app-account__item" onClick={leaveAndSignOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
               </div>
             )}
           </div>
@@ -188,7 +192,7 @@ function ShellFrame() {
               <div className="app-sheet__account-actions">
                 <ButtonLink to="/app/settings" variant="line" size="sm" onClick={closeMenu}><Settings size={15} aria-hidden />{t('shell.settings')}</ButtonLink>
                 <button type="button" className="xc-btn xc-btn--line xc-btn--sm" onClick={startGuide}><RotateCcw size={15} aria-hidden />{t('shell.startGuide')}</button>
-                <button type="button" className="xc-btn xc-btn--line xc-btn--sm" onClick={signOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
+                <button type="button" className="xc-btn xc-btn--line xc-btn--sm" onClick={leaveAndSignOut}><LogOut size={15} aria-hidden />{t('common.logout')}</button>
               </div>
             </div>
           </div>

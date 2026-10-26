@@ -355,6 +355,14 @@ const koViewer = {
       newResult: '새 비교 결과 있음',
     },
     /** VX1 (UR-65): one frame for every tool panel — a one-line lead, one main action, results, then folded details. */
+    uxf: {
+      exportLeave: {
+        title: '만드는 중인 내보내기 {count}개',
+        text: '창을 닫아도 서버에서 계속 만들고, 끝나면 알림과 작업 센터에서 받을 수 있습니다. 지금 취소할 수도 있습니다.',
+        keep: '계속 만들고 닫기',
+        cancel: '취소하고 닫기',
+      },
+    },
     vx: {
       lead: {
         layers: '지도에 보일 밴드와 레이어를 고릅니다.',

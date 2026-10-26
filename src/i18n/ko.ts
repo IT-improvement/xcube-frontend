@@ -17,6 +17,8 @@ const ko = {
     closeMenu: '메뉴 닫기',
     logout: '로그아웃',
     retry: '다시 시도',
+    /** Screen-reader word after a finished step in a step track (UXF1). */
+    stepDone: '완료',
   },
   language: {
     label: '언어',
@@ -79,6 +81,12 @@ const ko = {
     toDashboard: '대시보드로',
   },
   shell: {
+    leave: {
+      title: '이 화면을 떠날까요?',
+      text: '지금까지 고르고 입력한 내용은 저장되지 않고 사라집니다.',
+      confirm: '떠나기',
+      stay: '계속 입력하기',
+    },
     nav: {
       dashboard: '대시보드',
       data: '데이터',

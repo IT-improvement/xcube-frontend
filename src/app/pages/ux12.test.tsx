@@ -349,7 +349,7 @@ describe('E·G. 융합 머리와 정리', () => {
     expect(screen.queryByRole('link', { name: /데이터/ })).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/\d\s*\/\s*4/);
     const steps = screen.getByRole('list', { name: '진행 단계' });
-    expect(steps).toHaveClass('step-scale');
+    expect(steps).toHaveClass('xc-steps');
     const items = within(steps).getAllByRole('listitem');
     expect(items.map((item) => item.textContent)).toEqual(['1데이터', '2수식', '3규칙', '4미리보기·실행']);
     expect(items[0]).toHaveAttribute('aria-current', 'step');

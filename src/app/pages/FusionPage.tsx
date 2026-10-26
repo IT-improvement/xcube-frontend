@@ -1,4 +1,5 @@
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { useLeaveGuard } from '../leaveGuard';
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { DryRun, FormulaError, FusionBinding, FusionRequest, Normalization } from '../../api/analysisApi';
@@ -6,7 +7,7 @@ import { blockerCode } from '../../api/analysisApi';
 import { userMessage } from '../../api/httpClient';
 import { Alert, Button, ButtonLink, LockedButton, TextField } from '../../components/ui';
 import { accountRoleLabel, NEEDS, useRoleGate } from '../../auth/roles';
-import { Badge, Card, PageHeader, Skeleton, useToast } from '../../components/ui/kit';
+import { Badge, Card, PageHeader, Skeleton, StepTrack, useToast } from '../../components/ui/kit';
 import { appApi, canEditProject, fusion, isOwned, ZarrDataset } from '../api';
 import { apiId, asFusionRequest, blockerText, defaultName, EXTENT_LABEL, formatBytes, GRID_LABEL, PERIOD_LABEL, AGG_LABEL, RESAMPLING_LABEL, TIME_LABEL } from '../fusion';
 import { useLoad } from '../useLoad';
@@ -167,6 +168,8 @@ export default function FusionPage() {
   useEffect(() => { if (!nameTouched) setName(defaultName(firstName, new Date(), lang)); }, [firstName, nameTouched, lang]);
 
   useEffect(() => { headingRef.current?.focus(); }, [step]);
+  // UXF1: links inside the app ask too (the tab-close warning below covers the browser).
+  useLeaveGuard(!started && !(step === 0 && !formula && !rows.some((row) => row.datasetId)));
   useEffect(() => {
     if (started) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
@@ -268,19 +271,11 @@ export default function FusionPage() {
 
   return (
     <div className="page-stack wizard fusion">
-      {/* Band math is a menu of its own, so no "back to data" link; the steps read as ticks on one rule. */}
+      {/* Band math is a menu of its own, so no "back to data" link. Steps: the shared staff (UXF1). */}
       <PageHeader title={t('titles.fusion')} description={t('fusion.description')} />
       {runLocked && <Alert tone="info">{t('gate.fusionText', { role: accountRoleLabel(gate.role, lang) })} {runLocked}</Alert>}
       {prefillError && <Alert tone="warning" role="alert">{prefillError}</Alert>}
-      <ol className="step-scale" aria-label={t('fusion.steps.label')}>
-        {STEPS.map((key, index) => (
-          <li key={key} className={index === step ? 'is-current' : index < step ? 'is-done' : ''} aria-current={index === step ? 'step' : undefined}>
-            <span className="step-scale__tick" aria-hidden />
-            <span className="step-scale__label"><span className="step-scale__num">{index < step ? <Check size={12} aria-hidden /> : index + 1}</span><span className="step-scale__text">{t(key)}</span></span>
-            {index < step && <span className="sr-only">{t('jobs.steps.done')}</span>}
-          </li>
-        ))}
-      </ol>
+      <StepTrack label={t('fusion.steps.label')} steps={STEPS.map((key) => t(key))} current={step} />
 
       <Card className="wizard-card">
         <div className="wizard-body">

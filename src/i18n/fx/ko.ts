@@ -126,6 +126,9 @@ const koFx = {
     running: '접수하는 중…',
     runHint: '보통 몇 초면 끝납니다. 끝나면 알림이 옵니다.',
     result: {
+      loadFailed: '진행 상태를 불러오지 못했습니다. {error}',
+      reload: '다시 불러오기',
+      retrying: '진행 상태를 다시 불러오는 중입니다 ({count}/{max}).',
       title: '비교 결과',
       viewer: 'Viewer에서 보기',
       where: "결과는 원본 '{name}'을 Viewer로 열고 ‘결과 비교’에서 볼 수 있습니다.",

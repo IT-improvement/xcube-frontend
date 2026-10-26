@@ -50,7 +50,7 @@ body:has(.landing) { overflow-x: clip; }
 .lp-bar__nav a:active, .lp-menu nav a:active { background: var(--fb-rule); }
 .lp-bar__actions { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
 .lp-bar__toggle {
-  display: none; margin-left: auto; width: 40px; height: 40px; place-items: center;
+  display: none; margin-left: auto; width: 44px; height: 44px; place-items: center;
   border: 1px solid var(--fb-rule-strong); border-radius: var(--fb-radius);
   background: var(--fb-surface); color: var(--fb-ink); cursor: pointer;
   transition: background-color 140ms ease-out, transform var(--fb-press) var(--fb-ease-out);

@@ -73,17 +73,17 @@ typography:
     lineHeight: 1
   label:
     fontFamily: "'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif"
-    fontSize: "12.5px"
+    fontSize: "13px"
     fontWeight: 600
     lineHeight: 1.4
   caption:
     fontFamily: "'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif"
-    fontSize: "12px"
+    fontSize: "13px"
     fontWeight: 400
-    lineHeight: 1.4
+    lineHeight: 1.45
   axis:
     fontFamily: "'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif"
-    fontSize: "11.5px"
+    fontSize: "13px"
     fontWeight: 500
     lineHeight: 1
     fontFeature: "tnum"
@@ -180,6 +180,19 @@ components:
     textColor: "{colors.overprint-text}"
     rounded: "{rounded.mark}"
     size: "18px"
+  step-num:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink-2}"
+    rounded: "{rounded.mark}"
+    size: "22px"
+  step-num-current:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.on-ink}"
+  avatar:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.round}"
+    size: "28px"
   floating-sheet:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
@@ -203,7 +216,7 @@ One overprint magenta is reserved for marks the user places: the time cursor, th
 
 The density is high and work-tool calm. A 48px bar sits on top, the map fills the body, sheets and tools float over the map, and a ruled dock holds the pixel reading and the time staff on one shared plot column.
 
-**Status (checked against the code on 2026-10-17, after UX4C):** this system is shipped on every screen. The token values live in one file, `src/styles/fieldbook.css` (`--fb-*`, light on `:root`, dark on `:root[data-theme='dark']`). The type ramp is in the same file as `--fb-text-*` font shorthands (h1, h2, value, title, body, control, label, caption, axis), with `--fb-radius-hair` for thin bars and `--fb-mono` for formulas. The Viewer aliases the colours as `--vx-*` (`viewer.css`). The management screens, auth and landing page (`.xc`) use them directly or through the older names in `src/styles/tokens.css` (`--color-primary` is ink, `--color-mark` is overprint, `--shadow-*` are `none`). The landing page (UX3) and the management screens with the 48px top bar (UX2) were rebuilt on this file; there is no second, blue "SaaS" system any more. Dark theme is offered only in the Viewer (account menu); `.xc` screens stay light even when the Viewer switched the tab to dark.
+**Status (checked against the code on 2026-10-27, after UXF1; VX1 on 2026-10-22, UX4C on 2026-10-17):** this system is shipped on every screen. The token values live in one file, `src/styles/fieldbook.css` (`--fb-*`, light on `:root`, dark on `:root[data-theme='dark']`). The type ramp is in the same file as `--fb-text-*` font shorthands (h1, h2, value, title, body, control, label, caption, axis), with `--fb-radius-hair` for thin bars and `--fb-mono` for formulas. The Viewer aliases the colours as `--vx-*` (`viewer.css`). The management screens, auth and landing page (`.xc`) use them directly or through the older names in `src/styles/tokens.css` (`--color-primary` is ink, `--color-mark` is overprint, `--shadow-*` are `none`). The landing page (UX3) and the management screens with the 48px top bar (UX2) were rebuilt on this file; there is no second, blue "SaaS" system any more. Dark theme is offered only in the Viewer (account menu); `.xc` screens stay light even when the Viewer switched the tab to dark. The Viewer's dark theme was checked by capture in UXF1 (every panel, 1440 and 390): text on sheets 4.5:1 or more; the OpenLayers credit line gets a surface backing and ink text because its own grey on white fell to 3.5:1 over dark imagery.
 
 **Key Characteristics:**
 - Ruled, not carded: 1px rules divide every docked region.
@@ -261,19 +274,19 @@ The palette is green-grey paper and graphite ink, with three data hues and one o
 
 **Character:** A single Korean-first sans set at work-tool sizes. Hierarchy comes from weight (400/500/600, and 700 only on the wordmark and on letter or number marks set on a filled square: A/B flags, fusion binding letters, compare step numbers, onboarding numbers, the notification count) and ink step, not from size jumps.
 
-**The ramp (UX4C, 2026-10-17).** Sizes: 11.5 · 12 · 12.5 · 13 · 14 · 15 · 16 · 18 · 22 · 26 px (landing keeps its own `--lp-*` clamp scale). There is no 10, 10.5, 11, 13.5, 17 or 24 px any more. Line heights: 1 (one-line controls), 1.15 (value), 1.3 (tight two-line titles, small meta), 1.4 (titles, labels, captions), 1.55 (body and multi-line secondary text), 1.65 (tour and auth reading text). Where a declaration matches a role exactly it uses the token (`font: var(--fb-text-body)` and so on); the older `--text-*` names in `tokens.css` now point at the same tokens.
+**The ramp (UX4C, 2026-10-17; 13px floor UXF1, 2026-10-27).** Sizes: 13 · 14 · 15 · 16 · 18 · 22 · 26 px (landing keeps its own `--lp-*` clamp scale). **13px is the floor for every text on every screen** — app, auth, Viewer (VX1, 2026-10-22) and the admin console: label, caption and axis are 13px, and there is no 10–12.5 px any more. The only text below it is inside the exported PNG sheet (`mapPng.ts`, a picture, not the interface) and OpenLayers' own credit line, which `viewer.css`/`app.css` lift to 13px too. Line heights: 1 (one-line controls), 1.15 (value), 1.3 (tight two-line titles, small meta), 1.4 (titles, labels, captions), 1.55 (body and multi-line secondary text), 1.65 (tour and auth reading text). Where a declaration matches a role exactly it uses the token (`font: var(--fb-text-body)` and so on); the older `--text-*` names in `tokens.css` now point at the same tokens.
 
 ### Hierarchy
 - **Value** (600, 22px, 1.15, -0.01em, tabular): the current pixel value in the dock. It drops to 18px below 1024px and to 16px on phones.
 - **Title** (600, 15px, 1.4; 16px/1.3 for drawer and tour headlines): drawer headings, the current date on the staff, tour card titles and empty-state headlines.
 - **Body** (400, 14px, 1.55): the base text, set with `word-break: keep-all`. Tour body text uses 1.65.
 - **Control** (500–600, 13px, 1): buttons, tabs, chips, menu items, layer names and breadcrumb dataset.
-- **Label** (600, 12.5px, 1.4, ink-2): section titles inside sheets. Labels are sentence case, not uppercase.
-- **Caption** (400, 12px, 1.4, ink-3): hints, metadata, counts and secondary lines in lists.
-- **Axis** (500, 11.5px, tabular, ink-3): chart axis labels and staff dates.
+- **Label** (600, 13px, 1.4, ink-2): section titles inside sheets. Labels are sentence case, not uppercase.
+- **Caption** (400, 13px, 1.45, ink-3; ink-2 inside Viewer panels): hints, metadata, counts and secondary lines in lists.
+- **Axis** (500, 13px, tabular, ink-3): chart axis labels and staff dates. Where 13px dates would collide (phone time staff), only the first and last date are written and every tick stays.
 
 ### Other screens
-- **Management and auth screens**: page title 26px/600 (`--fb-text-h1`, the auth form title too), section 18px/600 (`--fb-text-h2`, also the project intro title), sheet title 15px/600, body 14px/1.55, label 12.5px/600, caption 12px/1.4.
+- **Management and auth screens**: page title 26px/600 (`--fb-text-h1`, the auth form title too), section 18px/600 (`--fb-text-h2`, also the project intro title), sheet title 15px/600, body 14px/1.55, label 13px/600, caption 13px/1.45.
 - **Landing page** (`landing.css`, own scale): headline `clamp(34px, 5.4vw, 68px)`/600, section `clamp(26px, 3.2vw, 40px)`/600, lead 16–18px/1.7, body 16px/1.7, small 13px. The landing scale is intentionally larger (Persuade surface) and stays separate; the app, auth and Viewer share one ramp.
 - Inputs on phones use 16px text so iOS does not zoom.
 
@@ -304,7 +317,7 @@ A transparent bar over the hero that takes a surface sheet and a rule once the p
 
 ### Admin console (separate app, `xcube-admin-frontend`)
 
-The admin console (`/admin`, A0–A7) copies `fieldbook.css`, `tokens.css` and the shared `ui.css`/`kit.css` from this repo (each file names its source; re-copy them when the system changes). Its own `admin.css` follows the same ramp, radii and spacing, with a 232px ruled sidebar instead of the top-bar menu. Page and login titles use `--fb-text-h1` like the app. Two admin-only measures are deliberate: the overview's big figures (600 38px/1.05, 34px below 1280px and 30px on phones), and chart series B `#c27a12` next to water for series A (checked for colour-vision difference and 3:1 contrast). Rows are at least 52px for readability.
+The admin console (`/admin`, A0–A7) copies `fieldbook.css`, `tokens.css` and the shared `ui.css`/`kit.css`/`kit.tsx` from this repo (each file names its source and the resync date, last 2026-10-27 UXF1; re-copy them when the system changes). Its own `admin.css` follows the same ramp, radii and spacing, with a 232px ruled sidebar instead of the top-bar menu. Page and login titles use `--fb-text-h1` like the app. Since UXF1 the overview reads like the app dashboard: no boxed KPI tiles — the four figures sit in a ruled ledger (ink rule on top, rules between, values at the page-title size 26px instead of the earlier 38px), and each section is a section title over an ink rule with ruled rows on the ground. The list screens (users, data, jobs, access, system, audit) keep the ruled white sheet, as the app's list screens (data, jobs) do. The top bar shows the account mark with the name. Role changes say the change (`{from} → {to}`) before it is made and warn when the admin role is given or taken. One admin-only measure is deliberate: chart series B `#c27a12` next to water for series A (checked for colour-vision difference and 3:1 contrast). Rows are at least 52px for readability.
 
 ### Named Rules
 **The Shared Plot Column Rule.** Anything on the time axis (chart cursor, points, staff ticks, flags) is positioned on the same plot column with the same insets. A time-aware element never gets its own axis.
@@ -328,7 +341,7 @@ Corners are small and squared-off. Thin bars, meters, colour swatches and staff 
 
 ### Buttons
 Words are the controls. Buttons are compact, ruled and inked.
-- **Shape:** gently squared (6px), 32px tall, 0 12px padding, 600 13px text, and an icon gap of 6px. Small is 28px; large (landing, auth) is 40px with 14px text. With a coarse pointer or below 768px, buttons grow to 40px (large 44px).
+- **Shape:** gently squared (6px), 32px tall, 0 12px padding, 600 13px text, and an icon gap of 6px. Small is 28px; large (landing, auth) is 40px with 14px text. With a coarse pointer or below 768px, every press target is at least 44px (UXF1: buttons of all sizes, icon buttons, selects, inputs, segments, tabs, the language switch, the brand link, standalone links such as `← 데이터`, the dashboard counts and `알림 설정`).
 - **Ink (primary):** ink fill with on-ink text. On hover it mixes 14% toward surface.
 - **Line:** surface fill with a rule-strong outline. Hover is sunken. When pressed it takes an ink outline and a sunken fill.
 - **Quiet:** transparent with ink-2 text. Hover is sunken with ink text.
@@ -358,13 +371,23 @@ There are no cards. Floating sheets (layer sheet, drawer, popovers) use the surf
 - **Tags:** 20px tall, 4px radius, 600 12px, words first; tone colours them (`water` for shared and fusion, `result` for AI results). The kind tag on a data card and the Viewer's variable and area tags use the same 20px box.
 - **Progress bars and meters:** 4px (jobs, AI run, wizard) or 8px (storage, fusion quota) tall, sunken with a 1px rule, 2px radius, filled in ink (warn/bad at limits). The fill moves by `transform: scaleX`, never by animating width.
 - **Menus:** account menu items are 36px rows with a 10px icon gap in both the app and the Viewer.
+- **Account mark** (`.xc-avatar`, UXF1): one 28px ring — surface fill, 1px ink-2 ring, the name's first letter in ink 600 13px — in the app top bar, the Viewer top bar and the admin console top bar. It sits in a 36px quiet button (app, Viewer) or next to the name (admin). It is quiet on purpose: the ink fill belongs to the `데이터 추가` action next to it.
+- **Leaving with unsaved input** (UXF1): 데이터 추가 (from step 2) and 수식 융합 ask before an in-app link, the account menu's `시작 안내 다시 보기` or `로그아웃` leaves them — the shared confirmation dialog, `이 화면을 떠날까요?` with `계속 입력하기` (safe, focused) and `떠나기` (danger). Closing the tab keeps the browser's own warning. Back/forward are not guarded.
+
+### Steps (UXF1)
+One shape for steps on every screen.
+- **Number mark** (`StepNum`, `.xc-step-num`): a 22px square with a 4px radius and the step number in 700 13px tabular. Upcoming: surface with a 1px rule-strong ring and ink-2 number. Current: ink fill, on-ink number. Done: a 1px ink-2 ring and a check in ink, with `완료` for screen readers. Used by the add-data and fusion flows, the numbered sections of 비교 분석 (always "current": all three are on screen at once), the dashboard's 시작하기 list (upcoming or done) and, at 18px, the job stages in the job center.
+- **Step track** (`StepTrack`, `.xc-steps`): for a flow shown one step at a time (데이터 추가, 수식 융합). A staff, like the time staff: a 1px rule-strong line on top, one equal column per step with the number mark and a 600 13px word. A done step lays a 2px ink-2 rule over its column, the current one a 2px ink rule. No boxes. Below 768px only the current step keeps its word on screen (it takes two columns); the others keep it for screen readers.
 
 ### Navigation
 - **Tabs:** 600 13px in ink-3. The selected tab is ink with a 2px ink underline that sits on the sheet's bottom rule.
 - **Top bar:** a 48px surface bar with a bottom rule. Status reads in words with a coloured icon (ok, warn spinning, bad). Below 1160px the words become screen-reader text.
 
+### Viewer tool panels (VX1, 2026-10-22)
+The five panels on the right rail (레이어, 영역 통계, AI 수체 추출, 결과 비교, 내보내기) share one frame: **title → one-line lead (what the panel does; `aria-describedby`) → one main action → results → folded details**. Details fold into `PanelMore` (`.vx-more`, a native `<details>` row, 44px on touch) whose summary says what is inside and its current value (`계산 설정  원본 영상 · blue · 모든 시점 4개`). A rail tool that cannot be used yet says why next to the rail with the next step (`데이터 고르기`). On phones (≤767px) the panel is a bottom sheet with two heights — half (`min(32dvh, 290px)`, map and comparison layer stay visible) and full — switched by a 72×44 grip button (`aria-pressed`), never by dragging. While a panel is open the phone dock keeps only the time staff. 내보내기 offers its four formats as large radio choices with one line each (PNG first) and one button named by the action (`PNG로 저장`, `{형식} 만들기`). Closing it while exports are still being made asks whether they keep going on the server (`계속 만들고 닫기`, focused) or are cancelled (`취소하고 닫기`) — UXF1.
+
 ### Time Staff (signature)
-A ruled staff in the dock's plot column. Each tick is one acquisition, and its date sits beneath in axis type. The A cursor is a filled overprint flag on a 2px stem. It slides 160ms ease-out and tracks playback and ←/→. In compare modes a hollow B flag (surface fill, 1.5px overprint inset ring) sits on the same staff. A transparent native range input spans the staff for pointer and keyboard use, and its focus ring is drawn on the A flag. Without compare, the cursor collapses to a bare 4px tick.
+A ruled staff in the dock's plot column. Each tick is one acquisition, and its date sits beneath in axis type. The A cursor is a filled overprint flag on a 2px stem. It slides 160ms ease-out and tracks playback and ←/→. In compare modes a hollow B flag (surface fill, 1.5px overprint inset ring) sits on the same staff. A transparent native range input spans the staff for pointer and keyboard use, and its focus ring is drawn on the A flag. Without compare, the cursor collapses to a bare 4px tick. With a finger pointer at 768px and wider (tablets, touch laptops) the `n / m` count sits under the date, because the 44px player leaves no room beside it. A new date is shown on the map only once all its tiles are drawn (UR-66), so while it loads the previous date stays whole and `불러오는 중…` (spinner, 600 13px ink-2) sits beside the date in the dock; on phones the words wrap under the date instead of hiding (UXF1). `?t=` and `?b=` match a dataset time written with or without milliseconds or zone, or the same day (UXF1).
 
 ### Pixel Reading
 This row sits above the staff. Lead holds the reticle-icon title, the variable tag (water-soft) and coordinate rows. Plot holds the chart: water line 2px, points with a surface stroke, a dashed overprint cursor, an overprint current point, rule gridlines and a dashed zero line. Tail holds the current value in Value type.

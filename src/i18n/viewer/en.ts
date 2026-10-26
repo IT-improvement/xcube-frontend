@@ -344,6 +344,14 @@ const enViewer: ViewerTranslation = {
       resultCounts: '{ai} AI results, {cmp} comparison results',
       newResult: 'New comparison result',
     },
+    uxf: {
+      exportLeave: {
+        title: '{count} export(s) still being made',
+        text: 'They keep being made on the server after you close this panel, and you can download them from notifications and the job center when they finish. You can also cancel them now.',
+        keep: 'Keep making and close',
+        cancel: 'Cancel them and close',
+      },
+    },
     vx: {
       lead: {
         layers: 'Choose the band and layers shown on the map.',

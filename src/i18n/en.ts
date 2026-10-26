@@ -16,6 +16,7 @@ const en: Translation = {
     closeMenu: 'Close menu',
     logout: 'Sign out',
     retry: 'Try again',
+    stepDone: 'done',
   },
   language: {
     label: 'Language',
@@ -76,6 +77,12 @@ const en: Translation = {
     toDashboard: 'Back to dashboard',
   },
   shell: {
+    leave: {
+      title: 'Leave this screen?',
+      text: 'What you have chosen and typed so far is not saved and will be lost.',
+      confirm: 'Leave',
+      stay: 'Keep editing',
+    },
     nav: {
       dashboard: 'Dashboard',
       data: 'Data',
