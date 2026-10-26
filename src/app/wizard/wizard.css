@@ -1,14 +1,6 @@
 /* S4 data add wizard and the variable style editor (field-book system, DESIGN.md).
    One sheet (the wizard card); everything inside is divided by rules, not boxed (UR-54 W8). */
 .wizard { --wizard-bar: 48px; } /* the app's top bar (app.css .app-top) */
-.wizard-steps { display: flex; gap: var(--space-2); margin: 0; padding: 0; list-style: none; overflow-x: auto; scrollbar-width: none; }
-.wizard-steps li { flex: 1 1 0; min-width: 120px; display: flex; align-items: center; gap: var(--space-2); padding: 10px 12px; border-radius: var(--fb-radius); background: var(--fb-surface); border: 1px solid var(--fb-rule); color: var(--fb-ink-3); }
-.wizard-steps__dot { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: var(--fb-radius-mark); background: var(--fb-sunken); font: 600 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
-.wizard-steps__label { font: 600 13px/1.3 var(--font-sans); white-space: nowrap; }
-.wizard-steps li.is-current { border-color: var(--fb-ink); color: var(--fb-ink); }
-.wizard-steps li.is-current .wizard-steps__dot { background: var(--fb-ink); color: var(--fb-on-ink); }
-.wizard-steps li.is-done { color: var(--fb-ink-2); }
-.wizard-steps li.is-done .wizard-steps__dot { background: transparent; color: var(--fb-ok); box-shadow: inset 0 0 0 1px var(--fb-rule-strong); }
 
 /* No overflow clipping on the card: the footer sticks to the viewport bottom (W1). */
 .wizard-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); padding: var(--space-5); }
@@ -54,7 +46,7 @@
 .method-card__icon svg { width: 22px; height: 22px; }
 .method-card__text { display: grid; gap: 4px; font-size: 14px; color: var(--color-text-secondary); word-break: keep-all; }
 .method-card__title { display: flex; align-items: center; gap: var(--space-2); font: var(--text-h3); color: var(--color-text); }
-.method-card__text small { color: var(--fb-ink-3); font-size: 12px; }
+.method-card__text small { color: var(--fb-ink-3); font-size: 13px; }
 .method-card__check { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--fb-input-border); color: var(--fb-on-ink); background: var(--fb-surface); }
 .method-card.is-on .method-card__check { background: var(--fb-ink); border-color: var(--fb-ink); }
 
@@ -108,7 +100,7 @@
 .inspect-grid .bbox-map { border-radius: var(--fb-radius-lg); }
 .inspect-grid__empty { padding: var(--space-5); }
 .checklist { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-.checklist li { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: var(--fb-radius-mark); font: 600 12.5px/1 var(--font-sans); }
+.checklist li { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: var(--fb-radius-mark); font: 600 13px/1 var(--font-sans); }
 .checklist li.ok { background: color-mix(in srgb, var(--fb-ok) 10%, var(--fb-surface)); color: var(--fb-ok); }
 .checklist li.missing { background: color-mix(in srgb, var(--fb-bad) 10%, var(--fb-surface)); color: var(--fb-bad); }
 .summary-list { padding: 0; }
@@ -141,7 +133,7 @@
 .vse-option input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--fb-ink); flex: none; }
 .vse-option__text { display: grid; gap: 2px; min-width: 0; }
 .vse-option__text strong { font: 600 14px/1.3 var(--font-sans); overflow-wrap: anywhere; }
-.vse-option__text small { color: var(--fb-ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.vse-option__text small { color: var(--fb-ink-3); font-size: 13px; font-variant-numeric: tabular-nums; }
 .vse-custom { display: flex; align-items: flex-end; gap: var(--space-2); }
 .vse-custom__field { flex: 1; }
 /* One ruled row per variable (no boxes inside the sheet). */
@@ -168,9 +160,6 @@
   .wizard-body { padding: var(--space-5) var(--space-4); }
   .wizard-foot { padding: 10px var(--space-4); }
   .wizard-foot__wait { order: -1; flex-basis: 100%; margin-left: 0; text-align: left; }
-  .wizard-steps__label { display: none; }
-  .wizard-steps li { min-width: 0; justify-content: center; padding: 8px; }
-  .wizard-steps li.is-current .wizard-steps__label { display: inline; }
 }
 @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
 
@@ -275,7 +264,7 @@
 .date-pick__cover { display: grid; gap: 4px; }
 .date-pick__excluded summary { width: fit-content; cursor: pointer; color: var(--fb-ink-2); text-decoration: underline; text-underline-offset: 2px; }
 .date-pick__excluded ul { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 6px 0 0; padding: 0; list-style: none; }
-@media (pointer: coarse) { .date-pick__order button { height: 40px; padding: 0 14px; } }
+@media (pointer: coarse) { .date-pick__order button { height: 44px; padding: 0 14px; } }
 /* Phones: one card row per date — check · date · "구름 3.1%" · "레이더 08-17 상승 3.3일". */
 @media (max-width: 767px) {
   .date-pick__table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

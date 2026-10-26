@@ -32,6 +32,7 @@ export default function ExportPanel({
   viewBbox,
   datasetName,
   onPng,
+  onRunningChange,
 }: {
   targets: ExportTarget[];
   times: TimePoint[];
@@ -42,6 +43,8 @@ export default function ExportPanel({
   datasetName: string;
   /** Makes and saves the map PNG; rejects with a reason. `signal` aborts when the panel goes away (no late file). */
   onPng: (title: string, signal?: AbortSignal) => Promise<void>;
+  /** Ids of the exports still being made on the server (empty when none, and when the panel goes away). */
+  onRunningChange?: (ids: string[]) => void;
 }) {
   const { lang, t } = useLanguage();
   const [title, setTitle] = useState(datasetName);
@@ -87,6 +90,11 @@ export default function ExportPanel({
 
   // Follow running jobs until they end.
   const running = entries.filter((entry) => isExportRunning(entry.job)).map((entry) => String(entry.job.id)).join(",");
+  // UXF1 (FIX4 §4.1): the Viewer asks before closing whether these should keep going on the server.
+  useEffect(() => {
+    onRunningChange?.(running ? running.split(",") : []);
+  }, [running, onRunningChange]);
+  useEffect(() => () => onRunningChange?.([]), [onRunningChange]);
   useEffect(() => {
     if (!running) return;
     let cancelled = false;

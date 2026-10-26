@@ -77,6 +77,7 @@ import { canShowRgb, defaultLayer, isAuxiliary, isLayerOf } from "./defaultLayer
 import AreaStatsPanel from "./AreaStatsPanel";
 import type { AreaTarget } from "./AreaStatsPanel";
 import ExportPanel from "./ExportPanel";
+import { matchTimeIndex } from "./timeMatch";
 import type { ExportTarget } from "./ExportPanel";
 import { CompareEntry, ComparisonLegend, ComparisonPanel } from "./ComparisonPanel";
 import { useAreaDraw } from "./areaDraw";
@@ -88,7 +89,9 @@ import { setAreaStatsDemoContext } from "../../api/areaStats";
 import { comparisonViewerHref, originComparisonsApi } from "../../api/originComparisons";
 import type { OriginComparison } from "../../api/originComparisons";
 import { ComparisonBanner, ComparisonGroup, ComparisonMapLegend, markComparisonsSeen, seenComparisons } from "./ComparisonList";
-import { saveBlob } from "../../api/exports";
+import { exportsApi, saveBlob } from "../../api/exports";
+import { Dialog } from "../../components/ui/kit";
+import { Button } from "../../components/ui";
 
 /** The one tool panel on the right (UX2): its tabs are the tool rail's buttons. */
 type Tool = "layers" | "area" | "ai" | "result" | "export";
@@ -326,6 +329,8 @@ export default function Viewer({
   sourceVisibleRef.current = sourceVisible;
   sourceOpacityRef.current = sourceOpacity;
   const detailLoadedRef = useRef("");
+  /** The dataset whose detail (full time list) has arrived or failed; the address's times wait for it. */
+  const [detailReadyId, setDetailReadyId] = useState("");
   const initialAppliedRef = useRef(false);
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
@@ -798,6 +803,7 @@ export default function Viewer({
   }, [datasets, initialDatasetId]);
   /** FIX4: each pixel query counts up; an answer for an older query (another dataset, band or pixel) is dropped. */
   const pixelRunRef = useRef(0);
+  const prevDatasetRef = useRef("");
   useEffect(() => {
     setTimeIndex(0);
     pixelRunRef.current += 1;
@@ -812,6 +818,10 @@ export default function Viewer({
     // CMP2: a comparison belongs to its original; another dataset takes it (and its banner and legend) away.
     setShownComparisonId(null);
     wantAiLayerRef.current = false;
+    // UXF1 (FIX4 §4.2): another dataset starts with its AI water layer off, unless 결과 비교 is open (that panel is
+    // the switch for seeing AI results, so the new data's result shows there as before).
+    if (prevDatasetRef.current && prevDatasetRef.current !== datasetId && drawerRef.current !== "result") setResultVisible(false);
+    prevDatasetRef.current = datasetId;
     if (urlStateRef.current.dataset && urlStateRef.current.dataset !== datasetId && datasetId)
       urlStateRef.current = {}; // the user picked another dataset: the address no longer applies
   }, [datasetId]);
@@ -827,9 +837,12 @@ export default function Viewer({
     if (!selected || pending.dataset !== selected.id) return;
     const next = { ...pending };
     if (times.length) {
-      const a = pending.time ? times.findIndex((time) => time.iso === pending.time) : -1;
+      const a = matchTimeIndex(times, pending.time);
+      const b = matchTimeIndex(times, pending.compare);
+      // UXF1: the catalogue lists only the first and last time; a middle `t=` waits for the detail's full list
+      // (it used to be dropped at that first look, so the Viewer opened on the first time).
+      if (((pending.time && a < 0) || (pending.compare && b < 0)) && detailReadyId !== selected.id) return;
       if (a >= 0) setTimeIndex(a);
-      const b = pending.compare ? times.findIndex((time) => time.iso === pending.compare) : -1;
       // FIX2: 원본 ↔ AI 결과 needs the result chosen; with one time the comparison would otherwise fall back to
       // 단일 before the AI list arrives, so the mode waits (in the address state) until the asked result is there.
       const waitForResult = !!pending.mode && pending.target === "ai" && !selectedResult;
@@ -842,7 +855,7 @@ export default function Viewer({
       if (!waitForResult) next.compare = next.mode = next.target = undefined;
     }
     urlStateRef.current = next;
-  }, [selected, times, selectedResult]);
+  }, [selected, times, selectedResult, detailReadyId]);
   // Layer a dataset opens with (FB1 §1): `?var=` > RGB > first band, re-applied while the layer is still the
   // rule's choice (the catalog entry may learn its RGB bands from the detail), never over a band the user picked.
   useEffect(() => {
@@ -906,6 +919,7 @@ export default function Viewer({
   }, [times.length, tourOpen]);
   useEffect(() => {
     if (!datasetId || useMockApi) {
+      if (datasetId) setDetailReadyId(datasetId);
       setViewerNotice(null);
       return;
     }
@@ -929,7 +943,8 @@ export default function Viewer({
         );
         setViewerNotice(null);
       })
-      .catch((cause) => setViewerNotice({ cause }));
+      .catch((cause) => setViewerNotice({ cause }))
+      .finally(() => setDetailReadyId(datasetId));
   }, [datasetId, selected]);
   // Source tile url of a time index (null when there is no xcube layer to show).
   const sourceTileUrlAt = useCallback(
@@ -1176,7 +1191,7 @@ export default function Viewer({
   }, []);
   /** A rail button opens its tool, or closes the panel when that tool is already open. */
   const toggleRightPanel = (type: Tool) => {
-    if (drawer === type) closeRightPanel();
+    if (drawer === type) requestClose();
     else openRightPanel(type, true);
   };
   // CMP2: `?tool=result` opens 결과 비교; `&comparison={id}` (notification link) puts that comparison on the map once
@@ -1412,6 +1427,21 @@ export default function Viewer({
         : 180,
     });
   }, [map, selectedId, selectedBbox]);
+  /** UXF1 (FIX4 §4.1): exports still being made when the export panel closes — ask whether they keep going. */
+  const exportRunningRef = useRef<string[]>([]);
+  const onExportRunning = useCallback((ids: string[]) => { exportRunningRef.current = ids; }, []);
+  const [exportLeave, setExportLeave] = useState<string[] | null>(null);
+  /** Closing from a button or Esc: the export panel with running exports asks first; everything else closes. */
+  function requestClose() {
+    if (drawerRef.current === "export" && exportRunningRef.current.length) setExportLeave(exportRunningRef.current);
+    else closeRightPanel();
+  }
+  const leaveExports = async (cancel: boolean) => {
+    const ids = exportLeave ?? [];
+    setExportLeave(null);
+    if (cancel) await Promise.allSettled(ids.map((id) => exportsApi.cancel(id)));
+    closeRightPanel();
+  };
   function closeRightPanel() {
     const closing = drawerRef.current;
     setDrawer(null);
@@ -2298,7 +2328,7 @@ export default function Viewer({
               event.preventDefault();
               // Esc while drawing cancels only the drawing (S7), not the whole panel.
               if (area.drawing) area.cancel();
-              else closeRightPanel();
+              else requestClose();
             }}
           >
             <div className="vx-drawer__head">
@@ -2320,7 +2350,7 @@ export default function Viewer({
               <button
                 type="button"
                 className="vx-btn vx-btn--quiet vx-drawer__close"
-                onClick={closeRightPanel}
+                onClick={requestClose}
                 aria-label={t("viewer.drawer.close")}
                 title={t("viewer.drawer.closeTitle")}
               >
@@ -2524,11 +2554,26 @@ export default function Viewer({
               )}
               {selected && visited.includes("export") && (
                 <div hidden={drawer !== "export"}>
-                  <ExportPanel key={selected.id} targets={exportTargets} times={times} currentIndex={timeIndex} shape={area.shape} viewBbox={mapExtent4326} datasetName={selected.name} onPng={makePng} />
+                  <ExportPanel key={selected.id} targets={exportTargets} times={times} currentIndex={timeIndex} shape={area.shape} viewBbox={mapExtent4326} datasetName={selected.name} onPng={makePng} onRunningChange={onExportRunning} />
                 </div>
               )}
             </div>
           </aside>
+        )}
+        {exportLeave && (
+          <Dialog
+            role="alertdialog"
+            size="sm"
+            title={t("viewer.uxf.exportLeave.title", { count: exportLeave.length })}
+            description={t("viewer.uxf.exportLeave.text")}
+            onClose={() => setExportLeave(null)}
+            footer={
+              <>
+                <Button variant="line" onClick={() => void leaveExports(false)}>{t("viewer.uxf.exportLeave.keep")}</Button>
+                <Button variant="danger" onClick={() => void leaveExports(true)}>{t("viewer.uxf.exportLeave.cancel")}</Button>
+              </>
+            }
+          />
         )}
       </div>
 

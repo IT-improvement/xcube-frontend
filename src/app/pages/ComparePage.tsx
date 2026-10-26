@@ -5,10 +5,10 @@ import { COMPARISON_CLASSES, COMPARISON_TYPES, COMPARISON_ZERO, compareApi } fro
 import { comparisonViewerHref } from '../../api/originComparisons';
 import type { CompareCheck, CompareJob, CompareRequest, ComparisonType } from '../../api/compare';
 import { isExample } from '../../api/examples';
-import { userMessage } from '../../api/httpClient';
+import { ApiError, userMessage } from '../../api/httpClient';
 import { NEEDS, useRoleGate } from '../../auth/roles';
 import { Alert, Button, LockedButton, TextField } from '../../components/ui';
-import { Badge, Card, EmptyState, PageHeader, Skeleton } from '../../components/ui/kit';
+import { Badge, Card, EmptyState, PageHeader, Skeleton, StepNum } from '../../components/ui/kit';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { failureText, formatNumber, useLanguage } from '../../i18n';
 import type { Lang, TKey } from '../../i18n';
@@ -22,6 +22,9 @@ import '../../i18n/fx';
 import './compare.css';
 
 const POLL_MS = 2000;
+/** Reads of a running job's progress that may fail in a row before the error shows (UXF1). */
+const POLL_RETRIES = 4;
+const POLL_RETRY_MAX_MS = 15000;
 const CHECK_DELAY_MS = 400;
 const isType = (value: string | null): value is ComparisonType => !!value && (COMPARISON_TYPES as string[]).includes(value);
 
@@ -124,6 +127,8 @@ export default function ComparePage() {
   const [jobId, setJobId] = useState<string | null>(params.get('job'));
   const [job, setJob] = useState<CompareJob | null>(null);
   const [jobError, setJobError] = useState('');
+  const [retrying, setRetrying] = useState(0);
+  const [reloadTick, setReloadTick] = useState(0);
   const [busy, setBusy] = useState(false);
   const [runError, setRunError] = useState('');
   const history = useLoad(() => compareApi.listJobs());
@@ -132,19 +137,37 @@ export default function ComparePage() {
     // FIX4: another job drops the one shown before (and its error), so a failed load never shows the old metrics.
     setJob((current) => (current && String(current.id) === jobId ? current : null));
     setJobError('');
+    setRetrying(0);
     let alive = true;
     let timer: number | undefined;
+    let failures = 0;
+    // UXF1 (FIX4 §4.5): a failed read is tried again (2 s, 4 s, 8 s … up to 15 s) before the error shows,
+    // and the error comes with `다시 불러오기`.
     const poll = () => compareApi.get(jobId).then((next) => {
       if (!alive) return;
+      failures = 0;
+      setRetrying(0);
       setJob(next);
       setJobError('');
       if (isActive(next)) timer = window.setTimeout(poll, POLL_MS);
       else history.refresh();
-    }, (error) => { if (alive) setJobError(userMessage(error, lang)); });
+    }, (error) => {
+      if (!alive) return;
+      failures += 1;
+      // A refusal (no such job, no right to it) will not change on a retry; a lost connection or a busy server may.
+      const lasting = error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429;
+      if (!lasting && failures <= POLL_RETRIES) {
+        setRetrying(failures);
+        timer = window.setTimeout(poll, Math.min(POLL_MS * 2 ** (failures - 1), POLL_RETRY_MAX_MS));
+      } else {
+        setRetrying(0);
+        setJobError(userMessage(error, lang));
+      }
+    });
     void poll();
     return () => { alive = false; window.clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId]);
+  }, [jobId, reloadTick]);
   const show = (id: string) => {
     setJobId(id);
     setParams((current) => { const next = new URLSearchParams(current); next.set('job', id); return next; }, { replace: true });
@@ -197,7 +220,7 @@ export default function ComparePage() {
       <Card>
         <form className="compare-form" onSubmit={run} noValidate>
           <fieldset className="compare-step">
-            <legend className="compare-step__title"><span className="compare-step__num tabular">1</span>{t('compare.step.type')}</legend>
+            <legend className="compare-step__title"><StepNum n={1} state="current" />{t('compare.step.type')}</legend>
             <div className="compare-types" role="radiogroup" aria-label={t('compare.step.type')}>
               {COMPARISON_TYPES.map((type) => (
                 <label key={type} className={`compare-type${form.type === type ? ' is-checked' : ''}`}>
@@ -211,7 +234,7 @@ export default function ComparePage() {
           </fieldset>
 
           <fieldset className="compare-step">
-            <legend className="compare-step__title"><span className="compare-step__num tabular">2</span>{t('compare.step.inputs')}</legend>
+            <legend className="compare-step__title"><StepNum n={2} state="current" />{t('compare.step.inputs')}</legend>
             {datasets.loading && !datasets.data ? <Skeleton lines={3} label={t('compare.form.loading')} />
               : datasets.error ? <Alert tone="danger">{datasets.error} <Button variant="line" size="sm" onClick={datasets.reload}>{t('common.retry')}</Button></Alert>
                 : !results.length ? (
@@ -260,7 +283,7 @@ export default function ComparePage() {
           </fieldset>
 
           <fieldset className="compare-step">
-            <legend className="compare-step__title"><span className="compare-step__num tabular">3</span>{t('compare.step.run')}</legend>
+            <legend className="compare-step__title"><StepNum n={3} state="current" />{t('compare.step.run')}</legend>
             <CheckLine request={request} check={check?.key === requestKey ? check : null} lang={lang} locked={!!locked} />
             {runError && <Alert tone="danger">{runError}</Alert>}
             <div className="compare-run">
@@ -276,7 +299,14 @@ export default function ComparePage() {
       {(job || jobError) && (
         <section id="compare-result" className="compare-result" aria-labelledby="compare-result-title" aria-live="polite">
           <Card>
-            {jobError && !job ? <Alert tone="danger">{jobError}</Alert> : job ? <JobResult job={job} nameOf={nameOf} viewer={viewerOf(job)} onCancel={cancel} /> : null}
+            {jobError && (
+              <div className="inline-error compare-reload">
+                <Alert tone="danger">{t('compare.result.loadFailed', { error: jobError })}</Alert>
+                <Button variant="line" size="sm" onClick={() => setReloadTick((value) => value + 1)}><RotateCcw size={14} aria-hidden />{t('compare.result.reload')}</Button>
+              </div>
+            )}
+            {retrying > 0 && !jobError && <p className="xc-hint compare-retry" role="status">{t('compare.result.retrying', { count: retrying, max: POLL_RETRIES })}</p>}
+            {job ? <JobResult job={job} nameOf={nameOf} viewer={viewerOf(job)} onCancel={cancel} /> : null}
           </Card>
         </section>
       )}

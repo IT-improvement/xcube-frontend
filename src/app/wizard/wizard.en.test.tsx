@@ -286,7 +286,7 @@ describe('Result screen in English', () => {
     renderWizard();
     fireEvent.click(await screen.findByRole('radio', { name: /Register Zarr/ }));
     fireEvent.click(next());
-    expect(within(screen.getByRole('list', { name: 'Progress' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Method', '2Source', '3Settings', '4Review and create']);
+    expect(within(screen.getByRole('list', { name: 'Progress' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Method (done)', '2Source', '3Settings', '4Review and create']);
     fireEvent.change(screen.getByLabelText('Zarr path / URI'), { target: { value: '/data/lake.zarr' } });
     // Nothing to inspect before registering: straight to the settings.
     fireEvent.click(next());

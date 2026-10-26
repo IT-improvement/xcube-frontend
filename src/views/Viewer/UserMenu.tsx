@@ -62,7 +62,7 @@ export default function UserMenu({
         aria-label={t("viewer.user.menu", { name })}
         onClick={() => (open ? close() : setOpen(true))}
       >
-        <span className="vx-user__avatar" aria-hidden="true">
+        <span className="xc-avatar" aria-hidden="true">
           {name.slice(0, 1)}
         </span>
         <span className="vx-user__name" aria-hidden="true">
